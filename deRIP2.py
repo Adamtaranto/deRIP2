@@ -40,7 +40,7 @@ def dochecks(usrOutDir):
 	return outDir
 
 def checkUniqueID(align):
-	rowIDs = [align.get_all_seqs()[x].id for x in range(align.__len__())]
+	rowIDs = [list(align)[x].id for x in range(align.__len__())]
 	IDcounts = Counter(rowIDs)
 	duplicates = [k for k, v in IDcounts.items() if v > 1]
 	if duplicates:
@@ -124,7 +124,7 @@ def fillConserved(align,tracker,maxGaps=0.7):
 def nextBase(align,colID,motif):
 	"""For colIdx, and dinucleotide motif XY return list of rowIdx values where col=X 
 	and is followed by a Y in the next non-gap column."""
-	rowsX = find(align.get_column(colID),motif[0])
+	rowsX = find(align[:,colID],motif[0])
 	rowsXY = list()
 	for rowID in rowsX:
 		for base in align[rowID].seq[colID+1:]: #From position to immediate right of X to end of seq
@@ -137,7 +137,7 @@ def nextBase(align,colID,motif):
 def lastBase(align,colID,motif):
 	"""For colIdx, and dinucleotide motif XY return list of rowIdx values where col=Y 
 	and is preceeded by an X in the previous non-gap column."""
-	rowsY = find(align.get_column(colID),motif[1])
+	rowsY = find(align[:,colID],motif[1])
 	rowsXY = list()
 	for rowID in rowsY:
 		for base in align[rowID].seq[colID-1::-1]: #From position to immediate left of Y to begining of seq, reversed
@@ -175,43 +175,44 @@ def correctRIP(align,tracker,RIPcounts,maxSNPnoise=0.5,minRIPlike=0.1,reaminate=
 	tracker = deepcopy(tracker)
 	RIPcounts = deepcopy(RIPcounts)
 	for colIdx in range(align.get_alignment_length()):
-		CTinCol = find(align.get_column(colIdx),["C","T"])
-		GAinCol = find(align.get_column(colIdx),["G","A"])
-		baseCount = len(find(align.get_column(colIdx),["A","T","G","C"]))
-		CTprop = len(CTinCol) / baseCount
-		GAprop = len(GAinCol) / baseCount
-		# If proportion of C+T non-gap positions is > miscSNP threshold, AND bases are majority 'CT', AND both 'C' and 'T' are present
-		if CTprop >= maxSNPnoise and CTprop > GAprop and hasBoth(align.get_column(colIdx),"C","T"):
-			# Get list of rowIdxs for which C/T in colIdx is followed by an 'A'
-			TArows = nextBase(align,colIdx, motif='TA')
-			CArows = nextBase(align,colIdx, motif='CA')
-			# Calc proportion of C/T positions in column followed by an 'A'
-			propRIPlike = len(TArows) + len(CArows) / len(CTinCol)
-			# For rows with 'TA' log RIP event
-			for rowTA in set(TArows):
-				RIPcounts = updateRIPCount(rowTA, RIPcounts, addFwd=1)
-			# If critical number of deamination events were in RIP context, update deRIP tracker	
-			if propRIPlike >= minRIPlike:
-				tracker = updateTracker(colIdx, 'C', tracker, force=False)
-			# Else if in reaminate mode update deRIP tracker
-			elif reaminate:
-				tracker = updateTracker(colIdx, 'C', tracker, force=False)
-		# If proportion of G+A non-gap positions is > miscSNP threshold AND both 'G' and 'A' are present
-		elif GAprop >= maxSNPnoise and hasBoth(align.get_column(colIdx),"G","A"):
-			# Get list of rowIdxs for which G/A in colIdx is preceeded by a 'T'
-			TGrows = lastBase(align,colIdx, motif='TG')
-			TArows = lastBase(align,colIdx, motif='TA')
-			# Calc proportion of G/A positions in column preceeded by a 'T'
-			propRIPlike = len(TGrows) + len(TArows) / len(GAinCol)
-			# For rows with 'TA' log revRIP event
-			for rowTA in set(TArows):
-				RIPcounts = updateRIPCount(rowTA, RIPcounts, addRev=1)
-			# If critical number of deamination events were in RIP context, update deRIP tracker
-			if propRIPlike >= minRIPlike:
-				tracker = updateTracker(colIdx, 'G', tracker, force=False)
-			# Else if in reaminate mode update deRIP tracker
-			elif reaminate:
-				tracker = updateTracker(colIdx, 'G', tracker, force=False)
+		baseCount = len(find(align[:,colIdx],["A","T","G","C"]))
+		if baseCount:
+			CTinCol = find(align[:,colIdx],["C","T"])
+			GAinCol = find(align[:,colIdx],["G","A"])
+			CTprop = len(CTinCol) / baseCount
+			GAprop = len(GAinCol) / baseCount
+			# If proportion of C+T non-gap positions is > miscSNP threshold, AND bases are majority 'CT', AND both 'C' and 'T' are present
+			if CTprop >= maxSNPnoise and CTprop > GAprop and hasBoth(align[:,colIdx],"C","T"):
+				# Get list of rowIdxs for which C/T in colIdx is followed by an 'A'
+				TArows = nextBase(align,colIdx, motif='TA')
+				CArows = nextBase(align,colIdx, motif='CA')
+				# Calc proportion of C/T positions in column followed by an 'A'
+				propRIPlike = len(TArows) + len(CArows) / len(CTinCol)
+				# For rows with 'TA' log RIP event
+				for rowTA in set(TArows):
+					RIPcounts = updateRIPCount(rowTA, RIPcounts, addFwd=1)
+				# If critical number of deamination events were in RIP context, update deRIP tracker	
+				if propRIPlike >= minRIPlike:
+					tracker = updateTracker(colIdx, 'C', tracker, force=False)
+				# Else if in reaminate mode update deRIP tracker
+				elif reaminate:
+					tracker = updateTracker(colIdx, 'C', tracker, force=False)
+			# If proportion of G+A non-gap positions is > miscSNP threshold AND both 'G' and 'A' are present
+			elif GAprop >= maxSNPnoise and hasBoth(align[:,colIdx],"G","A"):
+				# Get list of rowIdxs for which G/A in colIdx is preceeded by a 'T'
+				TGrows = lastBase(align,colIdx, motif='TG')
+				TArows = lastBase(align,colIdx, motif='TA')
+				# Calc proportion of G/A positions in column preceeded by a 'T'
+				propRIPlike = len(TGrows) + len(TArows) / len(GAinCol)
+				# For rows with 'TA' log revRIP event
+				for rowTA in set(TArows):
+					RIPcounts = updateRIPCount(rowTA, RIPcounts, addRev=1)
+				# If critical number of deamination events were in RIP context, update deRIP tracker
+				if propRIPlike >= minRIPlike:
+					tracker = updateTracker(colIdx, 'G', tracker, force=False)
+				# Else if in reaminate mode update deRIP tracker
+				elif reaminate:
+					tracker = updateTracker(colIdx, 'G', tracker, force=False)
 	return (tracker,RIPcounts)
 
 def setRefSeq(align, RIPcounter=None, getMinRIP=True):
@@ -241,7 +242,7 @@ def getDERIP(tracker,ID="deRIPseq",deGAP=True):
 	deRIPstr = ''.join([y.base for y in sorted(tracker.values(), key = lambda x: (x[0]))])
 	if deGAP:
 		deRIPstr = deRIPstr.replace("-", "")
-	deRIPseq = SeqRecord(Seq(deRIPstr, Gapped(IUPAC.unambiguous_dna)), id=ID)
+	deRIPseq = SeqRecord(Seq(deRIPstr, Gapped(IUPAC.unambiguous_dna)), id=ID, name=ID, description="Hypothetical ancestral sequence produced by deRIP2")
 	return deRIPseq
 
 def writeDERIP(tracker,outPathFile,ID="deRIPseq"):
@@ -277,9 +278,9 @@ def main(args):
 	# Fill remaining unset positions from min RIP / max GC original sequence
 	tracker = fillRemainder(align,refID,tracker)
 	# Write ungapped deRIP to file
-	writeDERIP(tracker,outPathFile,ID="deRIPseq")
+	writeDERIP(tracker,outPathFile,ID=args.label)
 	# Write updated alignment (including gapped deRIP) to file. Optional.
-	writeAlign(tracker,align,outPathAln,ID="deRIPseq",outAlnFormat="fasta")
+	writeAlign(tracker,align,outPathAln,ID=args.label,outAlnFormat=args.outAlnFormat)
 
 if __name__== '__main__':
 	###Argument handling.
@@ -338,6 +339,9 @@ if __name__== '__main__':
 	parser.add_argument('--outAlnName',
 									default=None,
 									help='Optional: If set write alignment including deRIP sequence to this file.')
+	parser.add_argument('--label',
+									default="deRIPseq",
+									help="Use label as name for deRIP'd sequence in output files.")
 	parser.add_argument("-d", 
 									"--outDir",
 									type=str,

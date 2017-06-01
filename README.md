@@ -5,13 +5,14 @@ Predict progenitor sequence of fungal repeat families by correcting for RIP-like
 ## Usage
 
 ```bash
-./deRIP2 --inAln myalignment.fa --format fasta \
+./deRIP2.py --inAln myalignment.fa --format fasta \
 --maxGaps 0.7 \
 --maxSNPnoise 0.5 \
 --minRIPlike 0.1 \
 --outName deRIPed_sequence.fa \
 --outAlnName aligment_with_deRIP.aln \
 --outAlnFormat clustal \
+--label deRIPseqName \
 --outDir results \
 --reaminate
 ```
@@ -66,6 +67,9 @@ Predict progenitor sequence of fungal repeat families by correcting for RIP-like
 **--outAlnName**  
 
   - Optional: If set write alignment including deRIP sequence to this file.  
+
+**--label**  
+Use label as name for deRIP'd sequence in output files.  
 
 **-d,--outDir**  
 
