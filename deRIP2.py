@@ -24,9 +24,6 @@ from Bio.Align import AlignInfo #,MultipleSeqAlignment
 from Bio.Alphabet import IUPAC, Gapped #,generic_dna
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-from _version import __version__
-
-__version__ = '0.1.0'
 
 def dochecks(usrOutDir):
 	"""Make outDir if does not exist else set to current dir."""
@@ -288,10 +285,6 @@ if __name__== '__main__':
 									description='Takes a multi-sequence DNA alignment and estimates a progenitor \
 									sequence by correcting for RIP-like mutations.',
 									prog='deRIP2')
-	parser.add_argument('-v', 
-									'--version', 
-									action='version', 
-									version='%(prog)s {version}'.format(version=__version__))
 	parser.add_argument("-i", 
 									"--inAln",
 									required=True,
@@ -321,7 +314,7 @@ if __name__== '__main__':
 									type=float,
 									default=0.5,
 									help="Maximum proportion of conflicting SNPs permitted before excluding column \
-									from RIP/deamination assessment. i.e. By default a column with >= 50 'C/T' bases \
+									from RIP/deamination assessment. i.e. By default a column with >= 0.5 'C/T' bases \
 									will have 'TpA' positions logged as RIP events."
 									)
 	parser.add_argument("--minRIPlike",
