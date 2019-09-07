@@ -42,7 +42,8 @@ def main():
 	outDir = derip2.dochecks(args.outDir)
 	# Set output file paths
 	outPathFile = os.path.join(outDir,args.outName)
-	outPathAln = os.path.join(outDir,args.outAlnName)
+	if args.outAlnName:
+		outPathAln = os.path.join(outDir,args.outAlnName)
 	# Read in alignment file, check at least 2 sequences present and names are unique
 	align = derip2.loadAlign(args.inAln,args.format)
 	# Initialise object to assemble deRIP'd sequence
@@ -60,5 +61,6 @@ def main():
 	# Write ungapped deRIP to file
 	derip2.writeDERIP(tracker,outPathFile,ID=args.label)
 	# Write updated alignment (including gapped deRIP) to file. Optional.
-	derip2.writeAlign(tracker,align,outPathAln,ID=args.label,outAlnFormat=args.outAlnFormat)
+	if args.outAlnName:
+		derip2.writeAlign(tracker,align,outPathAln,ID=args.label,outAlnFormat=args.outAlnFormat)
 	
