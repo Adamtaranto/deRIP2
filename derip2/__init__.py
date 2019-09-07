@@ -57,7 +57,8 @@ def checkLen(align):
 		pass
 
 def loadAlign(file,alnFormat="fasta"):
-	"""Import alignment Check at least 2 rows in alignment and all names are unique."""
+	"""Import alignment Check at least 2 rows in alignment 
+	and all names are unique."""
 	align = AlignIO.read(file,alnFormat)
 	checkLen(align)
 	checkUniqueID(align)
@@ -98,7 +99,8 @@ def updateRIPCount(idx,RIPtracker,addRev=0,addFwd=0):
 	return RIPtracker
 
 def fillConserved(align,tracker,maxGaps=0.7):
-	"""Update positions in tracker object which are invariant OR excessively gapped."""
+	"""Update positions in tracker object which are invariant 
+	OR excessively gapped."""
 	tracker = deepcopy(tracker)
 	# For each column in alignment
 	for idx in range(align.get_alignment_length()):
@@ -109,6 +111,8 @@ def fillConserved(align,tracker,maxGaps=0.7):
 			tracker = updateTracker(idx,base,tracker,force=False)
 		# If non-gap rows are invariant AND proportion of gaps is < threshold set base
 		for base in [k for k, v in colProps.items() if v+colProps['-'] == 1]:
+			# Exclude '-' in case column is 50:50 somebase:gap
+			# Check that proportion of gaps < threshold
 			if base != '-' and colProps['-'] < maxGaps:
 				tracker = updateTracker(idx,base,tracker,force=False)
 		# If column contains more gaps than threshold, force gap regardless of identity of remaining rows
@@ -121,12 +125,13 @@ def fillConserved(align,tracker,maxGaps=0.7):
 	return tracker
 
 def nextBase(align,colID,motif):
-	"""For colIdx, and dinucleotide motif XY return list of rowIdx values where col=X 
-	and is followed by a Y in the next non-gap column."""
+	"""For colIdx, and dinucleotide motif XY return list of 
+	rowIdx values where col=X and is followed by a Y in the 
+	next non-gap column."""
 	rowsX = find(align[:,colID],motif[0])
 	rowsXY = list()
 	for rowID in rowsX:
-		for base in align[rowID].seq[colID+1:]: #From position to immediate right of X to end of seq
+		for base in align[rowID].seq[colID+1:]: # From position to immediate right of X to end of seq
 			if base != "-":
 				if base == motif[1]:
 					rowsXY.append(rowID)
@@ -134,12 +139,13 @@ def nextBase(align,colID,motif):
 	return rowsXY
 
 def lastBase(align,colID,motif):
-	"""For colIdx, and dinucleotide motif XY return list of rowIdx values where col=Y 
-	and is preceeded by an X in the previous non-gap column."""
+	"""For colIdx, and dinucleotide motif XY return list of 
+	rowIdx values where col=Y and is preceeded by an X in 
+	the previous non-gap column."""
 	rowsY = find(align[:,colID],motif[1])
 	rowsXY = list()
 	for rowID in rowsY:
-		for base in align[rowID].seq[colID-1::-1]: #From position to immediate left of Y to begining of seq, reversed
+		for base in align[rowID].seq[colID-1::-1]: # From position to immediate left of Y to begining of seq, reversed
 			if base != "-":
 				if base == motif[0]:
 					rowsXY.append(rowID)
@@ -147,11 +153,13 @@ def lastBase(align,colID,motif):
 	return rowsXY
 
 def find(lst, a):
-	"""Return list of indicies for positions in list which contain a character in set 'a'."""
+	"""Return list of indices for positions in list which 
+	contain a character in set 'a'."""
 	return [i for i, x in enumerate(lst) if x in set(a)]
 
 def hasBoth(lst,a,b):
-	"""Return "True" if list contains at least one instance of characters 'a' and 'b'."""
+	"""Return "True" if list contains at least one instance 
+	of characters 'a' and 'b'."""
 	hasA = find(lst, a)
 	hasB = find(lst, b)
 	if hasA and hasB:
@@ -215,7 +223,8 @@ def correctRIP(align,tracker,RIPcounts,maxSNPnoise=0.5,minRIPlike=0.1,reaminate=
 	return (tracker,RIPcounts)
 
 def setRefSeq(align, RIPcounter=None, getMinRIP=True):
-	"""Get row index of sequence with fewest RIP observations or highest GC if no RIP data."""
+	"""Get row index of sequence with fewest RIP observations 
+	or highest GC if no RIP data."""
 	if RIPcounter and getMinRIP:
 		refIdx = sorted(RIPcounter.values(), key = lambda x: (x.RIPcount + x.revRIPcount, -x.GC))[0].idx
 	elif RIPcounter:
@@ -251,7 +260,8 @@ def writeDERIP(tracker,outPathFile,ID="deRIPseq"):
 		SeqIO.write(deRIPseq, f, "fasta")
 
 def writeAlign(tracker,align,outPathAln,ID="deRIPseq",outAlnFormat="fasta"):
-	"""Assemble deRIPed sequence, append all seqs in ascending order of RIP events logged."""
+	"""Assemble deRIPed sequence, append all seqs in 
+	ascending order of RIP events logged."""
 	deRIPseq = getDERIP(tracker,ID=ID,deGAP=False)
 	align.append(deRIPseq)
 	with open(outPathAln, "w") as f:

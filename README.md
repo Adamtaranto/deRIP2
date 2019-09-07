@@ -14,7 +14,24 @@ Predict progenitor sequence of fungal repeat families by correcting for RIP-like
 * [Issues](#issues)
 * [License](#license)
 
-## Installation
+## Algorithm overview
+
+For each column in input alignment:
+  - Check if number of gapped rows is greater than max gap proportion. If true, then a gap is added to the output sequence.
+  - Set invariant column values in output sequence.
+  - If at least X proportion of bases are C/T or G/A (i.e. maxSNPnoise = 0.4, then at least 0.6 of positions in column must be C/T or G/A).
+  - If reaminate option is set then revert T-->C or A-->G.
+  - If reaminate is not set then check for number of positions in RIP dinucleotide context (C/TpA or TpG/A).
+  - If proportion of positions in column in RIP-like context => minRIPlike threshold, perform RIP correction in output sequence.
+  - For all remaining positions in output sequence (not filled by gap, reaminate, or RIP-correction) inherit sequence from input sequence with the fewest observed RIP events (or greatest GC content if not RIP detected).
+
+Outputs:
+  - Alignment with corrected sequence appended.
+  - Corrected sequence as fasta.
+
+## Options and Usage
+
+### Installation
 
 Requires Python => v3.6
 
@@ -41,7 +58,7 @@ derip2 0.0.1
 % derip2 --help
 ```
 
-## Example usage
+### Example usage
 
 For aligned sequences in 'myalignment.fa':
   - Any column >= 50% non RIP/cytosine deamination mutations is not corrected.
@@ -66,7 +83,7 @@ derip2 --inAln myalignment.fa --format fasta \
 **Output:**  
   - results/aligment_with_deRIP.aln 
 
-## Standard options
+### Standard options
 
 ```
 Usage: derip2 [-h] [--version] -i INALN
@@ -91,23 +108,23 @@ optional arguments:
                         file of format X.
   -g MAXGAPS, --maxGaps MAXGAPS
                         Maximum proportion of gapped positions in column to be
-                        tolerated before orcing a gap in final deRIP sequence.
+                        tolerated before forcing a gap in final deRIP sequence.
   -a, --reaminate       Correct deamination events in non-RIP contexts.
   --maxSNPnoise MAXSNPNOISE
                         Maximum proportion of conflicting SNPs permitted
-                        before excluding column rom RIP/deamination
+                        before excluding column from RIP/deamination
                         assessment. i.e. By default a column with >= 0.5 'C/T'
-                        bases \will have 'TpA' positions logged as RIP events.
+                        bases will have 'TpA' positions logged as RIP events.
   --minRIPlike MINRIPLIKE
                         Minimum proportion of deamination events in RIP
-                        context (5' CpA 3' --> 5' TpA 3') equired for column
-                        to deRIP'd in final sequence. Note: If 'reaminate'
-                        option is \set all deamination events will be
+                        context (5' CpA 3' --> 5' TpA 3') required for column
+                        to be deRIP'd in final sequence. Note: If 'reaminate'
+                        option is set all deamination events will be
                         corrected
   -o OUTNAME, --outName OUTNAME
-                        Write deRIP sequence to this file.
+                        Write deRIP'd sequence to this file.
   --outAlnName OUTALNNAME
-                        Optional: If set write alignment including deRIP
+                        Optional: If set, write alignment including deRIP
                         sequence to this file.
   --label LABEL         Use label as name for deRIP'd sequence in output
                         files.
