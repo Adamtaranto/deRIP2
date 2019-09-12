@@ -23,7 +23,7 @@ For each column in input alignment:
   - If reaminate option is set then revert T-->C or A-->G.
   - If reaminate is not set then check for number of positions in RIP dinucleotide context (C/TpA or TpG/A).
   - If proportion of positions in column in RIP-like context => minRIPlike threshold, perform RIP correction in output sequence.
-  - For all remaining positions in output sequence (not filled by gap, reaminate, or RIP-correction) inherit sequence from input sequence with the fewest observed RIP events (or greatest GC content if not RIP detected).
+  - For all remaining positions in output sequence (not filled by gap, reaminate, or RIP-correction) inherit sequence from input sequence with the fewest observed RIP events (or greatest GC content if not RIP detected or multiple sequences sharing min-RIP count).
 
 Outputs:
   - Alignment with corrected sequence appended.
