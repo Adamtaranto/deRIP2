@@ -23,7 +23,7 @@ install_requires = [
 desc = """Predict ancestral sequence of fungal repeat elements by correcting for RIP-like mutations in multi-sequence DNA alignments."""
 
 setup(name='derip2',
-      version='0.0.1',
+      version='0.0.2',
       description=desc,
       long_description=readme(),
       url='https://github.com/Adamtaranto/deRIP2',
