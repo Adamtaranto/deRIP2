@@ -14,7 +14,7 @@ import argparse
 def mainArgs():
 	'''Parse command line arguments.'''
 	parser = argparse.ArgumentParser(
-			description	=	'Predict ancestral sequence of fungal repeat elements by correcting for RIP-like mutations in multi-sequence DNA alignments.',
+			description	=	'Predict ancestral sequence of fungal repeat elements by correcting for RIP-like mutations or cytosine deamination in multi-sequence DNA alignments. Optionally, mask corrected positions in alignment.',
 			prog		=	'derip2'
 			)
 	parser.add_argument('--version', action='version',version='%(prog)s {version}'.format(version=__version__))

@@ -264,45 +264,67 @@ def correctRIP(align,tracker,RIPcounts,maxSNPnoise=0.5,minRIPlike=0.1,reaminate=
 				# Get list of rowIdxs for which C/T in colIdx is followed by an 'A'
 				TArows = nextBase(align,colIdx, motif='TA')
 				CArows = nextBase(align,colIdx, motif='CA')
-				# Calc proportion of C/T positions in column followed by an 'A'
-				propRIPlike = len(TArows) + len(CArows) / len(CTinCol)
-				# For rows with 'TA' log RIP event
-				for rowTA in set(TArows):
-					RIPcounts = updateRIPCount(rowTA, RIPcounts, addFwd=1)
-				# For non-TA T's log non-RIP deamination event
+				# Get list of rowIdxs with value "T"
 				TinCol = find(align[:,colIdx],["T"])
-				for TnonRIP in set([x for x in TinCol if x not in TArows]):
-					RIPcounts = updateRIPCount(TnonRIP, RIPcounts, addNonRIP=1)
-				# If critical number of deamination events were in RIP context, update deRIP tracker	
-				if propRIPlike >= minRIPlike:
-					tracker = updateTracker(colIdx, 'C', tracker, force=False)
-					modC = True
-				# Else if in reaminate mode update deRIP tracker
-				elif reaminate:
-					tracker = updateTracker(colIdx, 'C', tracker, force=False)
-					modC = True
+				if CArows and TArows:
+					# Calc proportion of C/T positions in column followed by an 'A'
+					propRIPlike = ( len(TArows) + len(CArows) ) / len(CTinCol)
+					# For rows with 'TA' log RIP event
+					for rowTA in set(TArows):
+						RIPcounts = updateRIPCount(rowTA, RIPcounts, addFwd=1)
+					# For non-TA T's log non-RIP deamination event
+					for TnonRIP in set([x for x in TinCol if x not in TArows]):
+						RIPcounts = updateRIPCount(TnonRIP, RIPcounts, addNonRIP=1)
+					# If critical number of deamination events were in RIP context, update deRIP tracker	
+					if propRIPlike >= minRIPlike:
+						tracker = updateTracker(colIdx, 'C', tracker, force=False)
+						modC = True
+					# Else if in reaminate mode update deRIP tracker
+					elif reaminate:
+						tracker = updateTracker(colIdx, 'C', tracker, force=False)
+						modC = True
+				else:
+					# If C and T in col but not at least one CA and TA
+					# If in reaminate mode update deRIP tracker to C
+					if reaminate:
+						tracker = updateTracker(colIdx, 'C', tracker, force=False)
+						modC = True
+					# Log all T's as non-RIP deamination events
+					for TnonRIP in TinCol:
+						RIPcounts = updateRIPCount(TnonRIP, RIPcounts, addNonRIP=1)
 			# If proportion of G+A non-gap positions is > miscSNP threshold, AND bases are majority 'CT', AND both 'G' and 'A' are present
 			elif GAprop >= maxSNPnoise and GAprop > CTprop and hasBoth(align[:,colIdx],"G","A"):
 				# Get list of rowIdxs for which G/A in colIdx is preceeded by a 'T'
 				TGrows = lastBase(align,colIdx, motif='TG')
 				TArows = lastBase(align,colIdx, motif='TA')
-				# Calc proportion of G/A positions in column preceeded by a 'T'
-				propRIPlike = len(TGrows) + len(TArows) / len(GAinCol)
-				# For rows with 'TA' log revRIP event
-				for rowTA in set(TArows):
-					RIPcounts = updateRIPCount(rowTA, RIPcounts, addRev=1)
-				# For non-TA A's log non-RIP deamination event
+				# Get list of rowIdxs with value "A"
 				AinCol = find(align[:,colIdx],["A"])
-				for AnonRIP in set([x for x in AinCol if x not in TArows]):
-					RIPcounts = updateRIPCount(AnonRIP, RIPcounts, addNonRIP=1)
-				# If critical number of deamination events were in RIP context, update deRIP tracker
-				if propRIPlike >= minRIPlike:
-					tracker = updateTracker(colIdx, 'G', tracker, force=False)
-					modG = True
-				# Else if in reaminate mode update deRIP tracker
-				elif reaminate:
-					tracker = updateTracker(colIdx, 'G', tracker, force=False)
-					modG = True
+				if TGrows and TArows:
+					# Calc proportion of G/A positions in column preceeded by a 'T'
+					propRIPlike = ( len(TGrows) + len(TArows) ) / len(GAinCol)
+					# For rows with 'TA' log revRIP event
+					for rowTA in set(TArows):
+						RIPcounts = updateRIPCount(rowTA, RIPcounts, addRev=1)
+					# For non-TA A's log non-RIP deamination event
+					for AnonRIP in set([x for x in AinCol if x not in TArows]):
+						RIPcounts = updateRIPCount(AnonRIP, RIPcounts, addNonRIP=1)
+					# If critical number of deamination events were in RIP context, update deRIP tracker
+					if propRIPlike >= minRIPlike:
+						tracker = updateTracker(colIdx, 'G', tracker, force=False)
+						modG = True
+					# Else if in reaminate mode update deRIP tracker
+					elif reaminate:
+						tracker = updateTracker(colIdx, 'G', tracker, force=False)
+						modG = True
+				else:
+					# If G and A in col but not at least one TG and TA
+					# If in reaminate mode update deRIP tracker to G
+					if reaminate:
+						tracker = updateTracker(colIdx, 'G', tracker, force=False)
+						modG = True
+					# Log all A's as non-RIP deamination events
+					for AnonRIP in AinCol:
+						RIPcounts = updateRIPCount(AnonRIP, RIPcounts, addNonRIP=1)
 			# Mask T -> C corrections made in col
 			if modC:
 				if reaminate:
