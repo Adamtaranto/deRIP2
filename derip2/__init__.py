@@ -23,7 +23,7 @@ from Bio.Alphabet import IUPAC, Gapped #,generic_dna
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 def log(*args, **kwargs):
 	print(*args, file=sys.stderr, **kwargs)
@@ -140,6 +140,8 @@ def fillConserved(align,tracker,maxGaps=0.7):
 	"""Update positions in tracker object which are invariant 
 	OR excessively gapped."""
 	tracker = deepcopy(tracker)
+	invariantCounts = 0
+	invarGapCount = 0
 	# For each column in alignment
 	for idx in range(align.get_alignment_length()):
 		# Get frequencies for DNA bases + gaps
@@ -147,8 +149,13 @@ def fillConserved(align,tracker,maxGaps=0.7):
 		# If column is invariant, tracker inherits state
 		for base in [k for k, v in colProps.items() if v == 1]:
 			tracker = updateTracker(idx,base,tracker,force=False)
+			invariantCounts += 1
+			if base == '-':
+				log("Warning: Column %s contains only gapped positions." % str(idx))
 		# If non-gap rows are invariant AND proportion of gaps is < threshold set base
-		for base in [k for k, v in colProps.items() if v+colProps['-'] == 1]:
+		for base in [k for k, v in colProps.items() if v+colProps['-'] == 1 and v != 1]:
+			if base != '-':
+				invarGapCount += 1
 			# Exclude '-' in case column is 50:50 somebase:gap
 			# Check that proportion of gaps < threshold
 			if base != '-' and colProps['-'] < maxGaps:
@@ -160,6 +167,9 @@ def fillConserved(align,tracker,maxGaps=0.7):
 	#baseKeys = ["A","T","G","C"]
 	#baseProp = sum(itemgetter(*baseKeys)(colProps))
 	#gapProp = itemgetter("-")(colProps)
+	log("Detected %s invariant positions in alignment." % invariantCounts)
+	log("Detected %s additional invariant positions in alignment with at least one gap." % invarGapCount)
+	log("Detected %s variable positions in alignment." % str(align.get_alignment_length() - (invariantCounts + invarGapCount)) )
 	return tracker
 
 def nextBase(align,colID,motif):
@@ -240,6 +250,7 @@ def correctRIP(align,tracker,RIPcounts,maxSNPnoise=0.5,minRIPlike=0.1,reaminate=
 	RIP:           5' TA--TA 3' 
 	Cons:             YA--TR
 	"""
+	log("Scanning alignment for RIP and/or CDA events.")
 	tracker = deepcopy(tracker)
 	RIPcounts = deepcopy(RIPcounts)
 	maskedAlign = deepcopy(align)
@@ -364,12 +375,15 @@ def setRefSeq(align, RIPcounter=None, getMinRIP=True, getMaxGC=False):
 		getMinRIP = False
 	if RIPcounter and getMinRIP:
 		# Sort ascending for RIP count then descending for GC content within duplicate RIP values
+		log("Setting reference as sequence with min RIP positions.")
 		refIdx = sorted(RIPcounter.values(), key = lambda x: (x.RIPcount + x.revRIPcount, -x.GC))[0].idx
 	elif RIPcounter:
 		# Select row with highest GC contect
+		log("Setting reference as sequence with max GC content.")
 		refIdx = sorted(RIPcounter.values(), key = lambda x: (-x.GC))[0].idx
 	else:
 		# If no counter object get GC values from alignment
+		log("Setting reference as sequence with max GC content.")
 		GClist = list()
 		for x in range(align.__len__()):
 			GClist.append((x,GC(align[x].seq)))
@@ -396,9 +410,16 @@ def getDERIP(tracker,ID="deRIPseq",deGAP=True):
 
 def writeDERIP(tracker,outPathFile,ID="deRIPseq"):
 	"""Call getDERIP, scrub gaps and Null positions."""
+	log("Writing corrected seq to file path: %s" % outPathFile)
 	deRIPseq = getDERIP(tracker,ID=ID,deGAP=True)
 	with open(outPathFile, "w") as f:
 		SeqIO.write(deRIPseq, f, "fasta")
+
+def writeDERIP2stdout(tracker,ID="deRIPseq"):
+	"""Call getDERIP, scrub gaps and Null positions."""
+	log("Writing corrected seq to stdout.")
+	deRIPseq = getDERIP(tracker,ID=ID,deGAP=True)
+	SeqIO.write(deRIPseq, sys.stdout, "fasta")
 
 def writeAlign(tracker,align,outPathAln,ID="deRIPseq",outAlnFormat="fasta",noappend=False):
 	"""Assemble deRIPed sequence, append all seqs in 
