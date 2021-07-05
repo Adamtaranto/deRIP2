@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from __future__ import print_function
+
 from derip2 import __version__
 #from derip2 import log
 import os
