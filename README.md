@@ -32,6 +32,7 @@ Outputs:
   - Optional, alignment with: 
     - Corrected sequence appended.
     - With corrected positions masked as ambiguous bases.
+
   
 
 ## Options and Usage
@@ -57,7 +58,9 @@ Test installation.
 ```bash
 # Print version number and exit.
 % derip2 --version
-derip2 0.0.2
+
+derip2 0.0.3
+
 
 # Get usage information
 % derip2 --help
@@ -78,10 +81,10 @@ derip2 --inAln myalignment.fa --format fasta \
 --maxSNPnoise 0.2 \
 --minRIPlike 0.5 \
 --outDir results \
---outName deRIPed_sequence.fa \
+
 --outAlnName aligment_with_deRIP.fa \
 --label deRIPseqName \
---mask 
+--mask > results/deRIPed_sequence.fa
 ```
 
 **Output:**  
@@ -95,13 +98,12 @@ Usage: derip2 [-h] [--version] -i INALN
               [--format {clustal,emboss,fasta,fasta-m10,ig,nexus,phylip,phylip-sequential,phylip-relaxed,stockholm}]
               [-g MAXGAPS] [-a] [--maxSNPnoise MAXSNPNOISE]
               [--minRIPlike MINRIPLIKE] [--fillmaxgc] [--fillindex FILLINDEX]
-              [--mask] [--noappend] [-d OUTDIR] [-o OUTNAME]
-              [--outAlnName OUTALNNAME]
-              [--outAlnFormat {clustal,emboss,fasta,fasta-m10,ig,nexus,phylip,phylip-sequential,phylip-relaxed,stockholm}]
-              [--label LABEL]
+              [--mask] [--noappend] [-d OUTDIR] [--outAlnName OUTALNNAME]
+              [--outAlnFormat {fasta,nexus}] [--label LABEL]
 
 Predict ancestral sequence of fungal repeat elements by correcting for RIP-
-like mutations or cytosine deamination in multi-sequence DNA alignments. 
+like mutations or cytosine deamination in multi-sequence DNA alignments.
+
 Optionally, mask corrected positions in alignment.
 
 optional arguments:
@@ -110,27 +112,31 @@ optional arguments:
   -i INALN, --inAln INALN
                         Multiple sequence alignment.
   --format {clustal,emboss,fasta,fasta-m10,ig,nexus,phylip,phylip-sequential,phylip-relaxed,stockholm}
-                        Format of input alignment.
+                        Format of input alignment. Default: fasta
   -g MAXGAPS, --maxGaps MAXGAPS
                         Maximum proportion of gapped positions in column to be
                         tolerated before forcing a gap in final deRIP
-                        sequence.
-  -a, --reaminate       Correct deamination events in non-RIP contexts.
+                        sequence. Default: 0.7
+  -a, --reaminate       Correct all deamination events independent of RIP
+                        context. Default: False
   --maxSNPnoise MAXSNPNOISE
                         Maximum proportion of conflicting SNPs permitted
                         before excluding column from RIP/deamination
                         assessment. i.e. By default a column with >= 0.5 'C/T'
                         bases will have 'TpA' positions logged as RIP events.
+                        Default: 0.5
   --minRIPlike MINRIPLIKE
                         Minimum proportion of deamination events in RIP
                         context (5' CpA 3' --> 5' TpA 3') required for column
                         to deRIP'd in final sequence. Note: If 'reaminate'
-                        option is set all deamination events will be corrected
+
+                        option is set all deamination events will be
+                        corrected. Default 0.1
   --fillmaxgc           By default uncorrected positions in the output
                         sequence are filled from the sequence with the lowest
                         RIP count. If this option is set remaining positions
                         are filled from the sequence with the highest G/C
-                        content.
+                        content. Default: False
   --fillindex FILLINDEX
                         Force selection of alignment row to fill uncorrected
                         positions from by row index number (indexed from 0).
@@ -145,10 +151,10 @@ optional arguments:
                         Write deRIP sequence to this file.
   --outAlnName OUTALNNAME
                         Optional: If set write alignment including deRIP
-                        sequence to this file.
-  --outAlnFormat {clustal,emboss,fasta,fasta-m10,ig,nexus,phylip,phylip-sequential,phylip-relaxed,stockholm}
+                        corrected sequence to this file.
+  --outAlnFormat {fasta,nexus}
                         Optional: Write alignment including deRIP sequence to
-                        file of format X.
+                        file of format X. Default: fasta
   --label LABEL         Use label as name for deRIP'd sequence in output
                         files.
 ```

@@ -22,7 +22,7 @@ from Bio.Align import AlignInfo  # ,MultipleSeqAlignment
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 
 def log(*args, **kwargs):

@@ -26,9 +26,10 @@ desc = """Predict ancestral sequence of fungal repeat elements by correcting
 for RIP-like mutations in multi-sequence DNA alignments."""
 
 setup(name='derip2',
-      version='0.0.1',
+      version='0.0.3',
       description=desc,
       long_description=readme(),
+      long_description_content_type="text/markdown",
       url='https://github.com/Adamtaranto/deRIP2',
       author='Adam Taranto',
       author_email='adam.taranto@anu.edu.au',
