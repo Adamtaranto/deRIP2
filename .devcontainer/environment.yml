@@ -1,0 +1,8 @@
+name: dev
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - conda-forge::python=3.10
+  - conda-forge::biopython
