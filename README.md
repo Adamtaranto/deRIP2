@@ -147,8 +147,6 @@ optional arguments:
                         alignment.
   -d OUTDIR, --outDir OUTDIR
                         Directory for deRIP'd sequence files to be written to.
-  -o OUTNAME, --outName OUTNAME
-                        Write deRIP sequence to this file.
   --outAlnName OUTALNNAME
                         Optional: If set write alignment including deRIP
                         corrected sequence to this file.
