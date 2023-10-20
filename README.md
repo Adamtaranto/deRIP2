@@ -31,7 +31,8 @@ Outputs:
   - Corrected sequence as fasta.
   - Optional, alignment with: 
     - Corrected sequence appended.
-    - Corrected positions masked as ambiguous bases.
+    - With corrected positions masked as ambiguous bases.
+
   
 
 ## Options and Usage
@@ -57,7 +58,9 @@ Test installation.
 ```bash
 # Print version number and exit.
 % derip2 --version
+
 derip2 0.0.3
+
 
 # Get usage information
 % derip2 --help
@@ -78,6 +81,7 @@ derip2 --inAln myalignment.fa --format fasta \
 --maxSNPnoise 0.2 \
 --minRIPlike 0.5 \
 --outDir results \
+
 --outAlnName aligment_with_deRIP.fa \
 --label deRIPseqName \
 --mask > results/deRIPed_sequence.fa
@@ -99,6 +103,7 @@ Usage: derip2 [-h] [--version] -i INALN
 
 Predict ancestral sequence of fungal repeat elements by correcting for RIP-
 like mutations or cytosine deamination in multi-sequence DNA alignments.
+
 Optionally, mask corrected positions in alignment.
 
 optional arguments:
@@ -124,6 +129,7 @@ optional arguments:
                         Minimum proportion of deamination events in RIP
                         context (5' CpA 3' --> 5' TpA 3') required for column
                         to deRIP'd in final sequence. Note: If 'reaminate'
+
                         option is set all deamination events will be
                         corrected. Default 0.1
   --fillmaxgc           By default uncorrected positions in the output
