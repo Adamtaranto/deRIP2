@@ -1,8 +1,15 @@
-name: ripdev
+name: derip2-dev
 channels:
   - conda-forge
   - bioconda
   - defaults
 dependencies:
-  - python=3.10
-  - biopython
+  - python >=3.12
+  - pip
+  - pip:
+      - biopython
+      #- regex
+      - black
+      - setuptools_scm
+      - build
+      - twine
