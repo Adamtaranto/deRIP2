@@ -1,5 +1,6 @@
 import os
 import sys
+import logging
 
 
 def log(*args, **kwargs):
@@ -11,11 +12,11 @@ def dochecks(usrOutDir):
     if usrOutDir:
         absOutDir = os.path.abspath(usrOutDir)
         if not os.path.isdir(absOutDir):
-            log("Creating output directory: %s" % (absOutDir))
+            logging.info(f"Creating output directory: {absOutDir}")
             os.makedirs(absOutDir)
         outDir = usrOutDir
     else:
-        log("Setting output directory: %s" % os.getcwd())
+        logging.info(f"Setting output directory: {os.getcwd()}")
         outDir = os.getcwd()
     return outDir
 
@@ -25,7 +26,7 @@ def isfile(path):
     Test for existence of input file.
     """
     if not os.path.isfile(path):
-        log("Input file not found: %s" % path)
+        logging.error(f"Input file not found: {path}")
         sys.exit(1)
     else:
         return os.path.abspath(path)
