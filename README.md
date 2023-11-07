@@ -1,5 +1,13 @@
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<a href="https://opensource.org/licenses/MIT">
+  <img src="https://img.shields.io/badge/License-MIT-yellow.svg" align="left" height="20"/>
+</a> 
 
+<a href="https://gitpod.io/#https://github.com/adamtaranto/deRIP2">
+  <img src="https://gitpod.io/button/open-in-gitpod.svg" align="right" height="35"/>
+</a> 
+
+<br clear="right"/>
+<br clear="left"/>
 # deRIP2
 
 Predict progenitor sequence of fungal repeat families by correcting for RIP-like mutations 
@@ -8,13 +16,15 @@ Predict progenitor sequence of fungal repeat families by correcting for RIP-like
 Mask RIP or deamination events from input alignment as ambiguous bases.
 
 # Table of contents
-* [Algorithm overview](#algorithm-overview)
-* [Options and usage](#options-and-usage)
-    * [Installation](#installation)
-    * [Example usage](#example-usage)
-    * [Standard options](#standard-options)
-* [Issues](#issues)
-* [License](#license)
+- [deRIP2](#derip2)
+- [Table of contents](#table-of-contents)
+  - [Algorithm overview](#algorithm-overview)
+  - [Options and Usage](#options-and-usage)
+    - [Installation](#installation)
+    - [Example usage](#example-usage)
+    - [Standard options](#standard-options)
+  - [Issues](#issues)
+  - [License](#license)
 
 ## Algorithm overview
 
