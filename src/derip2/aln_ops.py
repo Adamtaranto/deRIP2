@@ -1,61 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
-'''
-Takes a multi-sequence DNA alignment and estimates a progenitor sequence by
-correcting for RIP-like mutations. deRIP2 searches all available sequences for
-evidence of un-RIP'd precursor states at each aligned position, allowing for
-improved RIP-correction across large repeat families in which members are
-variably RIP'd.
-'''
 
-import sys
-import os
+from Bio import AlignIO
+from Bio import SeqIO
+from Bio.Align import AlignInfo  # ,MultipleSeqAlignment
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+from Bio.SeqUtils import GC
+
 from collections import Counter
 from collections import namedtuple
 from copy import deepcopy
 from operator import itemgetter
-from Bio import SeqIO
-from Bio import AlignIO
-from Bio.SeqUtils import GC
-from Bio.Align import AlignInfo  # ,MultipleSeqAlignment
-# from Bio.Alphabet import IUPAC, Gapped  # ,generic_dna
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
+from derip2.utils import log, isfile
 
-__version__ = "0.0.3"
-
-
-def log(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
-
-
-class Error (Exception):
-    pass
-
-
-def dochecks(usrOutDir):
-    """Make outDir if does not exist else set to current dir."""
-    if usrOutDir:
-        absOutDir = os.path.abspath(usrOutDir)
-        if not os.path.isdir(absOutDir):
-            log("Creating output directory: %s" % (absOutDir))
-            os.makedirs(absOutDir)
-        outDir = usrOutDir
-    else:
-        log("Setting output directory: %s" % os.getcwd())
-        outDir = os.getcwd()
-    return outDir
-
-
-def isfile(path):
-    """
-    Test for existence of input file.
-    """
-    if not os.path.isfile(path):
-        log("Input file not found: %s" % path)
-        sys.exit(1)
-    else:
-        return os.path.abspath(path)
+import sys
 
 
 def checkUniqueID(align):
@@ -95,14 +54,17 @@ def loadAlign(file, alnFormat="fasta"):
 
 
 def alignSummary(align):
-    log("Alignment has %s rows and %s columns." % (str(align.__len__()), str(align.get_alignment_length())))
+    log(
+        "Alignment has %s rows and %s columns."
+        % (str(align.__len__()), str(align.get_alignment_length()))
+    )
     log("Row index:\tSequence ID")
     for x in range(align.__len__()):
         log("%s:\t%s" % (str(x), str(align[x].id)))
     pass
 
 
-def checkrow(align,idx=None):
+def checkrow(align, idx=None):
     if idx not in range(align.__len__()):
         log("Row index %s is outside range. Quitting." % str(idx))
         sys.exit(1)
@@ -114,7 +76,7 @@ def initTracker(align):
     """Initialise object to compose final deRIP'd sequence.
     List of tuples (colIdx,base). Base default to None."""
     tracker = dict()
-    colItem = namedtuple("colPosition", ['idx', 'base'])
+    colItem = namedtuple("colPosition", ["idx", "base"])
     for x in range(align.get_alignment_length()):
         tracker[x] = colItem(idx=x, base=None)
     return tracker
@@ -124,19 +86,18 @@ def initRIPCounter(align):
     """For each row create dict key for seq name,
     assign named tuple (revRIPcount,RIPcount)."""
     RIPcounts = dict()
-    rowItem = namedtuple("RIPtracker", ['idx',
-                                        'SeqID',
-                                        'revRIPcount',
-                                        'RIPcount',
-                                        'nonRIPcount',
-                                        'GC'])
+    rowItem = namedtuple(
+        "RIPtracker", ["idx", "SeqID", "revRIPcount", "RIPcount", "nonRIPcount", "GC"]
+    )
     for x in range(align.__len__()):
-        RIPcounts[x] = rowItem(idx=x,
-                               SeqID=align[x].id,
-                               revRIPcount=0,
-                               RIPcount=0,
-                               nonRIPcount=0,
-                               GC=GC(align[x].seq))
+        RIPcounts[x] = rowItem(
+            idx=x,
+            SeqID=align[x].id,
+            revRIPcount=0,
+            RIPcount=0,
+            nonRIPcount=0,
+            GC=GC(align[x].seq),
+        )
     return RIPcounts
 
 
@@ -156,7 +117,9 @@ def updateRIPCount(idx, RIPtracker, addRev=0, addFwd=0, addNonRIP=0):
     TallyRev = RIPtracker[idx].revRIPcount + addRev
     TallyFwd = RIPtracker[idx].RIPcount + addFwd
     TallyNonRIP = RIPtracker[idx].nonRIPcount + addNonRIP
-    RIPtracker[idx] = RIPtracker[idx]._replace(revRIPcount=TallyRev, RIPcount=TallyFwd, nonRIPcount=TallyNonRIP)
+    RIPtracker[idx] = RIPtracker[idx]._replace(
+        revRIPcount=TallyRev, RIPcount=TallyFwd, nonRIPcount=TallyNonRIP
+    )
     return RIPtracker
 
 
@@ -167,15 +130,17 @@ def fillConserved(align, tracker, maxGaps=0.7):
     # For each column in alignment
     for idx in range(align.get_alignment_length()):
         # Get frequencies for DNA bases + gaps
-        colProps = AlignInfo.SummaryInfo(align)._get_letter_freqs(idx, align, ["A", "T", "G", "C", "-"], [])
+        colProps = AlignInfo.SummaryInfo(align)._get_letter_freqs(
+            idx, align, ["A", "T", "G", "C", "-"], []
+        )
         # If column is invariant, tracker inherits state
         for base in [k for k, v in colProps.items() if v == 1]:
             tracker = updateTracker(idx, base, tracker, force=False)
         # If non-gap rows are invariant AND proportion of gaps is < threshold set base
-        for base in [k for k, v in colProps.items() if v+colProps['-'] == 1]:
+        for base in [k for k, v in colProps.items() if v + colProps["-"] == 1]:
             # Exclude '-' in case column is 50:50 somebase:gap
             # Check that proportion of gaps < threshold
-            if base != '-' and colProps['-'] < maxGaps:
+            if base != "-" and colProps["-"] < maxGaps:
                 tracker = updateTracker(idx, base, tracker, force=False)
         # If column contains more gaps than threshold,
         # force gap regardless of identity of remaining rows
@@ -201,7 +166,7 @@ def nextBase(align, colID, motif):
     for rowID in rowsX:
         # Loop through all positions to the right of starting col
         # From position to immediate right of X to end of seq
-        for base in align[rowID].seq[colID+1:]:
+        for base in align[rowID].seq[colID + 1 :]:
             # For first non-gap position encountered
             if base != "-":
                 # Check if base matches motif position two
@@ -222,7 +187,7 @@ def lastBase(align, colID, motif):
     rowsXY = list()
     for rowID in rowsY:
         # From position to immediate left of Y to begining of seq, reversed
-        for base in align[rowID].seq[colID-1::-1]:
+        for base in align[rowID].seq[colID - 1 :: -1]:
             if base != "-":
                 if base == motif[0]:
                     rowsXY.append(rowID)
@@ -257,12 +222,19 @@ def replaceBase(align, targetCol, targetRows, newbase):
         seqList[targetCol] = newbase
         # Replace seq record in alignment.
         # align[row].seq = Seq(''.join(seqList), Gapped(IUPAC.ambiguous_dna))
-        align[row].seq = Seq(''.join(seqList))
+        align[row].seq = Seq("".join(seqList))
     return align
 
 
-def correctRIP(align, tracker, RIPcounts, maxSNPnoise=0.5, minRIPlike=0.1,
-               reaminate=True, mask=False):
+def correctRIP(
+    align,
+    tracker,
+    RIPcounts,
+    maxSNPnoise=0.5,
+    minRIPlike=0.1,
+    reaminate=True,
+    mask=False,
+):
     """
     Scan alignment for RIP-like dinucleotide shifts log RIP events by row in
     'RIPcounts', if position is unset in deRIP tracker (not logged as
@@ -296,10 +268,14 @@ def correctRIP(align, tracker, RIPcounts, maxSNPnoise=0.5, minRIPlike=0.1,
             # Get proportion G/A
             GAprop = len(GAinCol) / baseCount
             # If proportion of C+T non-gap positions is > miscSNP threshold, AND bases are majority 'CT', AND both 'C' and 'T' are present
-            if CTprop >= maxSNPnoise and CTprop > GAprop and hasBoth(align[:, colIdx], "C", "T"):
+            if (
+                CTprop >= maxSNPnoise
+                and CTprop > GAprop
+                and hasBoth(align[:, colIdx], "C", "T")
+            ):
                 # Get list of rowIdxs for which C/T in colIdx is followed by an 'A'
-                TArows = nextBase(align, colIdx, motif='TA')
-                CArows = nextBase(align, colIdx, motif='CA')
+                TArows = nextBase(align, colIdx, motif="TA")
+                CArows = nextBase(align, colIdx, motif="CA")
                 # Get list of rowIdxs with value "T"
                 TinCol = find(align[:, colIdx], ["T"])
                 if CArows and TArows:
@@ -313,26 +289,30 @@ def correctRIP(align, tracker, RIPcounts, maxSNPnoise=0.5, minRIPlike=0.1,
                         RIPcounts = updateRIPCount(TnonRIP, RIPcounts, addNonRIP=1)
                     # If critical number of deamination events were in RIP context, update deRIP tracker
                     if propRIPlike >= minRIPlike:
-                        tracker = updateTracker(colIdx, 'C', tracker, force=False)
+                        tracker = updateTracker(colIdx, "C", tracker, force=False)
                         modC = True
                     # Else if in reaminate mode update deRIP tracker
                     elif reaminate:
-                        tracker = updateTracker(colIdx, 'C', tracker, force=False)
+                        tracker = updateTracker(colIdx, "C", tracker, force=False)
                         modC = True
                 else:
                     # If C and T in col but not at least one CA and TA
                     # If in reaminate mode update deRIP tracker to C
                     if reaminate:
-                        tracker = updateTracker(colIdx, 'C', tracker, force=False)
+                        tracker = updateTracker(colIdx, "C", tracker, force=False)
                         modC = True
                     # Log all T's as non-RIP deamination events
                     for TnonRIP in TinCol:
                         RIPcounts = updateRIPCount(TnonRIP, RIPcounts, addNonRIP=1)
             # If proportion of G+A non-gap positions is > miscSNP threshold, AND bases are majority 'CT', AND both 'G' and 'A' are present
-            elif GAprop >= maxSNPnoise and GAprop > CTprop and hasBoth(align[:, colIdx], "G", "A"):
+            elif (
+                GAprop >= maxSNPnoise
+                and GAprop > CTprop
+                and hasBoth(align[:, colIdx], "G", "A")
+            ):
                 # Get list of rowIdxs for which G/A in colIdx is preceeded by a 'T'
-                TGrows = lastBase(align, colIdx, motif='TG')
-                TArows = lastBase(align, colIdx, motif='TA')
+                TGrows = lastBase(align, colIdx, motif="TG")
+                TArows = lastBase(align, colIdx, motif="TA")
                 # Get list of rowIdxs with value "A"
                 AinCol = find(align[:, colIdx], ["A"])
                 if TGrows and TArows:
@@ -346,17 +326,17 @@ def correctRIP(align, tracker, RIPcounts, maxSNPnoise=0.5, minRIPlike=0.1,
                         RIPcounts = updateRIPCount(AnonRIP, RIPcounts, addNonRIP=1)
                     # If critical number of deamination events were in RIP context, update deRIP tracker
                     if propRIPlike >= minRIPlike:
-                        tracker = updateTracker(colIdx, 'G', tracker, force=False)
+                        tracker = updateTracker(colIdx, "G", tracker, force=False)
                         modG = True
                     # Else if in reaminate mode update deRIP tracker
                     elif reaminate:
-                        tracker = updateTracker(colIdx, 'G', tracker, force=False)
+                        tracker = updateTracker(colIdx, "G", tracker, force=False)
                         modG = True
                 else:
                     # If G and A in col but not at least one TG and TA
                     # If in reaminate mode update deRIP tracker to G
                     if reaminate:
-                        tracker = updateTracker(colIdx, 'G', tracker, force=False)
+                        tracker = updateTracker(colIdx, "G", tracker, force=False)
                         modG = True
                     # Log all A's as non-RIP deamination events
                     for AnonRIP in AinCol:
@@ -390,13 +370,16 @@ def summarizeRIP(RIPcounts):
     log("Summarizing RIP")
     log("Index:\tID\tRIP\tNon-RIP-deamination\tGC")
     for x in range(len(RIPcounts)):
-        log("%s:\t%s\t%s\t%s\t%s" % (str(RIPcounts[x].idx),
-                                     str(RIPcounts[x].SeqID),
-                                     str(RIPcounts[x].revRIPcount + RIPcounts[x].RIPcount),
-                                     str(RIPcounts[x].nonRIPcount),
-                                     str(round(RIPcounts[x].GC, 2))
-                                     )
+        log(
+            "%s:\t%s\t%s\t%s\t%s"
+            % (
+                str(RIPcounts[x].idx),
+                str(RIPcounts[x].SeqID),
+                str(RIPcounts[x].revRIPcount + RIPcounts[x].RIPcount),
+                str(RIPcounts[x].nonRIPcount),
+                str(round(RIPcounts[x].GC, 2)),
             )
+        )
     pass
 
 
@@ -409,8 +392,9 @@ def setRefSeq(align, RIPcounter=None, getMinRIP=True, getMaxGC=False):
     if RIPcounter and getMinRIP:
         # Sort ascending for RIP count then descending
         # for GC content within duplicate RIP values
-        refIdx = sorted(RIPcounter.values(),
-                        key=lambda x: (x.RIPcount + x.revRIPcount, -x.GC))[0].idx
+        refIdx = sorted(
+            RIPcounter.values(), key=lambda x: (x.RIPcount + x.revRIPcount, -x.GC)
+        )[0].idx
     elif RIPcounter:
         # Select row with highest GC contect
         refIdx = sorted(RIPcounter.values(), key=lambda x: (-x.GC))[0].idx
@@ -425,8 +409,10 @@ def setRefSeq(align, RIPcounter=None, getMinRIP=True, getMaxGC=False):
 
 def fillRemainder(align, fromSeqID, tracker):
     """Fill all remaining positions from least RIP effected row."""
-    log("Filling uncorrected positions from: Row index %s: %s" %
-        (str(fromSeqID), str(align[fromSeqID].id)))
+    log(
+        "Filling uncorrected positions from: Row index %s: %s"
+        % (str(fromSeqID), str(align[fromSeqID].id))
+    )
     tracker = deepcopy(tracker)
     for x in range(align.get_alignment_length()):
         newBase = align[fromSeqID].seq[x]
@@ -436,19 +422,18 @@ def fillRemainder(align, fromSeqID, tracker):
 
 def getDERIP(tracker, ID="deRIPseq", deGAP=True):
     """Write tracker object to sequence string.
-       Requires that all base values are strings."""
-    deRIPstr = ''.join(
-        [y.base for y in sorted(tracker.values(), key=lambda x: (x[0]))]
-        )
+    Requires that all base values are strings."""
+    deRIPstr = "".join([y.base for y in sorted(tracker.values(), key=lambda x: (x[0]))])
     if deGAP:
         deRIPstr = deRIPstr.replace("-", "")
     # deRIPseq = SeqRecord(Seq(deRIPstr, Gapped(IUPAC.unambiguous_dna)),
-    deRIPseq = SeqRecord(Seq(deRIPstr),
-                         id=ID,
-                         name=ID,
-                         description="Hypothetical ancestral sequence produced \
-                         by deRIP2"
-                         )
+    deRIPseq = SeqRecord(
+        Seq(deRIPstr),
+        id=ID,
+        name=ID,
+        description="Hypothetical ancestral sequence produced \
+                         by deRIP2",
+    )
     return deRIPseq
 
 
@@ -459,8 +444,9 @@ def writeDERIP(tracker, outPathFile, ID="deRIPseq"):
         SeqIO.write(deRIPseq, f, "fasta")
 
 
-def writeAlign(tracker, align, outPathAln, ID="deRIPseq", outAlnFormat="fasta",
-               noappend=False):
+def writeAlign(
+    tracker, align, outPathAln, ID="deRIPseq", outAlnFormat="fasta", noappend=False
+):
     """Assemble deRIPed sequence, append all seqs in
     ascending order of RIP events logged."""
     deRIPseq = getDERIP(tracker, ID=ID, deGAP=False)
