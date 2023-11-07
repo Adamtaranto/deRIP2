@@ -24,7 +24,7 @@ def checkUniqueID(align):
     duplicates = [k for k, v in IDcounts.items() if v > 1]
     if duplicates:
         logging.warning("Sequence IDs not unique. Quiting.")
-        logging.info(duplicates)
+        logging.info(f"Non-unique IDs: {duplicates}")
         sys.exit(1)
     else:
         pass
