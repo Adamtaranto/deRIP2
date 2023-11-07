@@ -12,8 +12,9 @@ from collections import Counter
 from collections import namedtuple
 from copy import deepcopy
 from operator import itemgetter
-from derip2.utils import log, isfile
+from derip2.utils import isfile, log
 
+import logging
 import sys
 
 
@@ -22,8 +23,8 @@ def checkUniqueID(align):
     IDcounts = Counter(rowIDs)
     duplicates = [k for k, v in IDcounts.items() if v > 1]
     if duplicates:
-        log("Sequence IDs not unique. Quiting.")
-        log(duplicates)
+        logging.warning("Sequence IDs not unique. Quiting.")
+        logging.info(duplicates)
         sys.exit(1)
     else:
         pass
@@ -31,7 +32,7 @@ def checkUniqueID(align):
 
 def checkLen(align):
     if align.__len__() < 2:
-        log("Alignment contains < 2 sequences. Quiting.")
+        logging.warning("Alignment contains < 2 sequences. Quiting.")
         sys.exit(1)
     else:
         pass
@@ -43,7 +44,7 @@ def loadAlign(file, alnFormat="fasta"):
     # Check input file exists
     path = isfile(file)
     # Load file
-    log("Loading alignment from file: %s" % file)
+    logging.info("Loading alignment from file: %s" % file)
     align = AlignIO.read(path, alnFormat)
     # Check alignment has at least 2 rows
     checkLen(align)
@@ -54,19 +55,19 @@ def loadAlign(file, alnFormat="fasta"):
 
 
 def alignSummary(align):
-    log(
+    logging.info(
         "Alignment has %s rows and %s columns."
         % (str(align.__len__()), str(align.get_alignment_length()))
     )
-    log("Row index:\tSequence ID")
+    logging.info("Row index:\tSequence ID")
     for x in range(align.__len__()):
-        log("%s:\t%s" % (str(x), str(align[x].id)))
+        logging.info("%s:\t%s" % (str(x), str(align[x].id)))
     pass
 
 
 def checkrow(align, idx=None):
     if idx not in range(align.__len__()):
-        log("Row index %s is outside range. Quitting." % str(idx))
+        logging.warning("Row index %s is outside range. Quitting." % str(idx))
         sys.exit(1)
     else:
         pass
@@ -367,10 +368,10 @@ def correctRIP(
 def summarizeRIP(RIPcounts):
     """Print summary of RIP counts and GC content calculated
     for each sequence in alignment"""
-    log("Summarizing RIP")
-    log("Index:\tID\tRIP\tNon-RIP-deamination\tGC")
+    logging.info("Summarizing RIP")
+    log.info("Index:\tID\tRIP\tNon-RIP-deamination\tGC")
     for x in range(len(RIPcounts)):
-        log(
+        log.info(
             "%s:\t%s\t%s\t%s\t%s"
             % (
                 str(RIPcounts[x].idx),
@@ -409,7 +410,7 @@ def setRefSeq(align, RIPcounter=None, getMinRIP=True, getMaxGC=False):
 
 def fillRemainder(align, fromSeqID, tracker):
     """Fill all remaining positions from least RIP effected row."""
-    log(
+    logging.info(
         "Filling uncorrected positions from: Row index %s: %s"
         % (str(fromSeqID), str(align[fromSeqID].id))
     )

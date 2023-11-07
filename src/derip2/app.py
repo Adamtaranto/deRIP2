@@ -18,11 +18,12 @@ independently RIP'd.
 
 
 from derip2._version import __version__
-from derip2.utils import dochecks, log
+from derip2.utils import dochecks
 from os import path
 
 import argparse
 import derip2.aln_ops as ao
+import logging
 
 
 def mainArgs():
@@ -35,6 +36,12 @@ def mainArgs():
         "--version",
         action="version",
         version="%(prog)s {version}".format(version=__version__),
+    )
+    parser.add_argument(
+        "--loglevel",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Set logging level.",
     )
     # Inputs
     parser.add_argument(
@@ -145,6 +152,17 @@ def mainArgs():
 def main():
     # Get cmd line args
     args = mainArgs()
+
+    # Set up logging
+    numeric_level = getattr(logging, args.loglevel.upper(), None)
+
+    if not isinstance(numeric_level, int):
+        raise ValueError("Invalid log level: %s" % args.loglevel)
+
+    logging.basicConfig(
+        format="%(asctime)s:%(levelname)s:%(name)s:%(message)s", level=numeric_level
+    )
+
     # Check for output directory, create if required, else set to cwd
     outDir = dochecks(args.outDir)
     # Set output file paths
@@ -190,17 +208,19 @@ def main():
     ao.writeDERIP2stdout(tracker, ID=args.label)
     # Write updated alignment (including gapped deRIP'd sequence) to file. Optional.
     if args.outAlnName:
-        log("Preparing output alignment.")
+        logging.info(f"Preparing output alignment.")
         # Log if deRIP'd sequence will be appended to alignment.
         if not args.noappend:
-            log("Appending corrected sequence to alignment with ID: %s" % args.label)
+            logging.info(
+                f"Appending corrected sequence to alignment with ID: {args.label}"
+            )
         # Use masked alignment if mask option set.
         if args.mask:
-            log("Masking alignment columns with detected mutations.")
+            logging.info(f"Masking alignment columns with detected mutations.")
             outputAlign = maskedAlign
         else:
             outputAlign = align
-        log("Writing modified alignment to path: %s" % outPathAln)
+        logging.info(f"Writing modified alignment to path: {outPathAln}")
         ao.writeAlign(
             tracker,
             outputAlign,
