@@ -8,7 +8,7 @@ authors = [{ name = "Adam Taranto", email = "adam.p.taranto@gmail.com" }]
 
 description = "Predict ancestral sequence of fungal repeat elements by correcting for RIP-like mutations in multi-sequence DNA alignments."
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 license = { text = "MIT" }
 
 classifiers = [
