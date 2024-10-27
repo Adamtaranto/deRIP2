@@ -1,6 +1,0 @@
-include README.md
-include LICENSE
-exclude environment.yml
-exclude .gitpod.Dockerfile
-exclude .gitpod.yml
-prune .devcontainer
