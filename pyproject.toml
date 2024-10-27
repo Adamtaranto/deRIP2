@@ -1,15 +1,16 @@
 [build-system]
-requires = ["setuptools", "setuptools-scm"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 [project]
 name = "derip2"
-authors = [{ name = "Adam Taranto", email = "adam.p.taranto@gmail.com" }]
-
 description = "Predict ancestral sequence of fungal repeat elements by correcting for RIP-like mutations in multi-sequence DNA alignments."
 readme = "README.md"
 requires-python = ">=3.7"
 license = { text = "MIT" }
+authors = [
+    { name = "Adam Taranto", email = "adam.p.taranto@gmail.com" }
+]
 
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -18,13 +19,9 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 
-dynamic = ["version", "dependencies"]
+dependencies = ["biopython"]
 
-[tool.setuptools_scm]
-write_to = "src/derip2/_version.py"
-
-[tool.setuptools.dynamic]
-dependencies = { file = "requirements.txt" }
+dynamic = ["version"]
 
 [project.urls]
 homepage = "https://github.com/adamtaranto/derip2"
@@ -34,21 +31,18 @@ repository = "https://github.com/adamtaranto/derip2"
 [project.scripts]
 derip2 = "derip2.app:main"
 
+[tool.hatch.build]
+source = "src"
 
-# Create and push tags
-# git tag -a v0.0.4 
-# git push origin v0.0.4
+[tool.hatch.version]
+source = "vcs"
 
-# Check what setuptools_scm thinks the current version is and create _version.py
-#git describe
-#python -m setuptools_scm
-#python setup.py --version
+[tool.hatch.version.vcs]
+tag-pattern = "v*"  # Git tags starting with 'v' will be used for versioning
+fallback-version = "0.0.0"
 
-# Build
-#python3 -m pip install --upgrade build && python3 -m build
-# OR
-# Build sdist
-# python setup.py sdist 
+[tool.hatch.build.hooks.vcs]
+version-file = "src/derip2/_version.py"
 
-# Push to pypi
-# twine upload dist/*
+[project.optional-dependencies]
+tests = ["pytest"]
