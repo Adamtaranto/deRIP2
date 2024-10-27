@@ -2,14 +2,10 @@ name: derip2-dev
 channels:
   - conda-forge
   - bioconda
-  - defaults
 dependencies:
-  - python >=3.12
+  - python 3.12
   - pip
   - pip:
       - biopython
-      #- regex
-      - black
-      - setuptools_scm
-      - build
-      - twine
+      - hatchling
+      - hatch-vcs
