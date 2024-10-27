@@ -3,10 +3,10 @@
 
 from Bio import AlignIO
 from Bio import SeqIO
-from Bio.Align import AlignInfo  # ,MultipleSeqAlignment
+from Bio.Align import AlignInfo
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-from Bio.SeqUtils import GC
+from Bio.SeqUtils import gc_fraction
 
 from collections import Counter
 from collections import namedtuple
@@ -39,8 +39,10 @@ def checkLen(align):
 
 
 def loadAlign(file, alnFormat="fasta"):
-    """Import alignment Check at least 2 rows in alignment
-    and all names are unique."""
+    """
+    Import alignment Check at least 2 rows in alignment
+    and all names are unique.
+    """
     # Check input file exists
     path = isfile(file)
     # Load file
@@ -74,8 +76,10 @@ def checkrow(align, idx=None):
 
 
 def initTracker(align):
-    """Initialise object to compose final deRIP'd sequence.
-    List of tuples (colIdx,base). Base default to None."""
+    """
+    Initialise object to compose final deRIP'd sequence.
+    List of tuples (colIdx,base). Base default to None.
+    """
     tracker = dict()
     colItem = namedtuple("colPosition", ["idx", "base"])
     for x in range(align.get_alignment_length()):
@@ -84,8 +88,10 @@ def initTracker(align):
 
 
 def initRIPCounter(align):
-    """For each row create dict key for seq name,
-    assign named tuple (revRIPcount,RIPcount)."""
+    """
+    For each row create dict key for seq name,
+    assign named tuple (revRIPcount,RIPcount).
+    """
     RIPcounts = dict()
     rowItem = namedtuple(
         "RIPtracker", ["idx", "SeqID", "revRIPcount", "RIPcount", "nonRIPcount", "GC"]
@@ -97,14 +103,16 @@ def initRIPCounter(align):
             revRIPcount=0,
             RIPcount=0,
             nonRIPcount=0,
-            GC=GC(align[x].seq),
+            GC=gc_fraction(align[x].seq), # * 100  # Multiply by 100 if you need percentage
         )
     return RIPcounts
 
 
 def updateTracker(idx, newChar, tracker, force=False):
-    """Set final sequence value by column index if 'None'.
-    Optionally force overwrite of previously updated base."""
+    """
+    Set final sequence value by column index if 'None'.
+    Optionally force overwrite of previously updated base.
+    """
     if tracker[idx].base and force:
         # Note: Add alert when overwriting a previously set base
         tracker[idx] = tracker[idx]._replace(base=newChar)
@@ -114,7 +122,9 @@ def updateTracker(idx, newChar, tracker, force=False):
 
 
 def updateRIPCount(idx, RIPtracker, addRev=0, addFwd=0, addNonRIP=0):
-    """Add observed RIP events to tracker by row."""
+    """
+    Add observed RIP events to tracker by row.
+    """
     TallyRev = RIPtracker[idx].revRIPcount + addRev
     TallyFwd = RIPtracker[idx].RIPcount + addFwd
     TallyNonRIP = RIPtracker[idx].nonRIPcount + addNonRIP
@@ -125,8 +135,10 @@ def updateRIPCount(idx, RIPtracker, addRev=0, addFwd=0, addNonRIP=0):
 
 
 def fillConserved(align, tracker, maxGaps=0.7):
-    """Update positions in tracker object which are invariant
-    OR excessively gapped."""
+    """
+    Update positions in tracker object which are invariant
+    OR excessively gapped.
+    """
     tracker = deepcopy(tracker)
     # For each column in alignment
     for idx in range(align.get_alignment_length()):
@@ -155,9 +167,11 @@ def fillConserved(align, tracker, maxGaps=0.7):
 
 
 def nextBase(align, colID, motif):
-    """For colIdx, and dinucleotide motif XY return list of
+    """
+    For colIdx, and dinucleotide motif XY return list of
     rowIdx values where col=X and is followed by a Y in the
-    next non-gap column."""
+    next non-gap column.
+    """
     # Find all rows where colID base matches first base of motif
     # Note: Column IDs are indexed from zero
     rowsX = find(align[:, colID], motif[0])
@@ -181,9 +195,11 @@ def nextBase(align, colID, motif):
 
 
 def lastBase(align, colID, motif):
-    """For colIdx, and dinucleotide motif XY return list of
+    """
+    For colIdx, and dinucleotide motif XY return list of
     rowIdx values where col=Y and is preceeded by an X in
-    the previous non-gap column."""
+    the previous non-gap column.
+    """
     rowsY = find(align[:, colID], motif[1])
     rowsXY = list()
     for rowID in rowsY:
@@ -197,14 +213,18 @@ def lastBase(align, colID, motif):
 
 
 def find(lst, a):
-    """Return list of indices for positions in list which
-    contain a character in set 'a'."""
+    """
+    Return list of indices for positions in list which
+    contain a character in set 'a'.
+    """
     return [i for i, x in enumerate(lst) if x in set(a)]
 
 
 def hasBoth(lst, a, b):
-    """Return "True" if list contains at least one instance
-    of characters 'a' and 'b'."""
+    """
+    Return "True" if list contains at least one instance
+    of characters 'a' and 'b'.
+    """
     hasA = find(lst, a)
     hasB = find(lst, b)
     if hasA and hasB:
@@ -214,10 +234,12 @@ def hasBoth(lst, a, b):
 
 
 def replaceBase(align, targetCol, targetRows, newbase):
-    """Given an alignment object extract seqRecord objects from
+    """
+    Given an alignment object extract seqRecord objects from
     a list of target rows and replace bases in a target column
     with a specified new base. Replace rows and return updated
-    alignment object."""
+    alignment object.
+    """
     for row in targetRows:
         seqList = list(align[row].seq)
         seqList[targetCol] = newbase
@@ -366,8 +388,10 @@ def correctRIP(
 
 
 def summarizeRIP(RIPcounts):
-    """Print summary of RIP counts and GC content calculated
-    for each sequence in alignment"""
+    """
+    Print summary of RIP counts and GC content calculated
+    for each sequence in alignment.
+    """
     logging.info("Summarizing RIP")
     log.info("Index:\tID\tRIP\tNon-RIP-deamination\tGC")
     for x in range(len(RIPcounts)):
@@ -385,8 +409,10 @@ def summarizeRIP(RIPcounts):
 
 
 def setRefSeq(align, RIPcounter=None, getMinRIP=True, getMaxGC=False):
-    """Get row index of sequence with fewest RIP observations
-    or highest GC if no RIP data."""
+    """
+    Get row index of sequence with fewest RIP observations
+    or highest GC if no RIP data.
+    """
     # Ignore RIP sorting if getMaxGC is set
     if getMaxGC:
         getMinRIP = False
@@ -403,13 +429,15 @@ def setRefSeq(align, RIPcounter=None, getMinRIP=True, getMaxGC=False):
         # If no counter object get GC values from alignment
         GClist = list()
         for x in range(align.__len__()):
-            GClist.append((x, GC(align[x].seq)))
+            GClist.append((x, gc_fraction(align[x].seq)))
         refIdx = sorted(GClist, key=lambda x: (-x[1]))[0][0]
     return refIdx
 
 
 def fillRemainder(align, fromSeqID, tracker):
-    """Fill all remaining positions from least RIP effected row."""
+    """
+    Fill all remaining positions from least RIP effected row.
+    """
     logging.info(
         "Filling uncorrected positions from: Row index %s: %s"
         % (str(fromSeqID), str(align[fromSeqID].id))
@@ -422,8 +450,10 @@ def fillRemainder(align, fromSeqID, tracker):
 
 
 def getDERIP(tracker, ID="deRIPseq", deGAP=True):
-    """Write tracker object to sequence string.
-    Requires that all base values are strings."""
+    """
+    Write tracker object to sequence string.
+    Requires that all base values are strings.
+    """
     deRIPstr = "".join([y.base for y in sorted(tracker.values(), key=lambda x: (x[0]))])
     if deGAP:
         deRIPstr = deRIPstr.replace("-", "")
@@ -439,7 +469,9 @@ def getDERIP(tracker, ID="deRIPseq", deGAP=True):
 
 
 def writeDERIP(tracker, outPathFile, ID="deRIPseq"):
-    """Call getDERIP, scrub gaps and Null positions."""
+    """
+    Call getDERIP, scrub gaps and Null positions.
+    """
     deRIPseq = getDERIP(tracker, ID=ID, deGAP=True)
     with open(outPathFile, "w") as f:
         SeqIO.write(deRIPseq, f, "fasta")
@@ -448,8 +480,10 @@ def writeDERIP(tracker, outPathFile, ID="deRIPseq"):
 def writeAlign(
     tracker, align, outPathAln, ID="deRIPseq", outAlnFormat="fasta", noappend=False
 ):
-    """Assemble deRIPed sequence, append all seqs in
-    ascending order of RIP events logged."""
+    """
+    Assemble deRIPed sequence, append all seqs in
+    ascending order of RIP events logged.
+    """
     deRIPseq = getDERIP(tracker, ID=ID, deGAP=False)
     if not noappend:
         align.append(deRIPseq)
