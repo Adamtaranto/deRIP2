@@ -1,21 +1,17 @@
-#!/usr/bin/env python
-
-
 """
-██████╗ ███████╗██████╗ ██╗██████╗ ██████╗ 
+██████╗ ███████╗██████╗ ██╗██████╗ ██████╗
 ██╔══██╗██╔════╝██╔══██╗██║██╔══██╗╚════██╗
 ██║  ██║█████╗  ██████╔╝██║██████╔╝ █████╔╝
-██║  ██║██╔══╝  ██╔══██╗██║██╔═══╝ ██╔═══╝ 
+██║  ██║██╔══╝  ██╔══██╗██║██╔═══╝ ██╔═══╝
 ██████╔╝███████╗██║  ██║██║██║     ███████╗
 ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝╚═╝     ╚══════╝
-                        
+
 Takes a multi-sequence DNA alignment and estimates a progenitor sequence by
 correcting for RIP-like mutations. deRIP2 searches all available sequences for
 evidence of un-RIP'd precursor states at each aligned position, allowing for
 improved RIP-correction across large repeat families in which members are
 independently RIP'd.
 """
-
 
 from derip2._version import __version__
 from derip2.utils import dochecks

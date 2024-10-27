@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: UTF-8 -*-
-
 from Bio import AlignIO
 from Bio import SeqIO
 from Bio.Align import AlignInfo
@@ -103,7 +100,9 @@ def initRIPCounter(align):
             revRIPcount=0,
             RIPcount=0,
             nonRIPcount=0,
-            GC=gc_fraction(align[x].seq), # * 100  # Multiply by 100 if you need percentage
+            GC=gc_fraction(
+                align[x].seq
+            ),  # * 100  # Multiply by 100 if you need percentage
         )
     return RIPcounts
 
@@ -462,8 +461,7 @@ def getDERIP(tracker, ID="deRIPseq", deGAP=True):
         Seq(deRIPstr),
         id=ID,
         name=ID,
-        description="Hypothetical ancestral sequence produced \
-                         by deRIP2",
+        description="Hypothetical ancestral sequence produced by deRIP2",
     )
     return deRIPseq
 
