@@ -100,9 +100,7 @@ def initRIPCounter(align):
             revRIPcount=0,
             RIPcount=0,
             nonRIPcount=0,
-            GC=gc_fraction(
-                align[x].seq
-            ),  # * 100  # Multiply by 100 if you need percentage
+            GC=gc_fraction(align[x].seq) * 100,
         )
     return RIPcounts
 
@@ -428,7 +426,7 @@ def setRefSeq(align, RIPcounter=None, getMinRIP=True, getMaxGC=False):
         # If no counter object get GC values from alignment
         GClist = list()
         for x in range(align.__len__()):
-            GClist.append((x, gc_fraction(align[x].seq)))
+            GClist.append((x, gc_fraction(align[x].seq) * 100))
         refIdx = sorted(GClist, key=lambda x: (-x[1]))[0][0]
     return refIdx
 
