@@ -16,7 +16,7 @@ Predict progenitor sequence of fungal repeat families by correcting for RIP-like
 
 Mask RIP or deamination events from input alignment as ambiguous bases.
 
-# Table of contents
+## Table of contents
 - [Algorithm overview](#algorithm-overview)
 - [Options and Usage](#options-and-usage)
   - [Installation](#installation)
