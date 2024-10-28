@@ -39,6 +39,8 @@ exclude = [
     ".gitpod.Dockerfile",
     ".gitpod.yml",    
     ".devcontainer/**",
+    ".dockerignore",
+    ".vscode",
 ]
 
 [tool.hatch.version]
