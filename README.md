@@ -17,15 +17,13 @@ Predict progenitor sequence of fungal repeat families by correcting for RIP-like
 Mask RIP or deamination events from input alignment as ambiguous bases.
 
 # Table of contents
-- [deRIP2](#derip2)
-- [Table of contents](#table-of-contents)
-  - [Algorithm overview](#algorithm-overview)
-  - [Options and Usage](#options-and-usage)
-    - [Installation](#installation)
-    - [Example usage](#example-usage)
-    - [Standard options](#standard-options)
-  - [Issues](#issues)
-  - [License](#license)
+- [Algorithm overview](#algorithm-overview)
+- [Options and Usage](#options-and-usage)
+  - [Installation](#installation)
+  - [Example usage](#example-usage)
+  - [Standard options](#standard-options)
+- [Report Issues](#issues)
+- [License](#license)
 
 ## Algorithm overview
 
@@ -80,15 +78,15 @@ derip2 0.0.4
 ### Example usage
 
 For aligned sequences in 'mintest.fa':
-  - Any column >= 70% gap positions is not corrected.
+  - Any column with >= 70% gap positions will not be corrected and a gap inserted in corrected sequence.
   - Bases in column must be >= 80% C/T or G/A 
-  - At least 50% bases must be in RIP dinucleotide context (C/T as CpA / TpA)
-  - Inherit all remaining uncorrected positions from least RIP'd sequence.
+  - At least 50% bases in a column must be in RIP dinucleotide context (C/T as CpA / TpA) for correction.
+  - Default: Inherit all remaining uncorrected positions from the least RIP'd sequence.
   - Mask all substrate and product motifs from corrected columns as ambiguous bases (i.e. CpA to TpA --> YpA)
 
 ```bash
 derip2 -i tests/data/mintest.fa --format fasta \
---maxGaps 0.1 \
+--maxGaps 0.7 \
 --maxSNPnoise 0.2 \
 --minRIPlike 0.5 \
 --label derip_name \
