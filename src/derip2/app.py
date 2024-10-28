@@ -15,6 +15,7 @@ independently RIP'd.
 
 from derip2._version import __version__
 from derip2.utils import dochecks
+from derip2.logs import init_logging
 from os import path
 
 import argparse
@@ -150,14 +151,7 @@ def main():
     args = mainArgs()
 
     # Set up logging
-    numeric_level = getattr(logging, args.loglevel.upper(), None)
-
-    if not isinstance(numeric_level, int):
-        raise ValueError("Invalid log level: %s" % args.loglevel)
-
-    logging.basicConfig(
-        format="%(asctime)s:%(levelname)s:%(name)s:%(message)s", level=numeric_level
-    )
+    init_logging(loglevel=args.loglevel)
 
     # Check for output directory, create if required, else set to cwd
     outDir = dochecks(args.outDir)
@@ -204,7 +198,7 @@ def main():
     ao.writeDERIP2stdout(tracker, ID=args.label)
     # Write updated alignment (including gapped deRIP'd sequence) to file. Optional.
     if args.outAlnName:
-        logging.info(f"Preparing output alignment.")
+        logging.info("Preparing output alignment.")
         # Log if deRIP'd sequence will be appended to alignment.
         if not args.noappend:
             logging.info(
@@ -212,7 +206,7 @@ def main():
             )
         # Use masked alignment if mask option set.
         if args.mask:
-            logging.info(f"Masking alignment columns with detected mutations.")
+            logging.info("Masking alignment columns with detected mutations.")
             outputAlign = maskedAlign
         else:
             outputAlign = align
