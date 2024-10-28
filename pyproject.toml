@@ -34,15 +34,10 @@ derip2 = "derip2.app:main"
 [tool.hatch.build]
 source = "src"
 
-include = [
-    "README.md",
-    "LICENSE",
-]
-
 exclude = [
     "environment.yml",
     ".gitpod.Dockerfile",
-    ".gitpod.yml",
+    ".gitpod.yml",    
     ".devcontainer/**",
 ]
 
