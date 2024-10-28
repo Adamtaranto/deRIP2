@@ -9,11 +9,8 @@ tasks:
       conda env update -n base --file environment.yml
     # Run on every workspace start
     command: |
-      echo 'Installing requirements.txt'
-      pip3 install -r requirements.txt
       echo 'Installing deRIP2 in interactive mode.'
-      pip3 install -e .
-      echo 'Finished!'
+      pip3 install -e ".[tests]"
 
 vscode:
   extensions:
@@ -22,4 +19,3 @@ vscode:
     - ms-toolsai.jupyter
     - ms-toolsai.jupyter-keymap
     - oderwat.indent-rainbow
-    - ms-python.black-formatter
