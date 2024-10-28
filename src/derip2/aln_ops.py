@@ -1,3 +1,11 @@
+from collections import Counter
+from collections import namedtuple
+from copy import deepcopy
+from io import StringIO
+from operator import itemgetter
+import logging
+import sys
+
 from Bio import AlignIO
 from Bio import SeqIO
 from Bio.Align import AlignInfo
@@ -5,14 +13,7 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqUtils import gc_fraction
 
-from collections import Counter
-from collections import namedtuple
-from copy import deepcopy
-from operator import itemgetter
-from derip2.utils import isfile, log
-
-import logging
-import sys
+from derip2.utils import isfile
 
 
 def checkUniqueID(align):
@@ -390,9 +391,9 @@ def summarizeRIP(RIPcounts):
     for each sequence in alignment.
     """
     logging.info("Summarizing RIP")
-    log.info("Index:\tID\tRIP\tNon-RIP-deamination\tGC")
+    print("Index:\tID\tRIP\tNon-RIP-deamination\tGC", file=sys.stderr)
     for x in range(len(RIPcounts)):
-        log.info(
+        print(
             "%s:\t%s\t%s\t%s\t%s"
             % (
                 str(RIPcounts[x].idx),
@@ -400,7 +401,8 @@ def summarizeRIP(RIPcounts):
                 str(RIPcounts[x].revRIPcount + RIPcounts[x].RIPcount),
                 str(RIPcounts[x].nonRIPcount),
                 str(round(RIPcounts[x].GC, 2)),
-            )
+            ),
+            file=sys.stderr,
         )
     pass
 
@@ -471,6 +473,18 @@ def writeDERIP(tracker, outPathFile, ID="deRIPseq"):
     deRIPseq = getDERIP(tracker, ID=ID, deGAP=True)
     with open(outPathFile, "w") as f:
         SeqIO.write(deRIPseq, f, "fasta")
+
+
+def writeDERIP2stdout(tracker, ID="deRIPseq"):
+    """
+    Call getDERIP, scrub gaps and Null positions.
+    """
+    deRIPseq = getDERIP(tracker, ID=ID, deGAP=True)
+    output = StringIO()
+    SeqIO.write(deRIPseq, output, "fasta")
+    fasta_string = output.getvalue()
+    output.close()
+    print(fasta_string)
 
 
 def writeAlign(
