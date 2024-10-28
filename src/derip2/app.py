@@ -13,14 +13,14 @@ improved RIP-correction across large repeat families in which members are
 independently RIP'd.
 """
 
-from derip2._version import __version__
-from derip2.utils import dochecks
-from derip2.logs import init_logging
 from os import path
-
 import argparse
-import derip2.aln_ops as ao
 import logging
+
+from derip2._version import __version__
+from derip2.logs import init_logging
+from derip2.utils import dochecks
+import derip2.aln_ops as ao
 
 
 def mainArgs():
@@ -125,9 +125,14 @@ def mainArgs():
         default=None,
         help="Directory for deRIP'd sequence files to be written to.",
     )
-    # parser.add_argument("-o","--outName",type=str,default= "deRIP_output.fa", help="Write deRIP sequence to this file. Default: ./deRIP_output.fa")
     parser.add_argument(
-        "--outAlnName",
+        "-o",
+        "--outFasta",
+        default=None,
+        help="Write un-gapped RIP-corrected sequence to this file in fasta format. Default: deRIP_output.fa",
+    )
+    parser.add_argument(
+        "--outAln",
         default=None,
         help="Optional: If set write alignment including deRIP corrected sequence to this file.",
     )
@@ -155,21 +160,33 @@ def main():
 
     # Check for output directory, create if required, else set to cwd
     outDir = dochecks(args.outDir)
+
     # Set output file paths
-    # New default: write deRIP'd seq to stdout
-    # outPathFile = path.join(outDir,args.outName)
-    if args.outAlnName:
-        outPathAln = path.join(outDir, args.outAlnName)
+    if args.outFasta:
+        outPathFasta = path.join(outDir, args.outFasta)
+    else:
+        outPathFasta = None
+
+    if args.outAln:
+        outPathAln = path.join(outDir, args.outAln)
+    else:
+        outPathAln = None
+
     # Read in alignment file, check at least 2 sequences present and names are unique
     align = ao.loadAlign(args.inAln, args.format)
+
     # Report alignment summary
     ao.alignSummary(align)
+
     # Initialise object to assemble deRIP'd sequence
     tracker = ao.initTracker(align)
+
     # Initialise object to track RIP observations and GC content by row
     RIPcounts = ao.initRIPCounter(align)
+
     # Preset invariant or highly gapped positions in final sequence
     tracker = ao.fillConserved(align, tracker, args.maxGaps)
+
     # Correct / tally RIP + optionally correct C->T / G->A transitions
     tracker, RIPcounts, maskedAlign = ao.correctRIP(
         align,
@@ -180,8 +197,10 @@ def main():
         reaminate=args.reaminate,
         mask=args.mask,
     )
+
     # Report RIP counts per sequence
     ao.summarizeRIP(RIPcounts)
+
     # Set reference sequence to fill remaining uncorrected positions from
     if not args.fillindex:
         # Select least RIP'd sequence (or most GC-rich if no RIP or tied for min-RIP) in alignment to inherit remaining unset positions from
@@ -193,11 +212,18 @@ def main():
         refID = args.fillindex
     # Fill remaining unset positions from reference sequence
     tracker = ao.fillRemainder(align, refID, tracker)
-    # Write ungapped deRIP to file [old default behaviour]
-    # ao.writeDERIP(tracker,outPathFile,ID=args.label)
+
+    # Report deRIP'd sequence
+    logging.info(f"Final RIP corrected sequence: {args.label}")
     ao.writeDERIP2stdout(tracker, ID=args.label)
+
+    if outPathFasta:
+        # Write ungapped deRIP to file
+        logging.info(f"Writing deRIP'd sequence to file: {outPathFasta}")
+        ao.writeDERIP(tracker, outPathFasta, ID=args.label)
+
     # Write updated alignment (including gapped deRIP'd sequence) to file. Optional.
-    if args.outAlnName:
+    if args.outAln:
         logging.info("Preparing output alignment.")
         # Log if deRIP'd sequence will be appended to alignment.
         if not args.noappend:
@@ -210,7 +236,9 @@ def main():
             outputAlign = maskedAlign
         else:
             outputAlign = align
+
         logging.info(f"Writing modified alignment to path: {outPathAln}")
+
         ao.writeAlign(
             tracker,
             outputAlign,
