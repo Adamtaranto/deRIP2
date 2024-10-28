@@ -3,10 +3,6 @@ import sys
 import logging
 
 
-def log(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
-
-
 def dochecks(usrOutDir):
     """Make outDir if does not exist else set to current dir."""
     if usrOutDir:
