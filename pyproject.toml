@@ -19,7 +19,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 
-dependencies = ["biopython"]
+dependencies = ["argparse_tui", "biopython"]
 
 dynamic = ["version"]
 

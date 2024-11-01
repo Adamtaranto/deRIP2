@@ -15,6 +15,7 @@ independently RIP'd.
 
 from os import path
 import argparse
+from argparse_tui import add_tui_argument
 import logging
 
 from derip2._version import __version__
@@ -147,7 +148,11 @@ def mainArgs():
         default="deRIPseq",
         help="Use label as name for deRIP'd sequence in output files.",
     )
+
+    add_tui_argument(parser, option_strings=["--tui"])
+
     args = parser.parse_args()
+
     return args
 
 
