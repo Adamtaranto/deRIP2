@@ -1,6 +1,7 @@
 #Sandpit
 pkg-mgt/
 dev/
+.ideas/
 
 # Mac stuff
 .DS_Store
