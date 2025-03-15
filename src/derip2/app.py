@@ -27,129 +27,129 @@ import derip2.aln_ops as ao
 def mainArgs():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Predict ancestral sequence of fungal repeat elements by correcting for RIP-like mutations or cytosine deamination in multi-sequence DNA alignments. Optionally, mask corrected positions in alignment.",
-        prog="derip2",
+        description='Predict ancestral sequence of fungal repeat elements by correcting for RIP-like mutations or cytosine deamination in multi-sequence DNA alignments. Optionally, mask corrected positions in alignment.',
+        prog='derip2',
     )
     parser.add_argument(
-        "--version",
-        action="version",
-        version="%(prog)s {version}".format(version=__version__),
+        '--version',
+        action='version',
+        version='%(prog)s {version}'.format(version=__version__),
     )
     parser.add_argument(
-        "--loglevel",
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        help="Set logging level.",
+        '--loglevel',
+        default='INFO',
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+        help='Set logging level.',
     )
     # Inputs
     parser.add_argument(
-        "-i",
-        "--inAln",
+        '-i',
+        '--inAln',
         required=True,
         type=str,
         default=None,
-        help="Multiple sequence alignment.",
+        help='Multiple sequence alignment.',
     )
     parser.add_argument(
-        "--format",
-        default="fasta",
+        '--format',
+        default='fasta',
         choices=[
-            "clustal",
-            "emboss",
-            "fasta",
-            "fasta-m10",
-            "ig",
-            "nexus",
-            "phylip",
-            "phylip-sequential",
-            "phylip-relaxed",
-            "stockholm",
+            'clustal',
+            'emboss',
+            'fasta',
+            'fasta-m10',
+            'ig',
+            'nexus',
+            'phylip',
+            'phylip-sequential',
+            'phylip-relaxed',
+            'stockholm',
         ],
-        help="Format of input alignment. Default: fasta",
+        help='Format of input alignment. Default: fasta',
     )
     # Options
     parser.add_argument(
-        "-g",
-        "--maxGaps",
+        '-g',
+        '--maxGaps',
         type=float,
         default=0.7,
-        help="Maximum proportion of gapped positions in column to be tolerated before forcing a gap in final deRIP sequence. Default: 0.7",
+        help='Maximum proportion of gapped positions in column to be tolerated before forcing a gap in final deRIP sequence. Default: 0.7',
     )
     parser.add_argument(
-        "-a",
-        "--reaminate",
-        action="store_true",
+        '-a',
+        '--reaminate',
+        action='store_true',
         default=False,
-        help="Correct all deamination events independent of RIP context. Default: False",
+        help='Correct all deamination events independent of RIP context. Default: False',
     )
     parser.add_argument(
-        "--maxSNPnoise",
+        '--maxSNPnoise',
         type=float,
         default=0.5,
         help="Maximum proportion of conflicting SNPs permitted before excluding column from RIP/deamination assessment. i.e. By default a column with >= 0.5 'C/T' bases will have 'TpA' positions logged as RIP events. Default: 0.5",
     )
     parser.add_argument(
-        "--minRIPlike",
+        '--minRIPlike',
         type=float,
         default=0.1,
         help="Minimum proportion of deamination events in RIP context (5' CpA 3' --> 5' TpA 3') required for column to deRIP'd in final sequence. Note: If 'reaminate' option is set all deamination events will be corrected. Default 0.1 ",
     )
     parser.add_argument(
-        "--fillmaxgc",
-        action="store_true",
+        '--fillmaxgc',
+        action='store_true',
         default=False,
-        help="By default uncorrected positions in the output sequence are filled from the sequence with the lowest RIP count. If this option is set remaining positions are filled from the sequence with the highest G/C content. Default: False",
+        help='By default uncorrected positions in the output sequence are filled from the sequence with the lowest RIP count. If this option is set remaining positions are filled from the sequence with the highest G/C content. Default: False',
     )
     parser.add_argument(
-        "--fillindex",
+        '--fillindex',
         type=int,
         default=None,
         help="Force selection of alignment row to fill uncorrected positions from by row index number (indexed from 0). Note: Will override '--fillmaxgc' option.",
     )
     parser.add_argument(
-        "--mask",
+        '--mask',
         default=False,
-        action="store_true",
-        help="Mask corrected positions in alignment with degenerate IUPAC codes.",
+        action='store_true',
+        help='Mask corrected positions in alignment with degenerate IUPAC codes.',
     )
     parser.add_argument(
-        "--noappend",
+        '--noappend',
         default=False,
-        action="store_true",
+        action='store_true',
         help="If set, do not append deRIP'd sequence to output alignment.",
     )
     # Outputs
     parser.add_argument(
-        "-d",
-        "--outDir",
+        '-d',
+        '--outDir',
         type=str,
         default=None,
         help="Directory for deRIP'd sequence files to be written to.",
     )
     parser.add_argument(
-        "-o",
-        "--outFasta",
+        '-o',
+        '--outFasta',
         default=None,
-        help="Write un-gapped RIP-corrected sequence to this file in fasta format. Default: deRIP_output.fa",
+        help='Write un-gapped RIP-corrected sequence to this file in fasta format. Default: deRIP_output.fa',
     )
     parser.add_argument(
-        "--outAln",
+        '--outAln',
         default=None,
-        help="Optional: If set write alignment including deRIP corrected sequence to this file.",
+        help='Optional: If set write alignment including deRIP corrected sequence to this file.',
     )
     parser.add_argument(
-        "--outAlnFormat",
-        default="fasta",
-        choices=["fasta", "nexus"],
-        help="Optional: Write alignment including deRIP sequence to file of format X. Default: fasta",
+        '--outAlnFormat',
+        default='fasta',
+        choices=['fasta', 'nexus'],
+        help='Optional: Write alignment including deRIP sequence to file of format X. Default: fasta',
     )
     parser.add_argument(
-        "--label",
-        default="deRIPseq",
+        '--label',
+        default='deRIPseq',
         help="Use label as name for deRIP'd sequence in output files.",
     )
 
-    add_tui_argument(parser, option_strings=["--tui"])
+    add_tui_argument(parser, option_strings=['--tui'])
 
     args = parser.parse_args()
 
@@ -219,7 +219,7 @@ def main():
     tracker = ao.fillRemainder(align, refID, tracker)
 
     # Report deRIP'd sequence
-    logging.info(f"Final RIP corrected sequence: {args.label}")
+    logging.info(f'Final RIP corrected sequence: {args.label}')
     ao.writeDERIP2stdout(tracker, ID=args.label)
 
     if outPathFasta:
@@ -229,20 +229,20 @@ def main():
 
     # Write updated alignment (including gapped deRIP'd sequence) to file. Optional.
     if args.outAln:
-        logging.info("Preparing output alignment.")
+        logging.info('Preparing output alignment.')
         # Log if deRIP'd sequence will be appended to alignment.
         if not args.noappend:
             logging.info(
-                f"Appending corrected sequence to alignment with ID: {args.label}"
+                f'Appending corrected sequence to alignment with ID: {args.label}'
             )
         # Use masked alignment if mask option set.
         if args.mask:
-            logging.info("Masking alignment columns with detected mutations.")
+            logging.info('Masking alignment columns with detected mutations.')
             outputAlign = maskedAlign
         else:
             outputAlign = align
 
-        logging.info(f"Writing modified alignment to path: {outPathAln}")
+        logging.info(f'Writing modified alignment to path: {outPathAln}')
 
         ao.writeAlign(
             tracker,
