@@ -1,9 +1,9 @@
-import logging
-import sys
 from collections import Counter, namedtuple
 from copy import deepcopy
 from io import StringIO
+import logging
 from operator import itemgetter
+import sys
 from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union
 
 from Bio import AlignIO, SeqIO

@@ -72,6 +72,7 @@ lint.select = [
 lint.ignore = [
     "C901",  # max-complexity-10
     "E501",  # line-too-long
+    "I001",  # isort-imports
 ]
 
 [tool.ruff.format]

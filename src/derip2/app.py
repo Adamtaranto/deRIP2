@@ -22,8 +22,8 @@ from os import path
 
 from argparse_tui import add_tui_argument
 
-import derip2.aln_ops as ao
 from derip2._version import __version__
+import derip2.aln_ops as ao
 from derip2.logs import init_logging
 from derip2.utils import dochecks
 
