@@ -1,13 +1,13 @@
 <a href="https://opensource.org/licenses/MIT">
   <img src="https://img.shields.io/badge/License-MIT-yellow.svg" align="left" height="20"/>
-</a> 
+</a>
 
 <br clear="right"/>
 <br clear="left"/>
 
 # deRIP2
 
-Predict progenitor sequence of fungal repeat families by correcting for RIP-like mutations 
+Predict progenitor sequence of fungal repeat families by correcting for RIP-like mutations
 (CpA --> TpA) and cytosine deamination (C --> T) events.
 
 Mask RIP or deamination events from input alignment as ambiguous bases.
@@ -35,11 +35,11 @@ For each column in input alignment:
 
 Outputs:
 - Corrected sequence as fasta.
-- Optional, alignment with: 
+- Optional, alignment with:
   - Corrected sequence appended.
   - With corrected positions masked as ambiguous bases.
 
-  
+
 
 ## Options and Usage
 
@@ -76,7 +76,7 @@ derip2 0.0.4
 
 For aligned sequences in 'mintest.fa':
 - Any column with >= 70% gap positions will not be corrected and a gap inserted in corrected sequence.
-- Bases in column must be >= 80% C/T or G/A 
+- Bases in column must be >= 80% C/T or G/A
 - At least 50% bases in a column must be in RIP dinucleotide context (C/T as CpA / TpA) for correction.
 - Default: Inherit all remaining uncorrected positions from the least RIP'd sequence.
 - Mask all substrate and product motifs from corrected columns as ambiguous bases (i.e. CpA to TpA --> YpA)
@@ -92,7 +92,7 @@ derip2 -i tests/data/mintest.fa --format fasta \
 --outAln masked_aligment_with_deRIP.fa --outAlnFormat fasta --outFasta derip_prediction.fa
 ```
 
-**Output:**  
+**Output:**
   - results/derip_prediction.fa
   - results/masked_aligment_with_deRIP.fa
 
