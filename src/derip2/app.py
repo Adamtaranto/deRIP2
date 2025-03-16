@@ -7,7 +7,7 @@
 ██║  ██║█████╗  ██████╔╝██║██████╔╝ █████╔╝
 ██║  ██║██╔══╝  ██╔══██╗██║██╔═══╝ ██╔═══╝
 ██████╔╝███████╗██║  ██║██║██║     ███████╗
-╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝╚═╝     ╚══════╝
+╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝╚═╝     ╚══════╝.
 
 Takes a multi-sequence DNA alignment and estimates a progenitor sequence by
 correcting for RIP-like mutations. deRIP2 searches all available sequences for
@@ -19,13 +19,14 @@ independently RIP'd.
 import argparse
 import logging
 from os import path
+import sys
 
 from argparse_tui import add_tui_argument
 
 from derip2._version import __version__
 import derip2.aln_ops as ao
-from derip2.logs import init_logging
-from derip2.utils import dochecks
+from derip2.utils.checks import dochecks
+from derip2.utils.logs import colored, init_logging
 
 
 def mainArgs() -> argparse.Namespace:
@@ -40,7 +41,7 @@ def mainArgs() -> argparse.Namespace:
     Returns
     -------
     argparse.Namespace
-        Parsed command line arguments
+        Parsed command line arguments.
     """
     # Create main parser with program description
     parser = argparse.ArgumentParser(
@@ -169,6 +170,11 @@ def mainArgs() -> argparse.Namespace:
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
         help='Set logging level.',
     )
+    parser.add_argument(
+        '--logfile',
+        default=None,
+        help='Log file path.',
+    )
 
     # Add terminal UI support
     add_tui_argument(parser, option_strings=['--tui'])
@@ -190,21 +196,24 @@ def main() -> None:
     4. Performs RIP detection and correction
     5. Fills in remaining positions from a reference sequence
     6. Generates output files including the deRIPed sequence and optionally a
-       masked alignment
+       masked alignment.
 
     Returns
     -------
     None
+        Does not return any values, but writes output files and logs to the console.
     """
     # ---------- Setup ----------
     # Get command line arguments
     args = mainArgs()
-
-    # Set up logging based on specified level
-    init_logging(loglevel=args.loglevel)
+    # Print full sys.argv[0] command line call
+    print(f'Command line call: {colored.green(" ".join(sys.argv))}')
 
     # Check/create output directory
-    outDir = dochecks(args.outDir)
+    outDir, logfile = dochecks(args.outDir, args.logfile)
+
+    # Set up logging based on specified level
+    init_logging(loglevel=args.loglevel, logfile=logfile)
 
     # Set output file paths
     if args.outFasta:
@@ -301,3 +310,7 @@ def main() -> None:
             outAlnFormat=args.outAlnFormat,
             noappend=args.noappend,
         )
+
+
+if __name__ == '__main__':
+    main()
