@@ -1,10 +1,19 @@
+"""
+Utility module for file and directory validation checks.
+
+This module provides functions to verify the existence of files and directories,
+create output directories as needed, and validate input paths.
+"""
+
 import logging
 import os
 import sys
-from typing import Optional
+from typing import Optional, Tuple
 
 
-def dochecks(usrOutDir: Optional[str] = None) -> str:
+def dochecks(
+    usrOutDir: Optional[str] = None, usrLogfile: Optional[str] = None
+) -> Tuple[str, str]:
     """
     Validate and create output directory if needed.
 
@@ -15,12 +24,14 @@ def dochecks(usrOutDir: Optional[str] = None) -> str:
     Parameters
     ----------
     usrOutDir : str, optional
-        Path to the desired output directory (default: None)
+        Path to the desired output directory (default: None).
+    usrLogfile : str, optional
+        Path to the desired log file (default: None).
 
     Returns
     -------
-    str
-        Path to the validated output directory
+    Tuple[str, str]
+        A tuple containing the path to the validated output directory and the path to the log file.
 
     Notes
     -----
@@ -33,7 +44,7 @@ def dochecks(usrOutDir: Optional[str] = None) -> str:
 
         # Create the directory if it doesn't exist
         if not os.path.isdir(absOutDir):
-            logging.info(f'Creating output directory: {absOutDir}')
+            print(f'Creating output directory: {absOutDir}')
             os.makedirs(absOutDir)
 
         # Use the specified directory
@@ -41,10 +52,27 @@ def dochecks(usrOutDir: Optional[str] = None) -> str:
     # If no output directory was specified
     else:
         # Use the current working directory
-        logging.info(f'Setting output directory: {os.getcwd()}')
+        print(f'Setting output directory: {os.getcwd()}')
         outDir = os.getcwd()
 
-    return outDir
+    # If a logfile was specified but not an output directory
+    if usrLogfile and not usrOutDir:
+        # Convert to absolute path for consistency
+        logfile_path = os.path.abspath(usrLogfile)
+    # If a logfile was specified and an output directory
+    elif usrLogfile and usrOutDir:
+        # If the logfile is not path and just a filename add logfile to outDir
+        if not os.path.dirname(usrLogfile):
+            logfile_path = os.path.join(outDir, os.path.basename(usrLogfile))
+        else:
+            logfile_path = usrLogfile
+
+    # If no logfile was specified
+    if not usrLogfile:
+        # Use the default logfile path
+        logfile_path = os.path.join(outDir, 'derip2.log')
+
+    return outDir, logfile_path
 
 
 def isfile(path: str) -> str:
@@ -58,12 +86,12 @@ def isfile(path: str) -> str:
     Parameters
     ----------
     path : str
-        Path to the file to check
+        Path to the file to check.
 
     Returns
     -------
     str
-        Absolute path to the existing file
+        Absolute path to the existing file.
 
     Raises
     ------
