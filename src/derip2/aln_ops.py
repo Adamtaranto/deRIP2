@@ -1,3 +1,12 @@
+"""
+Alignment operations for deRIP2.
+
+This module provides functions for manipulating and analyzing DNA sequence alignments,
+with a focus on detecting and correcting RIP (Repeat-Induced Point mutation) mutations.
+It includes utilities for loading alignments, tracking RIP-like mutations, building
+consensus sequences, and outputting corrected sequences in various formats.
+"""
+
 from collections import Counter, namedtuple
 from copy import deepcopy
 from io import StringIO
@@ -12,7 +21,7 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqUtils import gc_fraction
 
-from derip2.utils import isfile
+from derip2.utils.checks import isfile
 
 
 def checkUniqueID(align: MultipleSeqAlignment) -> None:
@@ -26,17 +35,17 @@ def checkUniqueID(align: MultipleSeqAlignment) -> None:
     Parameters
     ----------
     align : MultipleSeqAlignment
-        The sequence alignment to check for unique IDs
-
-    Raises
-    ------
-    SystemExit
-        If any duplicate sequence IDs are found in the alignment
+        The sequence alignment to check for unique IDs.
 
     Returns
     -------
     None
-        Function doesn't return any value if all IDs are unique
+        Function doesn't return any value if all IDs are unique.
+
+        Raises
+    ------
+    SystemExit
+        If any duplicate sequence IDs are found in the alignment.
     """
     # Extract all sequence IDs from the alignment
     rowIDs = [list(align)[x].id for x in range(align.__len__())]
@@ -65,17 +74,17 @@ def checkLen(align: MultipleSeqAlignment) -> None:
     Parameters
     ----------
     align : MultipleSeqAlignment
-        The sequence alignment to check
-
-    Raises
-    ------
-    SystemExit
-        If the alignment contains fewer than two sequences
+        The sequence alignment to check.
 
     Returns
     -------
     None
-        Function doesn't return any value if alignment length is valid
+        Function doesn't return any value if alignment length is valid.
+
+    Raises
+    ------
+    SystemExit
+        If the alignment contains fewer than two sequences.
     """
     # Check if alignment has fewer than 2 sequences
     if align.__len__() < 2:
@@ -96,22 +105,22 @@ def loadAlign(file: str, alnFormat: str = 'fasta') -> 'AlignIO.MultipleSeqAlignm
     Parameters
     ----------
     file : str
-        Path to the alignment file to be loaded
+        Path to the alignment file to be loaded.
     alnFormat : str, optional
-        Format of the alignment file (default: 'fasta')
-        Must be a format supported by Biopython's AlignIO
+        Format of the alignment file (default: 'fasta').
+        Must be a format supported by Biopython's AlignIO.
 
     Returns
     -------
     Bio.Align.MultipleSeqAlignment
-        Alignment object containing the loaded sequences
+        Alignment object containing the loaded sequences.
 
     Raises
     ------
     SystemExit
-        If alignment contains fewer than 2 sequences or contains duplicate sequence IDs
+        If alignment contains fewer than 2 sequences or contains duplicate sequence IDs.
     FileNotFoundError
-        If the specified file does not exist
+        If the specified file does not exist.
     """
     # Verify the input file exists and return its path
     path = isfile(file)
@@ -140,12 +149,12 @@ def alignSummary(align: 'AlignIO.MultipleSeqAlignment') -> None:
     Parameters
     ----------
     align : Bio.Align.MultipleSeqAlignment
-        The sequence alignment to summarize
+        The sequence alignment to summarize.
 
     Returns
     -------
     None
-        This function only logs information and doesn't return a value
+        This function only logs information and doesn't return a value.
     """
     # Log the dimensions of the alignment
     logging.info(
@@ -172,19 +181,19 @@ def checkrow(align: 'AlignIO.MultipleSeqAlignment', idx: Optional[int] = None) -
     Parameters
     ----------
     align : Bio.Align.MultipleSeqAlignment
-        The sequence alignment to check against
+        The sequence alignment to check against.
     idx : int, optional
         The row index to validate. If None, no validation is performed.
+
+    Returns
+    -------
+    None
+        Function doesn't return any value if the row index is valid.
 
     Raises
     ------
     SystemExit
         If the provided index is outside the valid range of rows in the alignment
-
-    Returns
-    -------
-    None
-        Function doesn't return any value if the row index is valid
     """
     # Check if index is provided and is outside the range of the alignment
     if idx not in range(align.__len__()):
@@ -206,14 +215,14 @@ def initTracker(align: 'AlignIO.MultipleSeqAlignment') -> dict:
     Parameters
     ----------
     align : Bio.Align.MultipleSeqAlignment
-        The input sequence alignment
+        The input sequence alignment.
 
     Returns
     -------
     dict
         Dictionary mapping column indices to namedtuples with fields:
         - idx: int, the column index
-        - base: str or None, the nucleotide base (initially None)
+        - base: str or None, the nucleotide base (initially None).
     """
     # Create empty dictionary to track consensus sequence
     tracker = {}
@@ -239,18 +248,18 @@ def initRIPCounter(align: 'AlignIO.MultipleSeqAlignment') -> Dict[int, NamedTupl
     Parameters
     ----------
     align : Bio.Align.MultipleSeqAlignment
-        The input sequence alignment
+        The input sequence alignment.
 
     Returns
     -------
     Dict[int, NamedTuple]
         Dictionary mapping row indices to namedtuples with fields:
-        - idx: int, the row index
-        - SeqID: str, the sequence identifier
-        - revRIPcount: int, counter for reverse strand RIP mutations
-        - RIPcount: int, counter for forward strand RIP mutations
-        - nonRIPcount: int, counter for non-RIP C→T or G→A mutations
-        - GC: float, GC content percentage of the sequence
+        - idx: int, the row index.
+        - SeqID: str, the sequence identifier.
+        - revRIPcount: int, counter for reverse strand RIP mutations.
+        - RIPcount: int, counter for forward strand RIP mutations.
+        - nonRIPcount: int, counter for non-RIP C→T or G→A mutations.
+        - GC: float, GC content percentage of the sequence.
     """
     # Create empty dictionary to track RIP mutations for each sequence
     RIPcounts = {}
@@ -288,19 +297,19 @@ def updateTracker(
     Parameters
     ----------
     idx : int
-        Column index to update in the alignment
+        Column index to update in the alignment.
     newChar : str
-        The new character/base to assign at this position
+        The new character/base to assign at this position.
     tracker : dict
-        Dictionary mapping column indices to namedtuples with fields idx and base
+        Dictionary mapping column indices to namedtuples with fields idx and base.
     force : bool, optional
         If True, overwrite existing base values; if False, only update if current value is None
-        (default: False)
+        (default: False).
 
     Returns
     -------
     dict
-        Updated tracker dictionary
+        Updated tracker dictionary.
     """
     # If position already has a value and force=True, overwrite it
     if tracker[idx].base and force:
@@ -336,20 +345,20 @@ def updateRIPCount(
     Parameters
     ----------
     idx : int
-        Row index of the sequence to update counters for
+        Row index of the sequence to update counters for.
     RIPtracker : Dict[int, NamedTuple]
-        Dictionary tracking RIP mutation counts for each sequence
+        Dictionary tracking RIP mutation counts for each sequence.
     addRev : int, optional
-        Number of reverse strand RIP mutations to add (default: 0)
+        Number of reverse strand RIP mutations to add (default: 0).
     addFwd : int, optional
-        Number of forward strand RIP mutations to add (default: 0)
+        Number of forward strand RIP mutations to add (default: 0).
     addNonRIP : int, optional
-        Number of non-RIP deamination events to add (default: 0)
+        Number of non-RIP deamination events to add (default: 0).
 
     Returns
     -------
     Dict[int, NamedTuple]
-        Updated RIPtracker dictionary with incremented counters
+        Updated RIPtracker dictionary with incremented counters.
     """
     # Calculate new totals by adding increments to current values
     TallyRev = RIPtracker[idx].revRIPcount + addRev  # Reverse strand RIP count
@@ -383,17 +392,17 @@ def fillConserved(
     Parameters
     ----------
     align : Bio.Align.MultipleSeqAlignment
-        The input sequence alignment to analyze
+        The input sequence alignment to analyze.
     tracker : Dict[int, NamedTuple]
-        Dictionary tracking the consensus sequence state for each column
+        Dictionary tracking the consensus sequence state for each column.
     maxGaps : float, optional
         Maximum proportion of gaps allowed in a column before considering
-        it a gap column in the consensus (default: 0.7)
+        it a gap column in the consensus (default: 0.7).
 
     Returns
     -------
     Dict[int, NamedTuple]
-        Updated tracker dictionary with bases filled in for conserved positions
+        Updated tracker dictionary with bases filled in for conserved positions.
     """
     # Create deep copy of tracker to avoid modifying the original
     tracker = deepcopy(tracker)
@@ -438,16 +447,16 @@ def nextBase(
     Parameters
     ----------
     align : Bio.Align.MultipleSeqAlignment
-        The sequence alignment to analyze
+        The sequence alignment to analyze.
     colID : int
-        Column index to check for the first base of the motif
+        Column index to check for the first base of the motif.
     motif : str
-        Dinucleotide motif (e.g., 'CA' or 'TG')
+        Dinucleotide motif (e.g., 'CA' or 'TG').
 
     Returns
     -------
     List[int]
-        List of row indices where the specified pattern was found
+        List of row indices where the specified pattern was found.
     """
     # Find all rows where colID base matches first base of motif
     # Note: Column IDs are indexed from zero
@@ -487,16 +496,16 @@ def lastBase(
     Parameters
     ----------
     align : Bio.Align.MultipleSeqAlignment
-        The sequence alignment to analyze
+        The sequence alignment to analyze.
     colID : int
-        Column index to check for the second base of the motif
+        Column index to check for the second base of the motif.
     motif : str
-        Dinucleotide motif (e.g., 'CA' or 'TG')
+        Dinucleotide motif (e.g., 'CA' or 'TG').
 
     Returns
     -------
     List[int]
-        List of row indices where the specified pattern was found
+        List of row indices where the specified pattern was found.
     """
     # Find all rows where colID base matches second base of motif
     rowsY = find(align[:, colID], motif[1])
@@ -528,14 +537,14 @@ def find(lst: List[str], a: Union[str, List[str], Set[str]]) -> List[int]:
     Parameters
     ----------
     lst : List[str]
-        List or sequence of characters to search through
+        List or sequence of characters to search through.
     a : Union[str, List[str], Set[str]]
-        Character or collection of characters to find in the list
+        Character or collection of characters to find in the list.
 
     Returns
     -------
     List[int]
-        List of indices where matching characters were found
+        List of indices where matching characters were found.
 
     Examples
     --------
@@ -558,16 +567,16 @@ def hasBoth(lst: List[str], a: str, b: str) -> bool:
     Parameters
     ----------
     lst : List[str]
-        List or sequence of characters to search through
+        List or sequence of characters to search through.
     a : str
-        First character to find
+        First character to find.
     b : str
-        Second character to find
+        Second character to find.
 
     Returns
     -------
     bool
-        True if both characters are present, False otherwise
+        True if both characters are present, False otherwise.
 
     Examples
     --------
@@ -601,18 +610,18 @@ def replaceBase(
     Parameters
     ----------
     align : Bio.Align.MultipleSeqAlignment
-        The sequence alignment to modify
+        The sequence alignment to modify.
     targetCol : int
-        Column index where bases should be replaced
+        Column index where bases should be replaced.
     targetRows : List[int]
-        List of row indices identifying sequences to modify
+        List of row indices identifying sequences to modify.
     newbase : str
-        New base character to insert (can be an IUPAC ambiguity code)
+        New base character to insert (can be an IUPAC ambiguity code).
 
     Returns
     -------
     Bio.Align.MultipleSeqAlignment
-        Modified alignment with replaced bases
+        Modified alignment with replaced bases.
     """
     # For each target row in the alignment
     for row in targetRows:
@@ -661,21 +670,21 @@ def correctRIP(
     Parameters
     ----------
     align : Bio.Align.MultipleSeqAlignment
-        The input sequence alignment to analyze
+        The input sequence alignment to analyze.
     tracker : Dict[int, NamedTuple]
-        Dictionary tracking the consensus sequence state for each column
+        Dictionary tracking the consensus sequence state for each column.
     RIPcounts : Dict[int, NamedTuple]
-        Dictionary tracking RIP mutation counts for each sequence
+        Dictionary tracking RIP mutation counts for each sequence.
     maxSNPnoise : float, optional
         Minimum proportion of positions in a column that must be C/T or G/A to be
-        considered for RIP correction (default: 0.5)
+        considered for RIP correction (default: 0.5).
     minRIPlike : float, optional
         Minimum proportion of C→T or G→A transitions that must be in a RIP-like
-        context to trigger correction (default: 0.1)
+        context to trigger correction (default: 0.1).
     reaminate : bool, optional
-        If True, also correct C→T or G→A transitions not in RIP context (default: True)
+        If True, also correct C→T or G→A transitions not in RIP context (default: True).
     mask : bool, optional
-        If True, mask corrected positions in the alignment output (default: False)
+        If True, mask corrected positions in the alignment output (default: False).
 
     Returns
     -------
@@ -683,7 +692,7 @@ def correctRIP(
         A tuple containing:
         - Updated tracker dictionary with corrected bases
         - Updated RIPcounts dictionary with observed RIP events
-        - Masked alignment (if mask=True) showing positions that were corrected
+        - Masked alignment (if mask=True) showing positions that were corrected.
     """
     # Create deep copies of input objects to avoid modifying the originals
     tracker = deepcopy(tracker)
@@ -857,12 +866,12 @@ def summarizeRIP(RIPcounts: Dict[int, NamedTuple]) -> None:
         - revRIPcount: int, reverse strand RIP mutations
         - RIPcount: int, forward strand RIP mutations
         - nonRIPcount: int, non-RIP deamination events
-        - GC: float, GC content percentage
+        - GC: float, GC content percentage.
 
     Returns
     -------
     None
-        This function only prints information to stderr and doesn't return a value
+        This function only prints information to stderr and doesn't return a value.
     """
     # Log that we're starting the RIP summary
     logging.info('Summarizing RIP')
@@ -905,18 +914,18 @@ def setRefSeq(
     Parameters
     ----------
     align : Bio.Align.MultipleSeqAlignment
-        The sequence alignment to analyze
+        The sequence alignment to analyze.
     RIPcounter : Dict[int, NamedTuple], optional
-        Dictionary tracking RIP mutation counts for each sequence (default: None)
+        Dictionary tracking RIP mutation counts for each sequence (default: None).
     getMinRIP : bool, optional
-        If True, select sequence with fewest RIP mutations (default: True)
+        If True, select sequence with fewest RIP mutations (default: True).
     getMaxGC : bool, optional
-        If True, select sequence with highest GC content regardless of RIP counts (default: False)
+        If True, select sequence with highest GC content regardless of RIP counts (default: False).
 
     Returns
     -------
     int
-        Row index of the best reference sequence
+        Row index of the best reference sequence.
     """
     # Ignore RIP sorting if getMaxGC is set
     if getMaxGC:
@@ -962,16 +971,16 @@ def fillRemainder(
     Parameters
     ----------
     align : Bio.Align.MultipleSeqAlignment
-        The sequence alignment to draw bases from
+        The sequence alignment to draw bases from.
     fromSeqID : int
-        Row index of the reference sequence to use for filling
+        Row index of the reference sequence to use for filling.
     tracker : Dict[int, NamedTuple]
-        Dictionary tracking the consensus sequence state for each column
+        Dictionary tracking the consensus sequence state for each column.
 
     Returns
     -------
     Dict[int, NamedTuple]
-        Updated tracker dictionary with all positions filled
+        Updated tracker dictionary with all positions filled.
     """
     # Log which sequence is being used as reference
     logging.info(
@@ -1005,16 +1014,16 @@ def getDERIP(
     Parameters
     ----------
     tracker : Dict[int, NamedTuple]
-        Dictionary tracking the consensus sequence state for each column
+        Dictionary tracking the consensus sequence state for each column.
     ID : str, optional
-        Identifier for the output sequence (default: 'deRIPseq')
+        Identifier for the output sequence (default: 'deRIPseq').
     deGAP : bool, optional
-        If True, remove all gap characters ('-') from the output sequence (default: True)
+        If True, remove all gap characters ('-') from the output sequence (default: True).
 
     Returns
     -------
     Bio.SeqRecord.SeqRecord
-        SeqRecord object containing the deRIPed consensus sequence
+        SeqRecord object containing the deRIPed consensus sequence.
     """
     # Join all bases in the tracker, ordering by column index
     deRIPstr = ''.join([y.base for y in sorted(tracker.values(), key=lambda x: (x[0]))])
@@ -1046,16 +1055,16 @@ def writeDERIP(
     Parameters
     ----------
     tracker : Dict[int, NamedTuple]
-        Dictionary tracking the consensus sequence state for each column
+        Dictionary tracking the consensus sequence state for each column.
     outPathFile : str
-        Path to the output FASTA file
+        Path to the output FASTA file.
     ID : str, optional
-        Identifier for the output sequence (default: 'deRIPseq')
+        Identifier for the output sequence (default: 'deRIPseq').
 
     Returns
     -------
     None
-        This function writes to a file but doesn't return a value
+        This function writes to a file but doesn't return a value.
     """
     # Generate the deRIPed sequence as a SeqRecord object (with gaps removed)
     deRIPseq = getDERIP(tracker, ID=ID, deGAP=True)
@@ -1075,14 +1084,14 @@ def writeDERIP2stdout(tracker: Dict[int, NamedTuple], ID: str = 'deRIPseq') -> N
     Parameters
     ----------
     tracker : Dict[int, NamedTuple]
-        Dictionary tracking the consensus sequence state for each column
+        Dictionary tracking the consensus sequence state for each column.
     ID : str, optional
-        Identifier for the output sequence (default: 'deRIPseq')
+        Identifier for the output sequence (default: 'deRIPseq').
 
     Returns
     -------
     None
-        This function prints to stdout but doesn't return a value
+        This function prints to stdout but doesn't return a value.
     """
     # Generate the deRIPed sequence as a SeqRecord object (with gaps removed)
     deRIPseq = getDERIP(tracker, ID=ID, deGAP=True)
@@ -1120,30 +1129,34 @@ def writeAlign(
     Parameters
     ----------
     tracker : Dict[int, NamedTuple]
-        Dictionary tracking the consensus sequence state for each column
+        Dictionary tracking the consensus sequence state for each column.
     align : Bio.Align.MultipleSeqAlignment
         The sequence alignment to write (possibly with deRIPed sequence added)
+        Note: If noappend=False, this object will be modified.
     outPathAln : str
-        Path to the output alignment file
+        Path to the output alignment file.
     ID : str, optional
-        Identifier for the deRIPed sequence (default: 'deRIPseq')
+        Identifier for the deRIPed sequence (default: 'deRIPseq').
     outAlnFormat : str, optional
-        Format for the output alignment file (default: 'fasta')
+        Format for the output alignment file (default: 'fasta').
     noappend : bool, optional
-        If True, don't append the deRIPed sequence to the alignment (default: False)
+        If True, don't append the deRIPed sequence to the alignment (default: False).
 
     Returns
     -------
     None
-        This function writes to a file but doesn't return a value
+        This function writes to a file but doesn't return a value.
     """
     # Generate the deRIPed sequence as a SeqRecord object (preserving gaps)
+    logging.debug('Generating deRIPed sequence...')
     deRIPseq = getDERIP(tracker, ID=ID, deGAP=False)
 
-    # Append the deRIPed sequence to the alignment if noappend is False
+    # Create a working copy if we're going to append to it
+    output_align = align
     if not noappend:
-        align.append(deRIPseq)
+        output_align = deepcopy(align)
+        output_align.append(deRIPseq)
 
     # Write the alignment to the specified file in the requested format
     with open(outPathAln, 'w') as f:
-        AlignIO.write(align, f, outAlnFormat)
+        AlignIO.write(output_align, f, outAlnFormat)
