@@ -246,7 +246,7 @@ def main() -> None:
 
     # ---------- RIP Correction ----------
     # Detect and correct RIP mutations, optionally mask positions
-    tracker, RIPcounts, maskedAlign = ao.correctRIP(
+    tracker, RIPcounts, maskedAlign, corrected_positions = ao.correctRIP(
         align,
         tracker,
         RIPcounts,

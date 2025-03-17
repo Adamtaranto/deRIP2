@@ -9,6 +9,8 @@ consensus sequences, and outputting corrected sequences in various formats.
 
 from collections import Counter, namedtuple
 from copy import deepcopy
+
+# import defaultdict
 from io import StringIO
 import logging
 from operator import itemgetter
@@ -436,7 +438,7 @@ def fillConserved(
 
 def nextBase(
     align: 'AlignIO.MultipleSeqAlignment', colID: int, motif: str
-) -> List[int]:
+) -> Tuple[List[int], List[int]]:
     """
     Find rows where a base is followed by a specific nucleotide in the next non-gap position.
 
@@ -455,8 +457,20 @@ def nextBase(
 
     Returns
     -------
-    List[int]
-        List of row indices where the specified pattern was found.
+    Tuple[List[int], List[int]]
+        A tuple containing:
+        - List of row indices where the specified pattern was found.
+        - List of corresponding offsets (distance to the next non-gap position).
+
+    Raises
+    ------
+    ValueError
+        If the row indices and offsets lists have different lengths.
+
+    Examples
+    --------
+    >>> rows, offsets = nextBase(alignment, 5, 'CA')
+    >>> print(f"Found CA motif at rows {rows} with offsets {offsets}")
     """
     # Find all rows where colID base matches first base of motif
     # Note: Column IDs are indexed from zero
@@ -464,28 +478,39 @@ def nextBase(
 
     # Initialize output list to store matching rows
     rowsXY = []
+    # Initialize list to store offsets for each row
+    # (distance to next non-gap position after motif base)
+    offsets = []
 
     # For each row where starting col matches first base of motif
     for rowID in rowsX:
+        offset = 0
         # Loop through all positions to the right of starting col
         # From position to immediate right of X to end of seq
         for base in align[rowID].seq[colID + 1 :]:
+            offset += 1
             # For first non-gap position encountered
             if base != '-':
                 # Check if base matches motif position two
                 if base == motif[1]:
-                    # If it is a match, add row ID to result list
+                    # If base is a match, add row ID to result list
                     rowsXY.append(rowID)
+                    # Add offset to list
+                    offsets.append(offset)
                 # If first non-gap position is not a match, end loop for this row
                 break
             # Else if position is a gap, continue to the next base
 
-    return rowsXY
+    # Check that rowsXY and offsets are the same length
+    if len(rowsXY) != len(offsets):
+        raise ValueError('Row indices and offsets are not the same length.')
+
+    return rowsXY, offsets
 
 
 def lastBase(
     align: 'AlignIO.MultipleSeqAlignment', colID: int, motif: str
-) -> List[int]:
+) -> Tuple[List[int], List[int]]:
     """
     Find rows where a base is preceded by a specific nucleotide in the previous non-gap position.
 
@@ -504,30 +529,48 @@ def lastBase(
 
     Returns
     -------
-    List[int]
-        List of row indices where the specified pattern was found.
+    Tuple[List[int], List[int]]
+        A tuple containing:
+        - List of row indices where the specified pattern was found.
+        - List of corresponding offsets (distance to the previous non-gap position).
+
+    Raises
+    ------
+    ValueError
+        If the row indices and offsets lists have different lengths.
     """
     # Find all rows where colID base matches second base of motif
     rowsY = find(align[:, colID], motif[1])
 
     # Initialize output list to store matching rows
     rowsXY = []
+    # Initialize list to store offsets for each row
+    # (distance to first non-gap position preceding motif base)
+    offsets = []
 
     # For each row where current col matches second base of motif
     for rowID in rowsY:
+        offset = 0
         # From position to immediate left of Y to beginning of seq, reversed
         for base in align[rowID].seq[colID - 1 :: -1]:
+            offset -= 1
             # For first non-gap position encountered
             if base != '-':
                 # Check if base matches motif position one
                 if base == motif[0]:
                     # If it is a match, add row ID to result list
                     rowsXY.append(rowID)
+                    # Add offset to list
+                    offsets.append(offset)
                 # If first non-gap position is not a match, end loop for this row
                 break
             # Else if position is a gap, continue to the previous base
 
-    return rowsXY
+    # Check that rowsXY and offsets are the same length
+    if len(rowsXY) != len(offsets):
+        raise ValueError('Row indices and offsets are not the same length.')
+
+    return rowsXY, offsets
 
 
 def find(lst: List[str], a: Union[str, List[str], Set[str]]) -> List[int]:
@@ -647,7 +690,10 @@ def correctRIP(
     reaminate: bool = True,
     mask: bool = False,
 ) -> Tuple[
-    Dict[int, NamedTuple], Dict[int, NamedTuple], 'AlignIO.MultipleSeqAlignment'
+    Dict[int, NamedTuple],
+    Dict[int, NamedTuple],
+    'AlignIO.MultipleSeqAlignment',
+    List[int],
 ]:
     """
     Scan alignment for RIP-like mutations and correct them in the consensus sequence.
@@ -698,10 +744,20 @@ def correctRIP(
     tracker = deepcopy(tracker)
     RIPcounts = deepcopy(RIPcounts)
     maskedAlign = deepcopy(align)
+    # Store coordinates of the substrate motif for each RIP event, key is colIdx, value is dict with key rowIdx and value is tuple with motif start and end coordinates in alignment
+    # Initialise as default dict
+    # TODO: Implement this
+    # substrate_motif_coords = defaultdict(dict)
+    # Store coordinates of the product motif for each RIP event, key is colIdx, value is dict with key rowIdx and value is tuple with motif start and end coordinates in alignment
+    # Initialise as default dict
+    # TODO: Implement this
+    # product_motif_coords = defaultdict(dict)
+    # Store colIdx for each position that was corrected in the tracker
+    corrected_positions = []
 
     # Process each column in the alignment
     for colIdx in range(align.get_alignment_length()):
-        # Track if we modify C→T or G→A in this column
+        # Track if we revert T→C or A→G in this column
         modC = False
         modG = False
 
@@ -727,10 +783,10 @@ def correctRIP(
                 and hasBoth(align[:, colIdx], 'C', 'T')
             ):
                 # Find rows where C/T is followed by A (potential RIP context)
-                TArows = nextBase(
+                TArows, _TA_nextbase_offsets = nextBase(
                     align, colIdx, motif='TA'
                 )  # T followed by A (mutated)
-                CArows = nextBase(
+                CArows, _CA_nextbase_offsets = nextBase(
                     align, colIdx, motif='CA'
                 )  # C followed by A (ancestral)
 
@@ -754,10 +810,14 @@ def correctRIP(
                     if propRIPlike >= minRIPlike:
                         tracker = updateTracker(colIdx, 'C', tracker, force=False)
                         modC = True
+                        # Log corrected position in tracker
+                        corrected_positions.append(colIdx)
                     # Otherwise correct if reaminate option is enabled
                     elif reaminate:
                         tracker = updateTracker(colIdx, 'C', tracker, force=False)
                         modC = True
+                        # Log corrected position in tracker
+                        corrected_positions.append(colIdx)
 
                 # If C and T present but not in RIP context
                 else:
@@ -765,6 +825,8 @@ def correctRIP(
                     if reaminate:
                         tracker = updateTracker(colIdx, 'C', tracker, force=False)
                         modC = True
+                        # Log corrected position in tracker
+                        corrected_positions.append(colIdx)
 
                     # Log all T's as non-RIP deamination events
                     for TnonRIP in TinCol:
@@ -778,10 +840,10 @@ def correctRIP(
                 and hasBoth(align[:, colIdx], 'G', 'A')
             ):
                 # Find rows where G/A is preceded by T (potential RIP context)
-                TGrows = lastBase(
+                TGrows, _TG_lastbase_offsets = lastBase(
                     align, colIdx, motif='TG'
                 )  # T followed by G (ancestral)
-                TArows = lastBase(
+                TArows, _TA_lastbase_offsets = lastBase(
                     align, colIdx, motif='TA'
                 )  # T followed by A (mutated)
 
@@ -805,10 +867,14 @@ def correctRIP(
                     if propRIPlike >= minRIPlike:
                         tracker = updateTracker(colIdx, 'G', tracker, force=False)
                         modG = True
+                        # Log corrected position in tracker
+                        corrected_positions.append(colIdx)
                     # Otherwise correct if reaminate option is enabled
                     elif reaminate:
                         tracker = updateTracker(colIdx, 'G', tracker, force=False)
                         modG = True
+                        # Log corrected position in tracker
+                        corrected_positions.append(colIdx)
 
                 # If G and A present but not in RIP context
                 else:
@@ -816,6 +882,8 @@ def correctRIP(
                     if reaminate:
                         tracker = updateTracker(colIdx, 'G', tracker, force=False)
                         modG = True
+                        # Log corrected position in tracker
+                        corrected_positions.append(colIdx)
 
                     # Log all A's as non-RIP deamination events
                     for AnonRIP in AinCol:
@@ -824,11 +892,12 @@ def correctRIP(
             # Apply masking for C→T corrections if requested
             if modC:
                 if reaminate:
-                    # If reaminating all C→T transitions, mask all C/T positions
-                    targetRows = CTinCol
+                    # If reaminating all C→T transitions, mask all T positions in column
+                    targetRows = find(align[:, colIdx], ['T'])
                 else:
-                    # Otherwise only mask positions in CA/TA context
-                    targetRows = TArows + CArows
+                    # Otherwise only mask 'T' positions in TpA context where C→T occurred
+                    targetRows = TArows
+                    # substrate_rows = CArows
 
                 # Replace target positions with IUPAC ambiguity code Y (C or T)
                 maskedAlign = replaceBase(maskedAlign, colIdx, targetRows, 'Y')
@@ -836,16 +905,17 @@ def correctRIP(
             # Apply masking for G→A corrections if requested
             if modG:
                 if reaminate:
-                    # If reaminating all G→A transitions, mask all G/A positions
-                    targetRows = GAinCol
+                    # If reaminating all G→A transitions, mask all positions
+                    targetRows = find(align[:, colIdx], ['A'])
                 else:
-                    # Otherwise only mask positions in TG/TA context
-                    targetRows = TArows + TGrows
+                    # Otherwise only mask 'A' positions in TpA context where G→A occurred
+                    targetRows = TArows
+                    # substrate_rows = TGrows
 
                 # Replace target positions with IUPAC ambiguity code R (G or A)
                 maskedAlign = replaceBase(maskedAlign, colIdx, targetRows, 'R')
 
-    return (tracker, RIPcounts, maskedAlign)
+    return (tracker, RIPcounts, maskedAlign, corrected_positions)
 
 
 def summarizeRIP(RIPcounts: Dict[int, NamedTuple]) -> None:
@@ -1025,6 +1095,10 @@ def getDERIP(
     Bio.SeqRecord.SeqRecord
         SeqRecord object containing the deRIPed consensus sequence.
     """
+    # Check that all positions have been filled
+    if None in [x.base for x in tracker.values()]:
+        raise ValueError('Not all positions have been filled in the tracker!')
+
     # Join all bases in the tracker, ordering by column index
     deRIPstr = ''.join([y.base for y in sorted(tracker.values(), key=lambda x: (x[0]))])
 

@@ -109,6 +109,7 @@ class DeRIP:
         self.consensus_tracker = None
         self.rip_counts = None
         self.corrected_positions = {}
+        self.colored_consensus = None
 
         # Load the alignment file
         self._load_alignment(alignment_file)
@@ -169,7 +170,7 @@ class DeRIP:
         tracker = ao.fillConserved(self.alignment, tracker, self.maxGaps)
 
         # Detect and correct RIP mutations
-        tracker, rip_counts, masked_alignment = ao.correctRIP(
+        tracker, rip_counts, masked_alignment, corrected_positions = ao.correctRIP(
             self.alignment,
             tracker,
             rip_counts,
@@ -209,6 +210,9 @@ class DeRIP:
         self.gapped_consensus = gapped_consensus
         self.consensus_tracker = tracker
         self.rip_counts = rip_counts
+
+        # Create colorized consensus
+        self._colorize_corrected_positions()
 
         # Log summary
         logging.info(
@@ -265,6 +269,49 @@ class DeRIP:
         logging.info(
             f'Identified {len(self.corrected_positions)} columns with RIP corrections'
         )
+
+    def _colorize_corrected_positions(self) -> str:
+        """
+        Create a colorized version of the gapped consensus sequence.
+
+        Bases at positions that were corrected during RIP analysis
+        are highlighted in green.
+
+        Returns
+        -------
+        str
+            Consensus sequence with corrected positions highlighted in green.
+
+        Raises
+        ------
+        ValueError
+            If calculate_rip has not been called first.
+        """
+        if self.gapped_consensus is None:
+            raise ValueError('Must call calculate_rip before colorizing consensus')
+
+        # Get the consensus sequence as a string
+        seq_str = str(self.gapped_consensus.seq)
+
+        # Convert to list for easier manipulation
+        seq_chars = list(seq_str)
+
+        # Add ANSI color codes for each corrected position
+        BOLD_GREEN = '\033[1;32m'  # 1 for bold, 32 for green
+        RESET = '\033[0m'
+
+        for pos in self.corrected_positions:
+            if 0 <= pos < len(seq_chars):
+                # Only colorize if position is in range (safety check)
+                seq_chars[pos] = f'{BOLD_GREEN}{seq_chars[pos]}{RESET}'
+
+        # Join back into string
+        colored_seq = ''.join(seq_chars)
+
+        # Store as attribute
+        self.colored_consensus = colored_seq
+
+        return colored_seq
 
     def write_alignment(
         self,
@@ -469,9 +516,13 @@ def get_derip_consensus(
         print('RIP summary by row:')
         derip_object.print_rip_summary()
 
+        # Print raw alignment
+        print(f'\nRaw alignment:\n{derip_object.alignment}')
+        print(f'{derip_object.colored_consensus} {consensus_name}\n')
+
         # Print masked alignment
         print('\nMutation masked alignment:\n', derip_object.masked_alignment)
-        print(f'{str(derip_object.gapped_consensus.seq)} {consensus_name}\n')
+        print(f'{derip_object.colored_consensus} {consensus_name}\n')
 
         # Opt1: Write output consensus to file
         derip_object.write_consensus(output_file, consensus_id=consensus_name)

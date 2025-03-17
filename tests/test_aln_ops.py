@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 
 from Bio import AlignIO
@@ -53,7 +54,7 @@ def create_rip_alignment():
     records = [
         # Ancestral sequence (no RIP)
         SeqRecord(
-            Seq('ACGTACAACGTGTAC'),
+            Seq('ACGTACAACGTGTACT--G'),
             id='ancestral',
             name='ancestral',
             description='no RIP',
@@ -61,7 +62,7 @@ def create_rip_alignment():
         # Forward strand RIP (CA→TA)
         SeqRecord(
             Seq(
-                'ACGTATAACGTGTAT'
+                'ACGTATAACGTGTATT--G'
             ),  # 6th base is mutated from C to T, 15th is C to T non-RIP deamination
             id='fwd_rip',
             name='fwd_rip',
@@ -69,14 +70,14 @@ def create_rip_alignment():
         ),
         # Reverse strand RIP (TG→TA)
         SeqRecord(
-            Seq('ACGTACAACGTATAC'),  # 12th base is mutated from G to A
+            Seq('ACGTACAACGTATACT--G'),  # 12th base is mutated from G to A
             id='rev_rip',
             name='rev_rip',
             description='reverse RIP',
         ),
         # Sequence with deamination not in RIP context
         SeqRecord(
-            Seq('ACGTACAACATGTAT'),  # 10th G to A, 15th C to T,
+            Seq('ACGTACAACATGTATT--G'),  # 10th G to A, 15th C to T,
             id='deamin',
             name='deamin',
             description='non-RIP deamination',
@@ -358,14 +359,14 @@ def test_fill_remainder(test_alignment):
 def test_next_base(rip_alignment):
     """Test nextBase function"""
     # Find CA motifs at idx position 5 (6th base is a C followed by A)
-    ca_rows = nextBase(rip_alignment, 5, 'CA')
+    ca_rows, _CA_nextbase_offsets = nextBase(rip_alignment, 5, 'CA')
     assert 0 in ca_rows  # ancestral sequence has CA at idx pos 5-6
     assert 2 in ca_rows  # rev_rip sequence has CA at idx pos 5-6
     assert 3 in ca_rows  # deamin sequence has CA at idx pos 5-6
     assert 1 not in ca_rows  # fwd_rip has TA instead at idx pos 5-6
 
     # Find TA motifs at idx position 5 (6th base is T followed by A)
-    ta_rows = nextBase(rip_alignment, 5, 'TA')
+    ta_rows, _TA_nextbase_offsets = nextBase(rip_alignment, 5, 'TA')
     assert 1 in ta_rows  # fwd_rip has TA at idx pos 5-6
     assert 0 not in ta_rows  # ancestral has CA instead at idx pos 5-6
     assert 2 not in ta_rows  # rev_rip has CA instead at idx pos 5-6
@@ -375,14 +376,20 @@ def test_next_base(rip_alignment):
 def test_last_base(rip_alignment):
     """Test lastBase function"""
     # Find TG motifs ending at idx position 11 (base is a G preceeded by a T)
-    tg_rows = lastBase(rip_alignment, 11, 'TG')
+    tg_rows, _TG_nextbase_offsets = lastBase(rip_alignment, 11, 'TG')
     assert 0 in tg_rows  # ancestral sequence has TG at pos 10-11
     assert 1 in tg_rows  # fwd_rip has TG at pos 10-11
     assert 3 in tg_rows  # deamin has TG at pos 10-11
     assert 2 not in tg_rows  # rev_rip has TA instead
 
+    # Find TG motifs ending at idx position 18 (base is a G preceeded by a T)
+    # Offset should be 18
+    tg_rows, _TG_nextbase_offsets = lastBase(rip_alignment, 18, 'TG')
+    print(tg_rows, file=sys.stderr)
+    assert -3 == _TG_nextbase_offsets[0]
+
     # Find TA motifs ending at idx position 11 (base is an A preceeded by a T)
-    ta_rows = lastBase(rip_alignment, 11, 'TA')
+    ta_rows, _TA_nextbase_offsets = lastBase(rip_alignment, 11, 'TA')
     assert 2 in ta_rows  # rev_rip has TA at in pos 10-11
     assert 0 not in ta_rows  # ancestral has TG instead
     assert 1 not in ta_rows  # fwd_rip has TG instead
@@ -424,7 +431,7 @@ def test_correct_rip(rip_alignment):
     rip_counts = initRIPCounter(rip_alignment)
 
     # Apply RIP correction
-    updated_tracker, updated_counts, masked_align = correctRIP(
+    updated_tracker, updated_counts, masked_align, _corrected_positions = correctRIP(
         rip_alignment,
         tracker,
         rip_counts,
@@ -466,7 +473,7 @@ def test_correct_rip_with_deamination(rip_alignment):
     rip_counts = initRIPCounter(rip_alignment)
 
     # Apply RIP correction
-    updated_tracker, updated_counts, masked_align = correctRIP(
+    updated_tracker, updated_counts, masked_align, _corrected_positions = correctRIP(
         rip_alignment,
         tracker,
         rip_counts,
