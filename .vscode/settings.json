@@ -1,3 +1,4 @@
 {
-    "python.defaultInterpreterPath": "${env:PYTHON_INTERPRETER}"
+    "python.defaultInterpreterPath": "${env:PYTHON_INTERPRETER}",
+    "autoDocstring.docstringFormat": "numpy"
 }
