@@ -431,14 +431,16 @@ def test_correct_rip(rip_alignment):
     rip_counts = initRIPCounter(rip_alignment)
 
     # Apply RIP correction
-    updated_tracker, updated_counts, masked_align, _corrected_positions = correctRIP(
-        rip_alignment,
-        tracker,
-        rip_counts,
-        maxSNPnoise=0.5,
-        minRIPlike=0.1,
-        reaminate=False,
-        mask=True,
+    updated_tracker, updated_counts, masked_align, _corrected_positions, _markupdict = (
+        correctRIP(
+            rip_alignment,
+            tracker,
+            rip_counts,
+            maxSNPnoise=0.5,
+            minRIPlike=0.1,
+            reaminate=False,
+            mask=True,
+        )
     )
 
     # Check forward RIP correction (CA→TA): Idx position 5 (6th base) should be corrected to C
@@ -473,14 +475,16 @@ def test_correct_rip_with_deamination(rip_alignment):
     rip_counts = initRIPCounter(rip_alignment)
 
     # Apply RIP correction
-    updated_tracker, updated_counts, masked_align, _corrected_positions = correctRIP(
-        rip_alignment,
-        tracker,
-        rip_counts,
-        maxSNPnoise=0.5,
-        minRIPlike=0.1,
-        reaminate=True,
-        mask=True,
+    updated_tracker, updated_counts, masked_align, _corrected_positions, _markupdict = (
+        correctRIP(
+            rip_alignment,
+            tracker,
+            rip_counts,
+            maxSNPnoise=0.5,
+            minRIPlike=0.1,
+            reaminate=True,
+            mask=True,
+        )
     )
 
     # 9=G, 14=C

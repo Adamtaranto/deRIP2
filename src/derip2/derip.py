@@ -57,6 +57,14 @@ class DeRIP:
         Dictionary tracking RIP mutation counts for each sequence.
     corrected_positions : Dict
         Dictionary of corrected positions {col_idx: {row_idx: {observed_base, corrected_base}}}.
+    colored_consensus : str
+        Consensus sequence with corrected positions highlighted in green.
+    colored_alignment : str
+        Alignment with corrected positions highlighted in green.
+    colored_masked_alignment : str
+        Masked alignment with RIP positions highlighted in color.
+    markupdict : Dict
+        Dictionary of markup codes for masked positions.
     """
 
     def __init__(
@@ -110,6 +118,9 @@ class DeRIP:
         self.rip_counts = None
         self.corrected_positions = {}
         self.colored_consensus = None
+        self.colored_alignment = None
+        self.colored_masked_alignment = None
+        self.markupdict = None
 
         # Load the alignment file
         self._load_alignment(alignment_file)
@@ -170,15 +181,20 @@ class DeRIP:
         tracker = ao.fillConserved(self.alignment, tracker, self.maxGaps)
 
         # Detect and correct RIP mutations
-        tracker, rip_counts, masked_alignment, corrected_positions = ao.correctRIP(
-            self.alignment,
-            tracker,
-            rip_counts,
-            maxSNPnoise=self.maxSNPnoise,
-            minRIPlike=self.minRIPlike,
-            reaminate=self.reaminate,
-            mask=True,  # Always mask so we have the masked alignment available
+        tracker, rip_counts, masked_alignment, corrected_positions, markupdict = (
+            ao.correctRIP(
+                self.alignment,
+                tracker,
+                rip_counts,
+                maxSNPnoise=self.maxSNPnoise,
+                minRIPlike=self.minRIPlike,
+                reaminate=self.reaminate,
+                mask=True,  # Always mask so we have the masked alignment available
+            )
         )
+
+        # Store the markupdict for later use in colored alignment
+        self.markupdict = markupdict
 
         # Populate corrected positions dictionary
         self._build_corrected_positions(self.alignment, masked_alignment)
@@ -213,6 +229,14 @@ class DeRIP:
 
         # Create colorized consensus
         self._colorize_corrected_positions()
+
+        # Create colorized alignment
+        self.colored_alignment = self._create_colored_alignment(self.alignment)
+
+        # Create colorized masked alignment
+        self.colored_masked_alignment = self._create_colored_alignment(
+            self.masked_alignment
+        )
 
         # Log summary
         logging.info(
@@ -312,6 +336,123 @@ class DeRIP:
         self.colored_consensus = colored_seq
 
         return colored_seq
+
+    def _create_colored_alignment(self, alignment) -> str:
+        """
+        Create a colorized version of the entire alignment.
+
+        Bases are colored according to their RIP status as defined in the markupdict:
+        - RIP products (typically T from C→T mutations) are highlighted in red
+        - RIP substrates (unmutated nucleotides in RIP context) are highlighted in blue
+        - Non-RIP deaminations are highlighted in yellow (only if reaminate=True)
+        - Target bases are bold + colored, while bases in offset range are only colored
+
+        Parameters
+        ----------
+        alignment : Bio.Align.MultipleSeqAlignment
+            The alignment to colorize. Can be either the original alignment or masked alignment.
+
+        Returns
+        -------
+        str
+            Alignment with sequences displayed with colored bases and labels.
+
+        Raises
+        ------
+        ValueError
+            If calculate_rip has not been called first.
+        """
+        if alignment is None or self.markupdict is None:
+            raise ValueError(
+                'Must call calculate_rip before creating colored alignment'
+            )
+
+        # Define ANSI color codes - separate bold+color from just color
+        RED_BOLD = '\033[1;31m'  # Bold red for target RIP products
+        BLUE_BOLD = '\033[1;34m'  # Bold blue for target RIP substrates
+        YELLOW_BOLD = '\033[1;33m'  # Bold yellow for target non-RIP deaminations
+
+        RED = '\033[0;31m'  # Red (not bold) for offset bases
+        BLUE = '\033[0;34m'  # Blue (not bold) for offset bases
+        YELLOW = '\033[0;33m'  # Orange (not bold) for offset bases
+
+        RESET = '\033[0m'
+
+        # Define color maps for each category
+        target_color_map = {
+            'rip_product': RED_BOLD,
+            'rip_substrate': BLUE_BOLD,
+            'non_rip_deamination': YELLOW_BOLD,
+        }
+
+        offset_color_map = {
+            'rip_product': RED,
+            'rip_substrate': BLUE,
+            'non_rip_deamination': YELLOW,
+        }
+
+        # Create a colored representation of each sequence in the alignment
+        lines = []
+
+        # Process each sequence in the alignment
+        for row_idx in range(len(alignment)):
+            seq = alignment[row_idx].seq
+            seq_id = alignment[row_idx].id
+
+            # Create list of characters for this sequence with their default coloring
+            colored_chars = list(str(seq))
+
+            # Process each RIP category
+            for category, positions in self.markupdict.items():
+                # Skip non_rip_deamination highlighting if reaminate is False
+                if category == 'non_rip_deamination' and not self.reaminate:
+                    continue
+
+                target_color = target_color_map[category]
+                offset_color = offset_color_map[category]
+
+                # Process each position in this category
+                for pos in positions:
+                    if (
+                        pos.rowIdx == row_idx
+                    ):  # Only apply if this position is in the current row
+                        col_idx = pos.colIdx
+                        offset = pos.offset
+
+                        # Apply bold+color formatting to the target base
+                        if 0 <= col_idx < len(colored_chars):
+                            colored_chars[col_idx] = (
+                                f'{target_color}{colored_chars[col_idx]}{RESET}'
+                            )
+
+                        # Determine range of offset positions to color (but not bold)
+                        if offset is not None:
+                            if offset > 0:
+                                # Color bases to the right (excluding target)
+                                start_col = col_idx + 1
+                                end_col = min(col_idx + offset, len(seq) - 1)
+                            else:  # offset < 0
+                                # Color bases to the left (excluding target)
+                                start_col = max(
+                                    0, col_idx + offset
+                                )  # offset is negative
+                                end_col = col_idx - 1
+
+                            # Apply color-only formatting to the offset bases
+                            for i in range(start_col, end_col + 1):
+                                if 0 <= i < len(colored_chars):
+                                    colored_chars[i] = (
+                                        f'{offset_color}{colored_chars[i]}{RESET}'
+                                    )
+
+            # Join the characters and add sequence ID
+            colored_seq = ''.join(colored_chars)
+            lines.append(f'{colored_seq} {seq_id}')
+
+        # Join all lines with newlines
+        colored_alignment = '\n'.join(lines)
+
+        return colored_alignment
 
     def write_alignment(
         self,
@@ -517,11 +658,11 @@ def get_derip_consensus(
         derip_object.print_rip_summary()
 
         # Print raw alignment
-        print(f'\nRaw alignment:\n{derip_object.alignment}')
+        print(f'\nRaw alignment:\n{derip_object.colored_alignment}')
         print(f'{derip_object.colored_consensus} {consensus_name}\n')
 
         # Print masked alignment
-        print('\nMutation masked alignment:\n', derip_object.masked_alignment)
+        print(f'\nMutation masked alignment:\n{derip_object.colored_masked_alignment}')
         print(f'{derip_object.colored_consensus} {consensus_name}\n')
 
         # Opt1: Write output consensus to file

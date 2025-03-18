@@ -25,6 +25,10 @@ from Bio.SeqUtils import gc_fraction
 
 from derip2.utils.checks import isfile
 
+RIPPosition = NamedTuple(
+    'RIPPosition', [('colIdx', int), ('rowIdx', int), ('base', str), ('offset', int)]
+)
+
 
 def checkUniqueID(align: MultipleSeqAlignment) -> None:
     """
@@ -158,18 +162,23 @@ def alignSummary(align: 'AlignIO.MultipleSeqAlignment') -> None:
     None
         This function only logs information and doesn't return a value.
     """
+
+    aln_summary_msg = []
+
     # Log the dimensions of the alignment
-    logging.info(
-        'Alignment has %s rows and %s columns.'
-        % (str(align.__len__()), str(align.get_alignment_length()))
+    aln_summary_msg.append(
+        f'\nAlignment has {align.__len__()} rows and {align.get_alignment_length()} columns.'
     )
 
     # Create a header for the row index to sequence ID mapping table
-    logging.info('Row index:\tSequence ID')
+    aln_summary_msg.append('Row\tID')
 
     # Log each sequence's index and ID as a table row
     for x in range(align.__len__()):
-        logging.info('%s:\t%s' % (str(x), str(align[x].id)))
+        aln_summary_msg.append(f'{x}:\t{align[x].id}')
+
+    # Join all messages into a single string and log it
+    logging.info('\n'.join(aln_summary_msg))
 
 
 def checkrow(align: 'AlignIO.MultipleSeqAlignment', idx: Optional[int] = None) -> None:
@@ -694,6 +703,7 @@ def correctRIP(
     Dict[int, NamedTuple],
     'AlignIO.MultipleSeqAlignment',
     List[int],
+    Dict[str, List[RIPPosition]],
 ]:
     """
     Scan alignment for RIP-like mutations and correct them in the consensus sequence.
@@ -734,26 +744,33 @@ def correctRIP(
 
     Returns
     -------
-    Tuple[Dict[int, NamedTuple], Dict[int, NamedTuple], Bio.Align.MultipleSeqAlignment]
+    Tuple[Dict[int, NamedTuple], Dict[int, NamedTuple], Bio.Align.MultipleSeqAlignment, List[int], Dict[str, List[RIPPosition]]]
         A tuple containing:
         - Updated tracker dictionary with corrected bases
         - Updated RIPcounts dictionary with observed RIP events
-        - Masked alignment (if mask=True) showing positions that were corrected.
+        - Masked alignment (if mask=True) showing positions that were corrected
+        - List of column indices that were corrected in the consensus
+        - Dictionary mapping RIP mutation categories to positions for visualization:
+          'rip_product': Positions containing RIP mutation products (e.g., T from C→T)
+          'rip_substrate': Positions containing unmutated nucleotides in RIP context
+          'non_rip_deamination': Positions with C→T or G→A outside of RIP context
     """
     # Create deep copies of input objects to avoid modifying the originals
     tracker = deepcopy(tracker)
     RIPcounts = deepcopy(RIPcounts)
     maskedAlign = deepcopy(align)
-    # Store coordinates of the substrate motif for each RIP event, key is colIdx, value is dict with key rowIdx and value is tuple with motif start and end coordinates in alignment
-    # Initialise as default dict
-    # TODO: Implement this
-    # substrate_motif_coords = defaultdict(dict)
-    # Store coordinates of the product motif for each RIP event, key is colIdx, value is dict with key rowIdx and value is tuple with motif start and end coordinates in alignment
-    # Initialise as default dict
-    # TODO: Implement this
-    # product_motif_coords = defaultdict(dict)
+
     # Store colIdx for each position that was corrected in the tracker
     corrected_positions = []
+
+    # markupdict : Dict[str, List[RIPPosition]], optional
+    #    Dictionary with RIP categories as keys and lists of position tuples as values.
+    #    Categories are 'rip_product', 'rip_substrate', and 'non_rip_deamination'.
+    #    Each position is a named tuple with (colIdx, rowIdx, offset).
+    #    i.e. RIPPosition = NamedTuple('RIPPosition', [('colIdx', int), ('rowIdx', int), ('base',str),('offset', int)])
+
+    # Initialize dictionary to store RIP categories for each position
+    markupdict = {'rip_product': [], 'rip_substrate': [], 'non_rip_deamination': []}
 
     # Process each column in the alignment
     for colIdx in range(align.get_alignment_length()):
@@ -776,118 +793,214 @@ def correctRIP(
             GAprop = len(GAinCol) / baseCount
 
             # FORWARD STRAND RIP DETECTION (C→T)
-            # Check if column has sufficient C/T content and both C and T are present
-            if (
-                CTprop >= maxSNPnoise
-                and CTprop > GAprop
-                and hasBoth(align[:, colIdx], 'C', 'T')
-            ):
-                # Find rows where C/T is followed by A (potential RIP context)
-                TArows, _TA_nextbase_offsets = nextBase(
-                    align, colIdx, motif='TA'
-                )  # T followed by A (mutated)
-                CArows, _CA_nextbase_offsets = nextBase(
-                    align, colIdx, motif='CA'
-                )  # C followed by A (ancestral)
+            # Check if column has sufficient C/T content
+            if CTprop >= maxSNPnoise:
+                # Find rows where C is followed by A (RIP substrate)
+                # Even if whole column is C, we can still have RIP substrate
+                CArows, _CA_nextbase_offsets = nextBase(align, colIdx, motif='CA')
+                # Record forward strand RIP substrate for CA rows
+                for rowCA, offset in zip(CArows, _CA_nextbase_offsets):
+                    markupdict = updateMarkupDict(
+                        'rip_substrate',
+                        markupdict,
+                        colIdx,
+                        base='C',
+                        row_idx=rowCA,
+                        offset=offset,
+                    )
+                # Check if C/T content is higher than G/A content and both C and T are present
+                if CTprop > GAprop and hasBoth(align[:, colIdx], 'C', 'T'):
+                    # Find rows where C/T is followed by A (potential RIP context)
+                    TArows, _TA_nextbase_offsets = nextBase(
+                        align, colIdx, motif='TA'
+                    )  # T followed by A (mutated)
+                    CArows, _CA_nextbase_offsets = nextBase(
+                        align, colIdx, motif='CA'
+                    )  # C followed by A (ancestral)
 
-                # Get rows with T in this column
-                TinCol = find(align[:, colIdx], ['T'])
+                    # Get rows with T in this column
+                    TinCol = find(align[:, colIdx], ['T'])
 
-                # If we have both CA and TA context (indicating RIP transition)
-                if CArows and TArows:
-                    # Calculate proportion of C/T positions in a RIP-like context
-                    propRIPlike = (len(TArows) + len(CArows)) / len(CTinCol)
+                    # If we have both CA and TA context (indicating RIP transition)
+                    if CArows and TArows:
+                        # Calculate proportion of C/T positions in a RIP-like context
+                        propRIPlike = (len(TArows) + len(CArows)) / len(CTinCol)
 
-                    # Record forward strand RIP events for TA rows
-                    for rowTA in set(TArows):
-                        RIPcounts = updateRIPCount(rowTA, RIPcounts, addFwd=1)
+                        # Record forward strand RIP substrate for CA rows
+                        for rowCA, offset in zip(CArows, _CA_nextbase_offsets):
+                            markupdict = updateMarkupDict(
+                                'rip_substrate',
+                                markupdict,
+                                colIdx,
+                                base='C',
+                                row_idx=rowCA,
+                                offset=offset,
+                            )
 
-                    # Record non-RIP deamination for T's not in TA context
-                    for TnonRIP in {x for x in TinCol if x not in TArows}:
-                        RIPcounts = updateRIPCount(TnonRIP, RIPcounts, addNonRIP=1)
+                        # Record forward strand RIP events for TA rows
+                        for rowTA in set(TArows):
+                            RIPcounts = updateRIPCount(rowTA, RIPcounts, addFwd=1)
 
-                    # If sufficient mutations are in RIP context, correct to ancestral C
-                    if propRIPlike >= minRIPlike:
-                        tracker = updateTracker(colIdx, 'C', tracker, force=False)
-                        modC = True
-                        # Log corrected position in tracker
-                        corrected_positions.append(colIdx)
-                    # Otherwise correct if reaminate option is enabled
-                    elif reaminate:
-                        tracker = updateTracker(colIdx, 'C', tracker, force=False)
-                        modC = True
-                        # Log corrected position in tracker
-                        corrected_positions.append(colIdx)
+                        for rowTA, offset in zip(TArows, _TA_nextbase_offsets):
+                            markupdict = updateMarkupDict(
+                                'rip_product',
+                                markupdict,
+                                colIdx,
+                                base='T',
+                                row_idx=rowTA,
+                                offset=offset,
+                            )
 
-                # If C and T present but not in RIP context
-                else:
-                    # If reaminate flag is on, correct to C anyway
-                    if reaminate:
-                        tracker = updateTracker(colIdx, 'C', tracker, force=False)
-                        modC = True
-                        # Log corrected position in tracker
-                        corrected_positions.append(colIdx)
+                        # Record non-RIP deamination for T's not in TA context
+                        for TnonRIP in {x for x in TinCol if x not in TArows}:
+                            RIPcounts = updateRIPCount(TnonRIP, RIPcounts, addNonRIP=1)
+                            markupdict = updateMarkupDict(
+                                'non_rip_deamination',
+                                markupdict,
+                                colIdx,
+                                base='T',
+                                row_idx=TnonRIP,
+                                offset=None,
+                            )
 
-                    # Log all T's as non-RIP deamination events
-                    for TnonRIP in TinCol:
-                        RIPcounts = updateRIPCount(TnonRIP, RIPcounts, addNonRIP=1)
+                        # If sufficient mutations are in RIP context, correct to ancestral C
+                        if propRIPlike >= minRIPlike:
+                            tracker = updateTracker(colIdx, 'C', tracker, force=False)
+                            modC = True
+                            # Log corrected position in tracker
+                            corrected_positions.append(colIdx)
+                        # Otherwise correct if reaminate option is enabled
+                        elif reaminate:
+                            tracker = updateTracker(colIdx, 'C', tracker, force=False)
+                            modC = True
+                            # Log corrected position in tracker
+                            corrected_positions.append(colIdx)
+
+                    # If C and T present but not in RIP context
+                    else:
+                        # If reaminate flag is on, correct to C anyway
+                        if reaminate:
+                            tracker = updateTracker(colIdx, 'C', tracker, force=False)
+                            modC = True
+                            # Log corrected position in tracker
+                            corrected_positions.append(colIdx)
+
+                        # Log all T's as non-RIP deamination events
+                        for TnonRIP in TinCol:
+                            RIPcounts = updateRIPCount(TnonRIP, RIPcounts, addNonRIP=1)
+                            markupdict = updateMarkupDict(
+                                'non_rip_deamination',
+                                markupdict,
+                                colIdx,
+                                base='T',
+                                row_idx=TnonRIP,
+                                offset=None,
+                            )
 
             # REVERSE STRAND RIP DETECTION (G→A)
             # Check if column has sufficient G/A content and both G and A are present
-            elif (
-                GAprop >= maxSNPnoise
-                and GAprop > CTprop
-                and hasBoth(align[:, colIdx], 'G', 'A')
-            ):
-                # Find rows where G/A is preceded by T (potential RIP context)
-                TGrows, _TG_lastbase_offsets = lastBase(
-                    align, colIdx, motif='TG'
-                )  # T followed by G (ancestral)
-                TArows, _TA_lastbase_offsets = lastBase(
-                    align, colIdx, motif='TA'
-                )  # T followed by A (mutated)
+            if GAprop >= maxSNPnoise:
+                # Find rows where G is followed by T (RIP substrate)
+                # Even if whole column is G, we can still have RIP substrate
+                TGrows, _TG_lastbase_offsets = lastBase(align, colIdx, motif='TG')
+                # Record forward strand RIP substrate for TG rows
+                for rowTG, offset in zip(TGrows, _TG_lastbase_offsets):
+                    markupdict = updateMarkupDict(
+                        'rip_substrate',
+                        markupdict,
+                        colIdx,
+                        base='G',
+                        row_idx=rowTG,
+                        offset=offset,
+                    )
+                # Check if G/A content is higher than C/T content and both G and A are present
+                if GAprop > CTprop and hasBoth(align[:, colIdx], 'G', 'A'):
+                    # Find rows where G/A is preceded by T (potential RIP context)
+                    TGrows, _TG_lastbase_offsets = lastBase(
+                        align, colIdx, motif='TG'
+                    )  # T followed by G (ancestral)
+                    TArows, _TA_lastbase_offsets = lastBase(
+                        align, colIdx, motif='TA'
+                    )  # T followed by A (mutated)
 
-                # Get rows with A in this column
-                AinCol = find(align[:, colIdx], ['A'])
+                    # Get rows with A in this column
+                    AinCol = find(align[:, colIdx], ['A'])
 
-                # If we have both TG and TA context (indicating RIP transition)
-                if TGrows and TArows:
-                    # Calculate proportion of G/A positions in a RIP-like context
-                    propRIPlike = (len(TGrows) + len(TArows)) / len(GAinCol)
+                    # If we have both TG and TA context (indicating RIP transition)
+                    if TGrows and TArows:
+                        # Calculate proportion of G/A positions in a RIP-like context
+                        propRIPlike = (len(TGrows) + len(TArows)) / len(GAinCol)
 
-                    # Record reverse strand RIP events for TA rows
-                    for rowTA in set(TArows):
-                        RIPcounts = updateRIPCount(rowTA, RIPcounts, addRev=1)
+                        # Record forward strand RIP substrate for TG rows
+                        for rowTG, offset in zip(TGrows, _TG_lastbase_offsets):
+                            markupdict = updateMarkupDict(
+                                'rip_substrate',
+                                markupdict,
+                                colIdx,
+                                base='G',
+                                row_idx=rowTG,
+                                offset=offset,
+                            )
 
-                    # Record non-RIP deamination for A's not in TA context
-                    for AnonRIP in {x for x in AinCol if x not in TArows}:
-                        RIPcounts = updateRIPCount(AnonRIP, RIPcounts, addNonRIP=1)
+                        # Record reverse strand RIP events for TA rows
+                        for rowTA in set(TArows):
+                            RIPcounts = updateRIPCount(rowTA, RIPcounts, addRev=1)
 
-                    # If sufficient mutations are in RIP context, correct to ancestral G
-                    if propRIPlike >= minRIPlike:
-                        tracker = updateTracker(colIdx, 'G', tracker, force=False)
-                        modG = True
-                        # Log corrected position in tracker
-                        corrected_positions.append(colIdx)
-                    # Otherwise correct if reaminate option is enabled
-                    elif reaminate:
-                        tracker = updateTracker(colIdx, 'G', tracker, force=False)
-                        modG = True
-                        # Log corrected position in tracker
-                        corrected_positions.append(colIdx)
+                        for rowTA, offset in zip(TArows, _TA_lastbase_offsets):
+                            markupdict = updateMarkupDict(
+                                'rip_product',
+                                markupdict,
+                                colIdx,
+                                base='A',
+                                row_idx=rowTA,
+                                offset=offset,
+                            )
 
-                # If G and A present but not in RIP context
-                else:
-                    # If reaminate flag is on, correct to G anyway
-                    if reaminate:
-                        tracker = updateTracker(colIdx, 'G', tracker, force=False)
-                        modG = True
-                        # Log corrected position in tracker
-                        corrected_positions.append(colIdx)
+                        # Record non-RIP deamination for A's not in TA context
+                        for AnonRIP in {x for x in AinCol if x not in TArows}:
+                            RIPcounts = updateRIPCount(AnonRIP, RIPcounts, addNonRIP=1)
+                            markupdict = updateMarkupDict(
+                                'non_rip_deamination',
+                                markupdict,
+                                colIdx,
+                                base='A',
+                                row_idx=AnonRIP,
+                                offset=None,
+                            )
 
-                    # Log all A's as non-RIP deamination events
-                    for AnonRIP in AinCol:
-                        RIPcounts = updateRIPCount(AnonRIP, RIPcounts, addNonRIP=1)
+                        # If sufficient mutations are in RIP context, correct to ancestral G
+                        if propRIPlike >= minRIPlike:
+                            tracker = updateTracker(colIdx, 'G', tracker, force=False)
+                            modG = True
+                            # Log corrected position in tracker
+                            corrected_positions.append(colIdx)
+                        # Otherwise correct if reaminate option is enabled
+                        elif reaminate:
+                            tracker = updateTracker(colIdx, 'G', tracker, force=False)
+                            modG = True
+                            # Log corrected position in tracker
+                            corrected_positions.append(colIdx)
+
+                    # If G and A present but not in RIP context
+                    else:
+                        # If reaminate flag is on, correct to G anyway
+                        if reaminate:
+                            tracker = updateTracker(colIdx, 'G', tracker, force=False)
+                            modG = True
+                            # Log corrected position in tracker
+                            corrected_positions.append(colIdx)
+
+                        # Log all A's as non-RIP deamination events
+                        for AnonRIP in AinCol:
+                            RIPcounts = updateRIPCount(AnonRIP, RIPcounts, addNonRIP=1)
+                            markupdict = updateMarkupDict(
+                                'non_rip_deamination',
+                                markupdict,
+                                colIdx,
+                                base='A',
+                                row_idx=AnonRIP,
+                                offset=None,
+                            )
 
             # Apply masking for C→T corrections if requested
             if modC:
@@ -915,57 +1028,119 @@ def correctRIP(
                 # Replace target positions with IUPAC ambiguity code R (G or A)
                 maskedAlign = replaceBase(maskedAlign, colIdx, targetRows, 'R')
 
-    return (tracker, RIPcounts, maskedAlign, corrected_positions)
+    return (tracker, RIPcounts, maskedAlign, corrected_positions, markupdict)
+
+
+def updateMarkupDict(
+    category: str,
+    markupdict: Dict[str, List[RIPPosition]],
+    colIdx: int,
+    base: str,
+    row_idx: int,
+    offset: int,
+) -> Dict[str, List[RIPPosition]]:
+    """
+    Update a dictionary tracking RIP mutation categories with new position data.
+
+    This function adds a new RIP position entry to the specified category in the markup
+    dictionary. Each position contains column index, row index, nucleotide base, and
+    an offset value indicating context position.
+
+    Parameters
+    ----------
+    category : str
+        Category of the RIP mutation, typically one of:
+        'rip_product' - Position containing a RIP mutation product (e.g., T from C→T)
+        'rip_substrate' - Position containing an unmutated nucleotide in RIP context
+        'non_rip_deamination' - Position with C→T or G→A outside of RIP context.
+    markupdict : Dict[str, List[RIPPosition]]
+        Dictionary containing categories as keys and lists of RIP positions as values.
+    colIdx : int
+        Column index in the alignment (0-based).
+    base : str
+        Nucleotide base at this position ('A', 'C', 'G', 'T').
+    row_idx : int
+        Row index in the alignment (0-based).
+    offset : int or None
+        Distance to contextual base that forms RIP dinucleotide context:
+        - Positive value: offset positions to the right
+        - Negative value: offset positions to the left
+        - None: no specific dinucleotide context.
+
+    Returns
+    -------
+    Dict[str, List[RIPPosition]]
+        Updated markup dictionary with the new position added to the specified category.
+
+    Notes
+    -----
+    The function creates a new RIPPosition namedtuple and appends it to the
+    list in markupdict under the specified category.
+
+    This markup can be used for visualization highlighting of RIP patterns in
+    the alignment.
+
+    Examples
+    --------
+    >>> markupdict = {'rip_product': [], 'rip_substrate': [], 'non_rip_deamination': []}
+    >>> markupdict = updateMarkupDict('rip_product', markupdict, colIdx=15, base='T',
+    ...                               row_idx=3, offset=1)
+    """
+    # Create new namedtuple with position data
+    newpos = RIPPosition(colIdx=colIdx, rowIdx=row_idx, base=base, offset=offset)
+
+    # Append new position to the specified category in the markup dictionary
+    markupdict[category].append(newpos)
+
+    return markupdict
 
 
 def summarizeRIP(RIPcounts: Dict[int, NamedTuple]) -> None:
     """
     Print a summary of RIP mutation counts and GC content for each sequence.
 
-    This function generates a tabular report showing the frequency of RIP-like
-    mutations detected in each sequence of the alignment, along with their GC content.
-    The report is printed to standard error (stderr).
+    This function generates a well-formatted tabular report showing the frequency
+    of RIP-like mutations detected in each sequence of the alignment, along with
+    their GC content. The report is printed to standard error (stderr).
 
     Parameters
     ----------
     RIPcounts : Dict[int, NamedTuple]
-        Dictionary tracking RIP mutation counts for each sequence, where keys are
-        row indices and values are namedtuples with fields:
-        - idx: int, row index
-        - SeqID: str, sequence identifier
-        - revRIPcount: int, reverse strand RIP mutations
-        - RIPcount: int, forward strand RIP mutations
-        - nonRIPcount: int, non-RIP deamination events
-        - GC: float, GC content percentage.
+        Dictionary tracking RIP mutation counts for each sequence.
 
     Returns
     -------
     None
         This function only prints information to stderr and doesn't return a value.
     """
-    # Log that we're starting the RIP summary
+    import pandas as pd
+    from io import StringIO
+
     logging.info('Summarizing RIP')
 
-    # Print header for summary table to stderr
-    print('Index:\tID\tRIP\tNon-RIP-deamination\tGC', file=sys.stderr)
-
-    # Process each sequence in the RIP counter
+    # Create data for pandas DataFrame
+    data = []
     for x in range(len(RIPcounts)):
-        # Calculate total RIP mutations (forward + reverse strand)
         total_rip = RIPcounts[x].revRIPcount + RIPcounts[x].RIPcount
-
-        # Print row with sequence info and mutation counts to stderr
-        print(
-            '%s:\t%s\t%s\t%s\t%s'
-            % (
-                str(RIPcounts[x].idx),  # Sequence index
-                str(RIPcounts[x].SeqID),  # Sequence ID
-                str(total_rip),  # Total RIP mutations
-                str(RIPcounts[x].nonRIPcount),  # Non-RIP deamination events
-                str(round(RIPcounts[x].GC, 2)),  # GC content (2 decimal places)
-            ),
-            file=sys.stderr,
+        data.append(
+            {
+                'Index': RIPcounts[x].idx,
+                'ID': RIPcounts[x].SeqID,
+                'RIP events': total_rip,
+                'Non-RIP-deamination': RIPcounts[x].nonRIPcount,
+                'GC %': round(RIPcounts[x].GC, 2),
+            }
         )
+
+    # Create DataFrame and format it
+    df = pd.DataFrame(data)
+
+    # Use StringIO to capture formatted output
+    buffer = StringIO()
+    df.to_string(buffer, index=False)
+
+    # Print to stderr
+    print(buffer.getvalue(), file=sys.stderr)
 
 
 def setRefSeq(
@@ -1008,11 +1183,17 @@ def setRefSeq(
         refIdx = sorted(
             RIPcounter.values(), key=lambda x: (x.RIPcount + x.revRIPcount, -x.GC)
         )[0].idx
+        logging.info(
+            f'Selecting reference sequence with fewest RIP mutations: {refIdx}: {align[refIdx].id}'
+        )
 
     # Case 2: Use RIP counter but select based on GC content
     elif RIPcounter:
         # Select row with highest GC content
         refIdx = sorted(RIPcounter.values(), key=lambda x: (-x.GC))[0].idx
+        logging.info(
+            f'Selecting reference sequence with highest GC content: {refIdx}: {align[refIdx].id}'
+        )
 
     # Case 3: No RIP counter provided, select based on GC content
     else:
@@ -1023,7 +1204,9 @@ def setRefSeq(
 
         # Select sequence with highest GC content
         refIdx = sorted(GClist, key=lambda x: (-x[1]))[0][0]
-
+        logging.info(
+            f'No RIP data available, selecting reference sequence with highest GC content: {refIdx}: {align[refIdx].id}'
+        )
     return refIdx
 
 
