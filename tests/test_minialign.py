@@ -67,9 +67,9 @@ def complex_fasta_file():
 def rip_positions():
     """Create sample RIP positions for markup."""
     return {
-        'rip_product': [RIPPosition(1, 0, 0), RIPPosition(2, 1, 2)],
-        'rip_substrate': [RIPPosition(3, 2, -1)],
-        'non_rip_deamination': [RIPPosition(4, 0, 0)],
+        'rip_product': [RIPPosition(1, 0, 'T', 0), RIPPosition(2, 1, 'T', 2)],
+        'rip_substrate': [RIPPosition(3, 2, 'G', -1)],
+        'non_rip_deamination': [RIPPosition(4, 0, 'T', 0)],
     }
 
 
@@ -332,9 +332,9 @@ def test_markupRIPBases():
     mock_ax.get_xlim.return_value = [0, 10]
 
     markupdict = {
-        'rip_product': [RIPPosition(1, 0, 0)],
-        'rip_substrate': [RIPPosition(2, 1, 0)],
-        'non_rip_deamination': [RIPPosition(3, 2, 0)],
+        'rip_product': [RIPPosition(1, 0, 'T', 1)],
+        'rip_substrate': [RIPPosition(2, 1, 'C', 1)],
+        'non_rip_deamination': [RIPPosition(3, 2, 'A', 0)],
     }
 
     ali_height = 3
@@ -351,8 +351,12 @@ def test_markupRIPBases_with_offsets():
     mock_ax.get_xlim.return_value = [0, 10]
 
     markupdict = {
-        'rip_product': [RIPPosition(5, 0, -2)],  # Highlight 2 positions to the left
-        'rip_substrate': [RIPPosition(5, 1, 3)],  # Highlight 3 positions to the right
+        'rip_product': [
+            RIPPosition(5, 0, 'A', -2)
+        ],  # Highlight 2 positions to the left
+        'rip_substrate': [
+            RIPPosition(5, 1, 'C', 3)
+        ],  # Highlight 3 positions to the right
     }
 
     ali_height = 3
@@ -367,7 +371,7 @@ def test_markupRIPBases_unknown_category():
     mock_ax = MagicMock()
     mock_ax.get_xlim.return_value = [0, 10]
 
-    markupdict = {'unknown_category': [RIPPosition(1, 0, 0)]}
+    markupdict = {'unknown_category': [RIPPosition(1, 0, 'A', 0)]}
 
     ali_height = 3
 

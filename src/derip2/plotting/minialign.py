@@ -17,7 +17,7 @@ import numpy as np
 matplotlib.use('Agg')  # Use non-interactive backend for server environments
 
 RIPPosition = NamedTuple(
-    'RIPPosition', [('colIdx', int), ('rowIdx', int), ('offset', int)]
+    'RIPPosition', [('colIdx', int), ('rowIdx', int), ('base', str), ('offset', int)]
 )
 
 
@@ -225,7 +225,7 @@ def drawMiniAlignment(
     markupdict : Dict[str, List[RIPPosition]], optional
         Dictionary with RIP categories as keys and lists of position tuples as values.
         Categories are 'rip_product', 'rip_substrate', and 'non_rip_deamination'.
-        Each position is a named tuple with (colIdx, rowIdx, offset).
+        Each position is a named tuple with (colIdx, rowIdx, base, offset).
     column_ranges : List[Tuple[int, int, str, str]], optional
         List of column ranges to mark, each as (start_col, end_col, color, label).
 
@@ -419,7 +419,7 @@ def markupRIPBases(
         )  # Default to grey if category not recognized
 
         for pos in positions:
-            col_idx, row_idx, offset = pos
+            col_idx, row_idx, base, offset = pos
 
             # Convert row index to matplotlib coordinates (flipped)
             y = ali_height - row_idx - 1
