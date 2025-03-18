@@ -125,6 +125,42 @@ class DeRIP:
         # Load the alignment file
         self._load_alignment(alignment_file)
 
+    def __str__(self) -> str:
+        """
+        String representation of the DeRIP object.
+
+        Returns a formatted string representing the current state of the object.
+        If calculate_rip() has been called, returns the colored alignment and
+        colored consensus sequence. Otherwise, returns the basic alignment.
+
+        Returns
+        -------
+        str
+            Formatted string representation of the DeRIP object
+        """
+        # Check if calculate_rip() has been called by checking if colored_alignment exists
+        if self.colored_alignment is not None and self.colored_consensus is not None:
+            # Calculate_rip has been called, show colored alignment and consensus
+            consensus_id = self.consensus.id if self.consensus else 'deRIPseq'
+            rows = len(self.alignment)
+            cols = self.alignment.get_alignment_length()
+            header = f'DeRIP alignment with {rows} rows and {cols} columns:'
+            return f'{header}\n{self.colored_alignment}\n{self.colored_consensus} {consensus_id}'
+        elif self.alignment is not None:
+            # calculate_rip has not been called yet, show basic alignment
+            rows = []
+            rows_count = len(self.alignment)
+            cols_count = self.alignment.get_alignment_length()
+            header = f'DeRIP alignment with {rows_count} rows and {cols_count} columns:'
+            rows.append(header)
+
+            for seq_record in self.alignment:
+                rows.append(f'{seq_record.seq} {seq_record.id}')
+            return '\n'.join(rows)
+        else:
+            # No alignment loaded
+            return 'DeRIP object (no alignment loaded)'
+
     def _load_alignment(self, alignment_file: str) -> None:
         """
         Load and validate the alignment file.
@@ -645,21 +681,21 @@ def get_derip_consensus(
             fillindex=fillindex,
             fillmaxgc=fillmaxgc,
         )
+
         # Calculate RIP mutations
         derip_object.calculate_rip(label=consensus_name)
 
         # Access corrected positions
         print(
-            f'DeRIP2 found {len(derip_object.corrected_positions)} columns to be repaired.\n'
+            f'\nDeRIP2 found {len(derip_object.corrected_positions)} columns to be repaired.\n'
         )
 
         # Print RIP summary
         print('RIP summary by row:')
         derip_object.print_rip_summary()
 
-        # Print raw alignment
-        print(f'\nRaw alignment:\n{derip_object.colored_alignment}')
-        print(f'{derip_object.colored_consensus} {consensus_name}\n')
+        # Print colourized alignment + consensus
+        print(f'\n{derip_object}')
 
         # Print masked alignment
         print(f'\nMutation masked alignment:\n{derip_object.colored_masked_alignment}')
