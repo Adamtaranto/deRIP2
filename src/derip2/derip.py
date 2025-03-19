@@ -7,10 +7,10 @@ Repeat-Induced Point (RIP) mutations in fungal DNA alignments.
 
 import logging
 from os import path
-from typing import Optional
+from typing import List, Optional, Tuple
 
-import click
 from Bio.Align import MultipleSeqAlignment
+import click
 
 import derip2.aln_ops as ao
 
@@ -248,6 +248,8 @@ class DeRIP:
                 getMinRIP=not self.fillmaxgc,  # Use sequence with fewest RIPs if not filling with max GC
                 getMaxGC=self.fillmaxgc,
             )
+            # Set fillindex to the selected reference sequence ID
+            self.fillindex = ref_id
 
         # Fill remaining positions from selected reference sequence
         tracker = ao.fillRemainder(self.alignment, ref_id, tracker)
@@ -609,6 +611,98 @@ class DeRIP:
 
         ao.summarizeRIP(self.rip_counts)
 
+    def plot_alignment(
+        self,
+        output_file: str,
+        dpi: int = 300,
+        title: Optional[str] = None,
+        width: int = 20,
+        height: int = 15,
+        show_chars: bool = False,
+        column_ranges: Optional[List[Tuple[int, int, str, str]]] = None,
+        show_rip: str = 'both',
+        **kwargs,
+    ) -> str:
+        """
+        Generate a visualization of the alignment with RIP mutations highlighted.
+
+        This method creates a PNG image showing the aligned sequences with color-coded
+        highlighting of RIP mutations and corrections. It displays the consensus sequence
+        below the alignment with asterisks marking corrected positions.
+
+        Parameters
+        ----------
+        output_file : str
+            Path to save the output image file.
+        dpi : int, optional
+            Resolution of the output image in dots per inch (default: 300).
+        title : str, optional
+            Title to display on the image (default: None).
+        width : int, optional
+            Width of the output image in inches (default: 20).
+        height : int, optional
+            Height of the output image in inches (default: 15).
+        show_chars : bool, optional
+            Whether to display sequence characters inside the colored cells (default: False).
+        column_ranges : List[Tuple[int, int, str, str]], optional
+            List of column ranges to mark, each as (start_col, end_col, color, label) (default: None).
+        show_rip : str, optional
+            Which RIP markup categories to include: 'substrate', 'product', or 'both' (default: 'both').
+        **kwargs
+            Additional keyword arguments to pass to drawMiniAlignment function.
+
+        Returns
+        -------
+        str
+            Path to the output image file.
+
+        Raises
+        ------
+        ValueError
+            If calculate_rip has not been called first.
+
+        Notes
+        -----
+        The visualization uses different colors to distinguish RIP-related mutations:
+        - Red: RIP products (typically T from C→T mutations)
+        - Blue: RIP substrates (unmutated nucleotides in RIP context)
+        - Yellow: Non-RIP deaminations (only if reaminate=True)
+        - Target bases are displayed in black text, while surrounding context is in grey text
+        """
+        # Check if calculate_rip has been run
+        if self.markupdict is None or self.consensus is None:
+            raise ValueError('Must call calculate_rip before plotting alignment')
+
+        # Import minialign here to avoid circular imports
+        from derip2.plotting.minialign import drawMiniAlignment
+
+        # Extract column indices of corrected positions for marking with asterisks
+        corrected_pos = (
+            list(self.corrected_positions.keys()) if self.corrected_positions else []
+        )
+
+        # Call drawMiniAlignment with the alignment object and parameters from this object and user inputs
+        result = drawMiniAlignment(
+            alignment=self.alignment,
+            outfile=output_file,
+            dpi=dpi,
+            title=title,
+            width=width,
+            height=height,
+            markupdict=self.markupdict,
+            column_ranges=column_ranges,
+            show_chars=show_chars,
+            consensus_seq=str(self.consensus.seq),
+            corrected_positions=corrected_pos,
+            reaminate=self.reaminate,
+            reference_seq_index=self.fillindex,
+            show_rip=show_rip,
+            **kwargs,  # Pass any additional customization options
+        )
+
+        logging.info(f'Alignment visualization saved to {output_file}')
+        return result
+
 
 def get_derip_consensus(
     input_file: str,
@@ -707,6 +801,8 @@ def get_derip_consensus(
         # Opt2: Write original alignment with appened deRIP'd sequence to output file
         # derip_object.write_alignment(output_file, append_consensus=True, mask_rip=False)
 
+        # Opt3: Write alignment plot to file
+        # derip_object.plot_alignment(output_file.replace('.fa', '.png'), show_chars=True, title='DeRIP2 alignment')
     else:
         raise FileNotFoundError(f"The file '{input_file}' does not exist.")
 
