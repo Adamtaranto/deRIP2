@@ -175,6 +175,12 @@ def mainArgs() -> argparse.Namespace:
         default=None,
         help='Log file path.',
     )
+    parser.add_argument(
+        '--plot',
+        type=str,
+        default=None,
+        help='Create a visualization of the alignment with RIP markup.',
+    )
 
     # Add terminal UI support
     add_tui_argument(parser, option_strings=['--tui'])
@@ -310,6 +316,52 @@ def main() -> None:
             outAlnFormat=args.outAlnFormat,
             noappend=args.noappend,
         )
+
+        # Create minialign graphic highlighting RIP/deamination events
+        # if markupdict is not empty
+        if args.plot:
+            from derip2.plotting.minialign import drawMiniAlignment
+
+            # Determine output file path for the visualization
+            viz_basename = path.basename(args.plot)
+            viz_outpath = path.join(outDir, viz_basename)
+
+            logging.info(
+                f'Creating alignment visualization with RIP markup at: {viz_outpath}'
+            )
+
+            # Get consensus sequence if available
+            consensus_str = None
+            if tracker:
+                # If we have a consensus sequence, get it as a string
+                if not args.noappend:
+                    consensus_str = str(
+                        ao.getDERIP(tracker, ID=args.label, deGAP=False).seq
+                    )
+
+            # Determine height of alignment for visualization
+            ali_height = len(outputAlign)
+
+            # Draw the alignment with RIP markup
+            viz_result = drawMiniAlignment(
+                alignment=align,
+                outfile=viz_outpath,
+                title=f'DeRIP2 Alignment: {path.basename(args.inAln).split(".")[0]}',
+                markupdict=markupdict,
+                show_chars=(
+                    ali_height <= 25
+                ),  # Show characters only for small alignments
+                consensus_seq=consensus_str,
+                corrected_positions=corrected_positions,
+                reaminate=args.reaminate,
+                show_rip='both',
+                reference_seq_index=refID,
+            )
+
+            if viz_result:
+                logging.info(f'RIP visualization created at: {viz_outpath}')
+            else:
+                logging.warning('Failed to create RIP visualization')
 
 
 if __name__ == '__main__':
