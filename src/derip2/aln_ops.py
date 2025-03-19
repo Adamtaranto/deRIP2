@@ -860,7 +860,7 @@ def correctRIP(
                                 colIdx,
                                 base='T',
                                 row_idx=TnonRIP,
-                                offset=None,
+                                offset=0,
                             )
 
                         # If sufficient mutations are in RIP context, correct to ancestral C
@@ -894,7 +894,7 @@ def correctRIP(
                                 colIdx,
                                 base='T',
                                 row_idx=TnonRIP,
-                                offset=None,
+                                offset=0,
                             )
 
             # REVERSE STRAND RIP DETECTION (G→A)
@@ -965,7 +965,7 @@ def correctRIP(
                                 colIdx,
                                 base='A',
                                 row_idx=AnonRIP,
-                                offset=None,
+                                offset=0,
                             )
 
                         # If sufficient mutations are in RIP context, correct to ancestral G
@@ -999,7 +999,7 @@ def correctRIP(
                                 colIdx,
                                 base='A',
                                 row_idx=AnonRIP,
-                                offset=None,
+                                offset=0,
                             )
 
             # Apply masking for C→T corrections if requested
@@ -1089,8 +1089,10 @@ def updateMarkupDict(
     # Create new namedtuple with position data
     newpos = RIPPosition(colIdx=colIdx, rowIdx=row_idx, base=base, offset=offset)
 
-    # Append new position to the specified category in the markup dictionary
-    markupdict[category].append(newpos)
+    # Check if this position already exists in the list
+    if newpos not in markupdict[category]:
+        # Only append if it's not already in the list
+        markupdict[category].append(newpos)
 
     return markupdict
 
@@ -1113,8 +1115,9 @@ def summarizeRIP(RIPcounts: Dict[int, NamedTuple]) -> None:
     None
         This function only prints information to stderr and doesn't return a value.
     """
-    import pandas as pd
     from io import StringIO
+
+    import pandas as pd
 
     logging.info('Summarizing RIP')
 
