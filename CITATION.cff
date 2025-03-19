@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "deRIP2"
+version: 0.1.0
+date-released: 2025-03-17
+authors:
+  - family-names: Taranto
+    given-names: Adam
+    orcid: https://orcid.org/0000-0003-4759-3475
+    affiliation: "The University of Melbourne"
+repository-code: "https://github.com/Adamtaranto/derip2"
+license: MIT
+abstract: >-
+  deRIP2 analyzes DNA sequence alignments to detect and correct
+  Repeat-Induced Point mutations (RIP) in fungal genomes. The tool
+  identifies C→T transitions in RIP context and reconstructs the
+  ancestral (pre-RIP) sequence, providing visualizations of the
+  corrected mutations.
+keywords:
+  - genomics
+  - fungi
+  - repeat-induced-point-mutation
+  - RIP
+  - bioinformatics
+preferred-citation:
+  type: software
+  authors:
+    - family-names: Taranto
+      given-names: Adam
+      orcid: https://orcid.org/0000-0003-4759-3475
+      affiliation: "The University of Melbourne"
+  title: "deRIP2: A tool for detecting and correcting RIP mutations in fungal DNA sequences"
+  year: 2025
+  url: "https://github.com/Adamtaranto/derip2"
+  repository-code: "https://github.com/Adamtaranto/derip2"
+  # doi: TBA
