@@ -1,7 +1,7 @@
-import argparse
 import os
 import tempfile
-from unittest.mock import patch
+
+from click.testing import CliRunner
 
 # Import the main function
 from derip2.app import main
@@ -12,58 +12,63 @@ def test_main_function():
 
     # Create temp directory for output
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Define output filenames
-        output_fasta = 'derip_output.fa'
-        output_aln = 'derip_alignment.fa'
+        # Set up the Click test runner
+        runner = CliRunner()
 
-        # Create a mock argparse.Namespace object with all required arguments
-        # This simulates what mainArgs() would return
-        mock_args = argparse.Namespace(
-            inAln='tests/data/mintest.fa',  # Path to our test file
-            format='fasta',
-            maxGaps=0.7,
-            reaminate=True,
-            maxSNPnoise=0.5,
-            minRIPlike=0.1,
-            fillindex=None,
-            fillmaxgc=False,
-            mask=True,
-            noappend=False,
-            outDir=temp_dir,
-            outFasta=output_fasta,
-            outAln=output_aln,
-            outAlnFormat='fasta',
-            label='TestDeRIP',
-            loglevel='INFO',
-            logfile=None,
-            # New parameters for visualization
-            plot=None,  # No visualization by default
-            plot_rip_type='both',  # Default value for RIP type display
-            # Additional parameters used internally
-            flag_corrected=True,  # Flag corrected positions in visualization
-            highlight_corrected=False,  # Don't highlight only corrected positions
+        # Define test parameters
+        prefix = 'TestDeRIP'
+
+        # Run the command using the Click test runner
+        result = runner.invoke(
+            main,
+            [
+                '-i',
+                'tests/data/mintest.fa',
+                '--format',
+                'fasta',
+                '--max-gaps',
+                '0.7',
+                '--reaminate',
+                '--max-snp-noise',
+                '0.5',
+                '--min-rip-like',
+                '0.1',
+                '--mask',
+                '--out-dir',
+                temp_dir,
+                '--prefix',
+                prefix,
+                '--loglevel',
+                'INFO',
+            ],
         )
 
-        # Patch mainArgs to return our mock_args
-        with patch('derip2.app.mainArgs', return_value=mock_args):
-            # Run the main function
-            main()
+        # Check that command completed successfully
+        assert result.exit_code == 0, f'Command failed with output: {result.output}'
 
-            # Check that output files were created
-            assert os.path.exists(os.path.join(temp_dir, output_fasta))
-            assert os.path.exists(os.path.join(temp_dir, output_aln))
+        # Check that output files were created with standardized names
+        output_fasta = os.path.join(temp_dir, f'{prefix}.fasta')
+        output_aln = os.path.join(temp_dir, f'{prefix}_masked_alignment.fasta')
 
-            # Check content of output FASTA file
-            with open(os.path.join(temp_dir, output_fasta), 'r') as f:
-                content = f.read()
-                assert '>TestDeRIP' in content
-                # Further content checks can be added
+        # Verify files exist
+        assert os.path.exists(output_fasta), (
+            f'Output FASTA file not found: {output_fasta}'
+        )
+        assert os.path.exists(output_aln), (
+            f'Output alignment file not found: {output_aln}'
+        )
 
-            # Check that alignment file has correct format and includes deRIPed sequence
-            with open(os.path.join(temp_dir, output_aln), 'r') as f:
-                content = f.read()
-                assert '>TestDeRIP' in content
-                assert '>Seq1' in content
+        # Check content of output FASTA file
+        with open(output_fasta, 'r') as f:
+            content = f.read()
+            assert f'>{prefix}' in content
+            # Further content checks can be added
+
+        # Check that alignment file has correct format and includes deRIPed sequence
+        with open(output_aln, 'r') as f:
+            content = f.read()
+            assert f'>{prefix}' in content
+            assert '>Seq1' in content
 
 
 def test_main_function_with_visualization():
@@ -71,44 +76,101 @@ def test_main_function_with_visualization():
 
     # Create temp directory for output
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Define output filenames
-        output_fasta = 'derip_output.fa'
-        output_aln = 'derip_alignment.fa'
-        output_viz = 'alignment_viz.png'
+        # Set up the Click test runner
+        runner = CliRunner()
 
-        # Create a mock argparse.Namespace object with visualization enabled
-        mock_args = argparse.Namespace(
-            inAln='tests/data/mintest.fa',
-            format='fasta',
-            maxGaps=0.7,
-            reaminate=True,
-            maxSNPnoise=0.5,
-            minRIPlike=0.1,
-            fillindex=None,
-            fillmaxgc=False,
-            mask=True,
-            noappend=False,
-            outDir=temp_dir,
-            outFasta=output_fasta,
-            outAln=output_aln,
-            outAlnFormat='fasta',
-            label='TestDeRIP',
-            loglevel='INFO',
-            logfile=None,
-            # Enable visualization
-            plot=output_viz,
-            plot_rip_type='both',
-            # Additional parameters
-            flag_corrected=True,
-            highlight_corrected=False,
+        # Define test parameters
+        prefix = 'TestDeRIP'
+
+        # Run the command using the Click test runner with plot option enabled
+        result = runner.invoke(
+            main,
+            [
+                '-i',
+                'tests/data/mintest.fa',
+                '--format',
+                'fasta',
+                '--max-gaps',
+                '0.7',
+                '--reaminate',
+                '--max-snp-noise',
+                '0.5',
+                '--min-rip-like',
+                '0.1',
+                '--mask',
+                '--out-dir',
+                temp_dir,
+                '--prefix',
+                prefix,
+                '--plot',
+                '--plot-rip-type',
+                'both',
+                '--loglevel',
+                'INFO',
+            ],
         )
 
-        # Patch mainArgs to return our mock_args
-        with patch('derip2.app.mainArgs', return_value=mock_args):
-            # Run the main function
-            main()
+        # Check that command completed successfully
+        assert result.exit_code == 0, f'Command failed with output: {result.output}'
 
-            # Check that all output files were created
-            assert os.path.exists(os.path.join(temp_dir, output_fasta))
-            assert os.path.exists(os.path.join(temp_dir, output_aln))
-            assert os.path.exists(os.path.join(temp_dir, output_viz))
+        # Check that output files were created with standardized names
+        output_fasta = os.path.join(temp_dir, f'{prefix}.fasta')
+        output_aln = os.path.join(temp_dir, f'{prefix}_masked_alignment.fasta')
+        output_viz = os.path.join(temp_dir, f'{prefix}_visualization.png')
+
+        # Verify files exist
+        assert os.path.exists(output_fasta), (
+            f'Output FASTA file not found: {output_fasta}'
+        )
+        assert os.path.exists(output_aln), (
+            f'Output alignment file not found: {output_aln}'
+        )
+        assert os.path.exists(output_viz), f'Visualization file not found: {output_viz}'
+
+
+def test_noappend_option():
+    """Test that the --no-append option works correctly."""
+
+    # Create temp directory for output
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Set up the Click test runner
+        runner = CliRunner()
+
+        # Define test parameters
+        prefix = 'TestDeRIP'
+
+        # Run the command with --no-append flag
+        result = runner.invoke(
+            main,
+            [
+                '-i',
+                'tests/data/mintest.fa',
+                '--format',
+                'fasta',
+                '--no-append',
+                '--out-dir',
+                temp_dir,
+                '--prefix',
+                prefix,
+                '--loglevel',
+                'INFO',
+            ],
+        )
+
+        # Check that command completed successfully
+        assert result.exit_code == 0, f'Command failed with output: {result.output}'
+
+        # Check the alignment file
+        output_aln = os.path.join(temp_dir, f'{prefix}_alignment.fasta')
+
+        # Verify file exists
+        assert os.path.exists(output_aln), (
+            f'Output alignment file not found: {output_aln}'
+        )
+
+        # Check that alignment file does NOT include the deRIPed sequence
+        with open(output_aln, 'r') as f:
+            content = f.read()
+            assert f'>{prefix}' not in content, (
+                'DeRIP sequence found in alignment despite --no-append flag'
+            )

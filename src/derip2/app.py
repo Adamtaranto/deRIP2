@@ -16,183 +16,152 @@ improved RIP-correction across large repeat families in which members are
 independently RIP'd.
 """
 
-import argparse
 import logging
 from os import path
 import sys
 
+import click
+
 from derip2._version import __version__
 import derip2.aln_ops as ao
+from derip2.derip import DeRIP
 from derip2.utils.checks import dochecks
 from derip2.utils.logs import colored, init_logging
 
 
-def mainArgs() -> argparse.Namespace:
-    """
-    Parse command line arguments for deRIP2.
-
-    This function sets up the command line interface for deRIP2, defining all available
-    options and their default values. The function handles input alignment options,
-    RIP correction parameters, reference sequence selection, output formatting, and
-    file writing options.
-
-    Returns
-    -------
-    argparse.Namespace
-        Parsed command line arguments.
-    """
-    # Create main parser with program description
-    parser = argparse.ArgumentParser(
-        description='Predict ancestral sequence of fungal repeat elements by correcting for RIP-like mutations or cytosine deamination in multi-sequence DNA alignments. Optionally, mask corrected positions in alignment.',
-        prog='derip2',
-    )
-
-    # General program options
-    parser.add_argument(
-        '--version',
-        action='version',
-        version='%(prog)s {version}'.format(version=__version__),
-    )
-    # Input options
-    parser.add_argument(
-        '-i',
-        '--inAln',
-        required=True,
-        type=str,
-        default=None,
-        help='Multiple sequence alignment.',
-    )
-    parser.add_argument(
-        '--format',
-        default='fasta',
-        choices=[
-            'clustal',
-            'emboss',
-            'fasta',
-            'nexus',
-            'stockholm',
-        ],
-        help='Format of input alignment. Default: fasta',
-    )
-
-    # Algorithm parameters
-    parser.add_argument(
-        '-g',
-        '--maxGaps',
-        type=float,
-        default=0.7,
-        help='Maximum proportion of gapped positions in column to be tolerated before forcing a gap in final deRIP sequence. Default: 0.7',
-    )
-    parser.add_argument(
-        '-a',
-        '--reaminate',
-        action='store_true',
-        default=False,
-        help='Correct all deamination events independent of RIP context. Default: False',
-    )
-    parser.add_argument(
-        '--maxSNPnoise',
-        type=float,
-        default=0.5,
-        help="Maximum proportion of conflicting SNPs permitted before excluding column from RIP/deamination assessment. i.e. By default a column with >= 0.5 'C/T' bases will have 'TpA' positions logged as RIP events. Default: 0.5",
-    )
-    parser.add_argument(
-        '--minRIPlike',
-        type=float,
-        default=0.1,
-        help="Minimum proportion of deamination events in RIP context (5' CpA 3' --> 5' TpA 3') required for column to deRIP'd in final sequence. Note: If 'reaminate' option is set all deamination events will be corrected. Default 0.1 ",
-    )
-
-    # Reference sequence selection options
-    parser.add_argument(
-        '--fillmaxgc',
-        action='store_true',
-        default=False,
-        help='By default uncorrected positions in the output sequence are filled from the sequence with the lowest RIP count. If this option is set remaining positions are filled from the sequence with the highest G/C content. Default: False',
-    )
-    parser.add_argument(
-        '--fillindex',
-        type=int,
-        default=None,
-        help="Force selection of alignment row to fill uncorrected positions from by row index number (indexed from 0). Note: Will override '--fillmaxgc' option.",
-    )
-
-    # Masking and output alignment options
-    parser.add_argument(
-        '--mask',
-        default=False,
-        action='store_true',
-        help='Mask corrected positions in alignment with degenerate IUPAC codes.',
-    )
-    parser.add_argument(
-        '--noappend',
-        default=False,
-        action='store_true',
-        help="If set, do not append deRIP'd sequence to output alignment.",
-    )
-
-    # Output file options
-    parser.add_argument(
-        '-d',
-        '--outDir',
-        type=str,
-        default=None,
-        help="Directory for deRIP'd sequence files to be written to.",
-    )
-    parser.add_argument(
-        '-o',
-        '--outFasta',
-        default=None,
-        help='Write un-gapped RIP-corrected sequence to this file in fasta format. Default: deRIP_output.fa',
-    )
-    parser.add_argument(
-        '--outAln',
-        default=None,
-        help='Optional: If set write alignment including deRIP corrected sequence to this file.',
-    )
-    parser.add_argument(
-        '--outAlnFormat',
-        default='fasta',
-        choices=['fasta', 'nexus'],
-        help='Optional: Write alignment including deRIP sequence to file of format X. Default: fasta',
-    )
-    parser.add_argument(
-        '--label',
-        default='deRIPseq',
-        help="Use label as name for deRIP'd sequence in output files.",
-    )
-    # Logging options
-    parser.add_argument(
-        '--loglevel',
-        default='INFO',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-        help='Set logging level.',
-    )
-    parser.add_argument(
-        '--logfile',
-        default=None,
-        help='Log file path.',
-    )
-    parser.add_argument(
-        '--plot',
-        type=str,
-        default=None,
-        help='Create a visualization of the alignment with RIP markup.',
-    )
-    parser.add_argument(
-        '--plot-rip-type',
-        default='both',
-        choices=['both', 'product', 'substrate'],
-        help='Specify the type of RIP events to be displayed in the alignment visualization. Default: both',
-    )
-
-    # Parse arguments
-    args = parser.parse_args()
-
-    return args
-
-
-def main() -> None:
+@click.command(
+    context_settings={'help_option_names': ['-h', '--help']},
+    help='Predict ancestral sequence of fungal repeat elements by correcting for RIP-like mutations or cytosine deamination in multi-sequence DNA alignments. Optionally, mask mutated positions in alignment.',
+)
+@click.version_option(version=__version__, prog_name='derip2')
+# Input options
+@click.option(
+    '-i', '--input', required=True, type=str, help='Multiple sequence alignment.'
+)
+@click.option(
+    '--format',
+    type=click.Choice(['clustal', 'emboss', 'fasta', 'nexus', 'stockholm']),
+    default='fasta',
+    show_default=True,
+    help='Format of input alignment.',
+)
+# Algorithm parameters
+@click.option(
+    '-g',
+    '--max-gaps',
+    type=float,
+    default=0.7,
+    show_default=True,
+    help='Maximum proportion of gapped positions in column to be tolerated before forcing a gap in final deRIP sequence.',
+)
+@click.option(
+    '-a',
+    '--reaminate',
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help='Correct all deamination events independent of RIP context.',
+)
+@click.option(
+    '--max-snp-noise',
+    type=float,
+    default=0.5,
+    show_default=True,
+    help="Maximum proportion of conflicting SNPs permitted before excluding column from RIP/deamination assessment. i.e. By default a column with >= 0.5 'C/T' bases will have 'TpA' positions logged as RIP events.",
+)
+@click.option(
+    '--min-rip-like',
+    type=float,
+    default=0.1,
+    show_default=True,
+    help="Minimum proportion of deamination events in RIP context (5' CpA 3' --> 5' TpA 3') required for column to deRIP'd in final sequence. Note: If 'reaminate' option is set all deamination events will be corrected.",
+)
+# Reference sequence selection options
+@click.option(
+    '--fill-max-gc',
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help='By default uncorrected positions in the output sequence are filled from the sequence with the lowest RIP count. If this option is set remaining positions are filled from the sequence with the highest G/C content.',
+)
+@click.option(
+    '--fill-index',
+    type=int,
+    default=None,
+    help="Force selection of alignment row to fill uncorrected positions from by row index number (indexed from 0). Note: Will override '--fill-max-gc' option.",
+)
+# Masking and output alignment options
+@click.option(
+    '--mask',
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help='Mask corrected positions in alignment with degenerate IUPAC codes.',
+)
+@click.option(
+    '--no-append',
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="If set, do not append deRIP'd sequence to output alignment.",
+)
+# Output file options
+@click.option(
+    '-d',
+    '--out-dir',
+    type=str,
+    default=None,
+    help="Directory for deRIP'd sequence files to be written to.",
+)
+@click.option(
+    '-p',
+    '--prefix',
+    default='deRIPseq',
+    show_default=True,
+    help='Prefix for output files. Output files will be named prefix.fasta, prefix_alignment.fasta, etc.',
+)
+# Visualization options
+@click.option(
+    '--plot',
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help='Create a visualization of the alignment with RIP markup.',
+)
+@click.option(
+    '--plot-rip-type',
+    type=click.Choice(['both', 'product', 'substrate']),
+    default='both',
+    show_default=True,
+    help='Specify the type of RIP events to be displayed in the alignment visualization.',
+)
+# Logging options
+@click.option(
+    '--loglevel',
+    type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']),
+    default='INFO',
+    show_default=True,
+    help='Set logging level.',
+)
+@click.option('--logfile', default=None, help='Log file path.')
+def main(
+    input,
+    format,
+    max_gaps,
+    reaminate,
+    max_snp_noise,
+    min_rip_like,
+    fill_max_gc,
+    fill_index,
+    mask,
+    no_append,
+    out_dir,
+    prefix,
+    plot,
+    plot_rip_type,
+    loglevel,
+    logfile,
+):
     """
     Main execution function for deRIP2.
 
@@ -205,170 +174,167 @@ def main() -> None:
     6. Generates output files including the deRIPed sequence and optionally a
        masked alignment.
 
+    Parameters
+    ----------
+    input : str
+        Path to multiple sequence alignment file.
+    format : str
+        Format of input alignment. One of: 'clustal', 'emboss', 'fasta', 'nexus',
+        or 'stockholm'. Default: 'fasta'.
+    max_gaps : float
+        Maximum proportion of gapped positions in column to be tolerated before
+        forcing a gap in final deRIP sequence. Default: 0.7.
+    reaminate : bool
+        If True, correct all deamination events independent of RIP context.
+        Default: False.
+    max_snp_noise : float
+        Maximum proportion of conflicting SNPs permitted before excluding column
+        from RIP/deamination assessment. Default: 0.5.
+    min_rip_like : float
+        Minimum proportion of deamination events in RIP context required for column
+        to be deRIP'd in final sequence. Default: 0.1.
+    fill_max_gc : bool
+        If True, fill uncorrected positions from the sequence with the highest G/C content
+        rather than the least RIP'd sequence. Default: False.
+    fill_index : int or None
+        If provided, force selection of alignment row to fill uncorrected positions
+        from by row index number (indexed from 0). Overrides 'fill_max_gc' option.
+        Default: None.
+    mask : bool
+        If True, mask corrected positions in alignment with degenerate IUPAC codes.
+        Default: False.
+    no_append : bool
+        If True, do not append deRIP'd sequence to output alignment. Default: False.
+    out_dir : str or None
+        Directory for deRIP'd sequence files to be written to. If None, uses current directory.
+        Default: None.
+    prefix : str
+        Prefix for output files. Output files will be named prefix.fasta,
+        prefix_alignment.fasta, etc. Default: 'deRIPseq'.
+    plot : bool
+        If True, create a visualization of the alignment with RIP markup.
+        Default: False.
+    plot_rip_type : str
+        Specify the type of RIP events to be displayed in the alignment visualization.
+        One of: 'both', 'product', or 'substrate'. Default: 'both'.
+    loglevel : str
+        Set logging level. One of: 'DEBUG', 'INFO', 'WARNING', 'ERROR', or 'CRITICAL'.
+        Default: 'INFO'.
+    logfile : str or None
+        Log file path. If None, logs to console only. Default: None.
+
     Returns
     -------
     None
         Does not return any values, but writes output files and logs to the console.
     """
     # ---------- Setup ----------
-    # Get command line arguments
-    args = mainArgs()
-    # Print full sys.argv[0] command line call
-    print(f'Command line call: {colored.green(" ".join(sys.argv))}')
+    # Print full command line call
+    print(f'Command line call: {colored.green(" ".join(sys.argv))}\n')
 
     # Check/create output directory
-    outDir, logfile = dochecks(args.outDir, args.logfile)
+    out_dir, logfile = dochecks(out_dir, logfile)
 
     # Set up logging based on specified level
-    init_logging(loglevel=args.loglevel, logfile=logfile)
+    init_logging(loglevel=loglevel, logfile=logfile)
 
-    # Set output file paths
-    if args.outFasta:
-        outPathFasta = path.join(outDir, args.outFasta)
-    else:
-        outPathFasta = None
+    # Set standardized output file paths
+    out_path_fasta = path.join(out_dir, f'{prefix}.fasta')
+    out_path_aln = path.join(out_dir, f'{prefix}_alignment.fasta')
+    if mask:
+        out_path_aln = path.join(out_dir, f'{prefix}_masked_alignment.fasta')
+    # Path for visualization - only used if plot is True
+    viz_path = path.join(out_dir, f'{prefix}_visualization.png')
 
-    if args.outAln:
-        outPathAln = path.join(outDir, args.outAln)
-    else:
-        outPathAln = None
+    # ---------- Create DeRIP object and process alignment ----------
+    logging.info(f'Processing alignment file: \033[0m{input}')
 
-    # ---------- Alignment Processing ----------
-    # Read in alignment file, check at least 2 sequences present and names are unique
-    align = ao.loadAlign(args.inAln, args.format)
-
-    # Report alignment summary
-    ao.alignSummary(align)
-
-    # ---------- Initialize Tracking Data Structures ----------
-    # Initialize object to assemble deRIP'd sequence
-    tracker = ao.initTracker(align)
-
-    # Initialize object to track RIP observations and GC content by row
-    RIPcounts = ao.initRIPCounter(align)
-
-    # ---------- Initial Processing ----------
-    # Set invariant or highly gapped positions in final sequence
-    tracker = ao.fillConserved(align, tracker, args.maxGaps)
-
-    # ---------- RIP Correction ----------
-    # Detect and correct RIP mutations, optionally mask positions
-    tracker, RIPcounts, maskedAlign, corrected_positions, markupdict = ao.correctRIP(
-        align,
-        tracker,
-        RIPcounts,
-        maxSNPnoise=args.maxSNPnoise,
-        minRIPlike=args.minRIPlike,
-        reaminate=args.reaminate,
-        mask=args.mask,
+    # Create DeRIP object with command line parameters
+    derip_obj = DeRIP(
+        alignment_file=input,
+        maxSNPnoise=max_snp_noise,
+        minRIPlike=min_rip_like,
+        reaminate=reaminate,
+        fillindex=fill_index,
+        fillmaxgc=fill_max_gc,
+        maxGaps=max_gaps,
     )
 
-    # Report RIP counts per sequence
-    ao.summarizeRIP(RIPcounts)
+    # Report alignment summary
+    logging.info(f'Loaded alignment with {len(derip_obj.alignment)} sequences')
+    ao.alignSummary(derip_obj.alignment)
 
-    # ---------- Fill Remaining Positions ----------
-    # Select reference sequence for filling remaining uncorrected positions
-    if not args.fillindex:
-        # Select least RIP'd sequence (or most GC-rich if no RIP or tied for min-RIP)
-        refID = ao.setRefSeq(align, RIPcounts, getMinRIP=True, getMaxGC=args.fillmaxgc)
-    else:
-        # Check that the specified row index exists
-        ao.checkrow(align, idx=args.fillindex)
-        # Use the user-specified row index
-        refID = args.fillindex
+    # Calculate RIP mutations and generate consensus
+    logging.info('Processing alignment for RIP mutations...')
+    derip_obj.calculate_rip(label=prefix)
 
-    # Fill remaining unset positions from reference sequence
-    tracker = ao.fillRemainder(align, refID, tracker)
+    # Access corrected positions
+    logging.info(
+        f'\nDeRIP2 found {len(derip_obj.corrected_positions)} columns to be repaired.\n'
+    )
+
+    # Print RIP summary
+    logging.info(f'RIP summary by row:\n\033[0m{derip_obj.rip_summary()}\n')
+
+    # Print colourized alignment + consensus
+    logging.info(f'Corrected alignment:\n\033[0m{derip_obj}\n')
 
     # ---------- Output Results ----------
     # Report deRIP'd sequence to stdout
-    logging.info(f'Final RIP corrected sequence: {args.label}')
-    ao.writeDERIP2stdout(tracker, ID=args.label)
+    logging.info(f'Final RIP corrected sequence: \033[0m{derip_obj.colored_consensus}')
 
-    # Write deRIP'd sequence to FASTA file if requested
-    if outPathFasta:
-        logging.info(f"Writing deRIP'd sequence to file: {outPathFasta}")
-        ao.writeDERIP(tracker, outPathFasta, ID=args.label)
+    # Write deRIP'd sequence to FASTA file
+    logging.info(f"Writing deRIP'd sequence to file: \033[0m{out_path_fasta}")
+    derip_obj.write_consensus(out_path_fasta, consensus_id=prefix)
 
-    # Write alignment file with deRIP'd sequence if requested
-    if args.outAln:
-        logging.info('Preparing output alignment.')
+    # Write alignment file with deRIP'd sequence
+    logging.info('Preparing output alignment.')
 
-        # Log if deRIP'd sequence will be appended to alignment
-        if not args.noappend:
-            logging.info(
-                f'Appending corrected sequence to alignment with ID: {args.label}'
-            )
-
-        # Select alignment version based on masking option
-        if args.mask:
-            logging.info('Masking alignment columns with detected mutations.')
-            outputAlign = maskedAlign
-        else:
-            outputAlign = align
-
-        # Write the alignment to file
-        logging.info(f'Writing modified alignment to path: {outPathAln}')
-        ao.writeAlign(
-            tracker,
-            outputAlign,
-            outPathAln,
-            ID=args.label,
-            outAlnFormat=args.outAlnFormat,
-            noappend=args.noappend,
+    # Log if deRIP'd sequence will be appended to alignment
+    if not no_append:
+        logging.info(
+            f'Appending corrected sequence to alignment with ID: \033[0m{prefix}'
         )
 
-        # Create minialign graphic highlighting RIP/deamination events
-        # if markupdict is not empty
-        if args.plot:
-            from derip2.plotting.minialign import drawMiniAlignment
+    # Write the alignment to file
+    logging.info(f'Writing alignment to path: \033[0m{out_path_aln}')
+    derip_obj.write_alignment(
+        output_file=out_path_aln,
+        append_consensus=not no_append,
+        mask_rip=mask,
+        consensus_id=prefix,
+        format='fasta',
+    )
 
-            # Determine output file path for the visualization
-            viz_basename = path.basename(args.plot)
-            viz_outpath = path.join(outDir, viz_basename)
+    # Create visualization highlighting RIP/deamination events if requested
+    if plot:
+        logging.info(
+            f'Creating alignment visualization with RIP markup at: \033[0m{viz_path}'
+        )
 
-            logging.info(
-                f'Creating alignment visualization with RIP markup at: {viz_outpath}'
-            )
+        # Get alignment dimensions for visualization options
+        ali_height = len(derip_obj.alignment)
+        ali_length = derip_obj.alignment.get_alignment_length()
 
-            # Get consensus sequence if available
-            consensus_str = None
-            if tracker:
-                # If we have a consensus sequence, get it as a string
-                if not args.noappend:
-                    consensus_str = str(
-                        ao.getDERIP(tracker, ID=args.label, deGAP=False).seq
-                    )
+        # Create the visualization
+        viz_result = derip_obj.plot_alignment(
+            output_file=viz_path,
+            title=f'DeRIP2 Alignment: {prefix}',
+            show_chars=(ali_height <= 25),  # Show characters only for small alignments
+            draw_boxes=(
+                ali_height <= 25
+            ),  # Draw boxes around characters for small alignments
+            show_rip=plot_rip_type,
+            highlight_corrected=True,
+            flag_corrected=(
+                ali_length < 200
+            ),  # Flag corrected positions for small alignments
+        )
 
-            # Determine height of alignment for visualization
-            ali_height = len(outputAlign)
-            ali_length = len(outputAlign[0])
-
-            # Draw the alignment with RIP markup
-            viz_result = drawMiniAlignment(
-                alignment=align,
-                outfile=viz_outpath,
-                title=f'DeRIP2 Alignment: {path.basename(args.inAln).split(".")[0]}',
-                markupdict=markupdict,
-                show_chars=(
-                    ali_height <= 25
-                ),  # Show characters only for small alignments
-                draw_boxes=(
-                    ali_height <= 25
-                ),  # Draw boxes around characters for small alignments
-                consensus_seq=consensus_str,
-                corrected_positions=corrected_positions,
-                reaminate=args.reaminate,
-                show_rip=args.plot_rip_type,
-                reference_seq_index=refID,
-                highlight_corrected=(ali_height >= 25),
-                flag_corrected=(ali_length < 200),
-            )
-
-            if viz_result:
-                logging.info(f'RIP visualization created at: {viz_outpath}')
-            else:
-                logging.warning('Failed to create RIP visualization')
+        if viz_result:
+            logging.info(f'RIP visualization created at: \033[0m{viz_path}')
+        else:
+            logging.warning('Failed to create RIP visualization')
 
 
 if __name__ == '__main__':
