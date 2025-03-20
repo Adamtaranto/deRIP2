@@ -618,9 +618,13 @@ class DeRIP:
         title: Optional[str] = None,
         width: int = 20,
         height: int = 15,
-        show_chars: bool = False,
+        palette: str = 'derip2',
         column_ranges: Optional[List[Tuple[int, int, str, str]]] = None,
+        show_chars: bool = False,
+        draw_boxes: bool = False,
         show_rip: str = 'both',
+        highlight_corrected: bool = True,
+        flag_corrected: bool = False,
         **kwargs,
     ) -> str:
         """
@@ -642,12 +646,20 @@ class DeRIP:
             Width of the output image in inches (default: 20).
         height : int, optional
             Height of the output image in inches (default: 15).
-        show_chars : bool, optional
-            Whether to display sequence characters inside the colored cells (default: False).
+        palette : str, optional
+            Color palette to use: 'colorblind', 'bright', 'tetrimmer', 'basegrey', or 'derip2' (default: 'basegrey').
         column_ranges : List[Tuple[int, int, str, str]], optional
             List of column ranges to mark, each as (start_col, end_col, color, label) (default: None).
+        show_chars : bool, optional
+            Whether to display sequence characters inside the colored cells (default: False).
+        draw_boxes : bool, optional
+            Whether to draw black borders around highlighted bases (default: False).
         show_rip : str, optional
             Which RIP markup categories to include: 'substrate', 'product', or 'both' (default: 'both').
+        highlight_corrected : bool, optional
+            If True, only corrected positions in the consensus will be colored, all others will be gray (default: True).
+        flag_corrected : bool, optional
+            If True, corrected positions in the alignment will be marked with asterisks (default: False).
         **kwargs
             Additional keyword arguments to pass to drawMiniAlignment function.
 
@@ -690,13 +702,17 @@ class DeRIP:
             width=width,
             height=height,
             markupdict=self.markupdict,
+            palette=palette,
             column_ranges=column_ranges,
             show_chars=show_chars,
-            consensus_seq=str(self.consensus.seq),
+            draw_boxes=draw_boxes,
+            consensus_seq=str(self.gapped_consensus.seq),
             corrected_positions=corrected_pos,
             reaminate=self.reaminate,
             reference_seq_index=self.fillindex,
             show_rip=show_rip,
+            highlight_corrected=highlight_corrected,
+            flag_corrected=flag_corrected,
             **kwargs,  # Pass any additional customization options
         )
 
@@ -802,7 +818,7 @@ def get_derip_consensus(
         # derip_object.write_alignment(output_file, append_consensus=True, mask_rip=False)
 
         # Opt3: Write alignment plot to file
-        # derip_object.plot_alignment(output_file.replace('.fa', '.png'), show_chars=True, title='DeRIP2 alignment')
+        # derip_object.plot_alignment(output_file.replace('.fa', '.png'), show_chars=True, title='DeRIP2 alignment', draw_boxes=True, show_rip='product', highlight_corrected=True)
     else:
         raise FileNotFoundError(f"The file '{input_file}' does not exist.")
 
