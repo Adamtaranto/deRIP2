@@ -124,7 +124,7 @@ derip2 -i tests/data/mintest.fa --format fasta \
 - `results/derip_output_masked_alignment.fasta` - Alignment with masked corrections
 - `results/derip_output_visualization.png` - Visualization of the alignment with RIP markup
 
-![Visualization of the alignment with RIP markup](docs/img/derip_output_visualization.png)
+![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_output_visualization.png)
 
 ### Using maximum GC content for filling
 
@@ -165,7 +165,7 @@ derip2 -i tests/data/mintest.fa \
 - `results/derip_reaminated_alignment.fasta` - Alignment with corrected sequence appended
 - `results/derip_reaminated_vizualization.png` - Visualization of the alignment with RIP markup
 
-![Visualization of the alignment with RIP markup](docs/img/derip_reaminated_visualization.png)
+![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_reaminated_visualization.png)
 
 ## Standard Options
 
