@@ -22,6 +22,7 @@ from Bio.Align import AlignInfo, MultipleSeqAlignment
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqUtils import gc_fraction
+from tqdm import tqdm
 
 from derip2.utils.checks import isfile
 
@@ -106,12 +107,13 @@ def loadAlign(file: str, alnFormat: str = 'fasta') -> 'AlignIO.MultipleSeqAlignm
 
     This function loads a sequence alignment from a file, verifies the file exists,
     and performs basic validation checks such as ensuring the alignment has at least
-    two sequences and all sequence IDs are unique.
+    two sequences and all sequence IDs are unique. Supports both plain text and
+    gzipped alignment files.
 
     Parameters
     ----------
     file : str
-        Path to the alignment file to be loaded.
+        Path to the alignment file to be loaded. Can be a regular file or a gzipped file.
     alnFormat : str, optional
         Format of the alignment file (default: 'fasta').
         Must be a format supported by Biopython's AlignIO.
@@ -128,12 +130,27 @@ def loadAlign(file: str, alnFormat: str = 'fasta') -> 'AlignIO.MultipleSeqAlignm
     FileNotFoundError
         If the specified file does not exist.
     """
+    # Add import for gzip support
+    import gzip
+
     # Verify the input file exists and return its path
     path = isfile(file)
 
+    # Check if file is gzipped based on extension
+    is_gzipped = path.lower().endswith(('.gz', '.gzip'))
+
+    # Log loading information with compression status
+    logging.info(
+        f'Loading{"" if not is_gzipped else " gzipped"} alignment from file: {file}'
+    )
+
     # Load the alignment from file using Biopython's AlignIO
-    logging.info('Loading alignment from file: %s' % file)
-    align = AlignIO.read(path, alnFormat)
+    # Use gzip.open for compressed files, regular open for uncompressed files
+    if is_gzipped:
+        with gzip.open(path, 'rt') as f:  # "rt" mode = read text
+            align = AlignIO.read(f, alnFormat)
+    else:
+        align = AlignIO.read(path, alnFormat)
 
     # Validate alignment has at least 2 sequences (exits if not)
     checkLen(align)
@@ -162,7 +179,7 @@ def alignSummary(align: 'AlignIO.MultipleSeqAlignment') -> None:
     None
         This function only logs information and doesn't return a value.
     """
-
+    logging.debug('Generating alignment summary...')
     aln_summary_msg = []
 
     # Log the dimensions of the alignment
@@ -235,6 +252,8 @@ def initTracker(align: 'AlignIO.MultipleSeqAlignment') -> dict:
         - idx: int, the column index
         - base: str or None, the nucleotide base (initially None).
     """
+    logging.debug('Initializing consensus sequence tracker...')
+
     # Create empty dictionary to track consensus sequence
     tracker = {}
 
@@ -272,6 +291,9 @@ def initRIPCounter(align: 'AlignIO.MultipleSeqAlignment') -> Dict[int, NamedTupl
         - nonRIPcount: int, counter for non-RIP C→T or G→A mutations.
         - GC: float, GC content percentage of the sequence.
     """
+
+    logging.debug('Initializing RIP mutation counter...')
+
     # Create empty dictionary to track RIP mutations for each sequence
     RIPcounts = {}
 
@@ -415,6 +437,7 @@ def fillConserved(
     Dict[int, NamedTuple]
         Updated tracker dictionary with bases filled in for conserved positions.
     """
+    logging.debug('Filling conserved positions in the consensus sequence...')
     # Create deep copy of tracker to avoid modifying the original
     tracker = deepcopy(tracker)
 
@@ -755,6 +778,7 @@ def correctRIP(
           'rip_substrate': Positions containing unmutated nucleotides in RIP context
           'non_rip_deamination': Positions with C→T or G→A outside of RIP context
     """
+    logging.debug('Correcting RIP-like mutations in the consensus sequence...')
     # Create deep copies of input objects to avoid modifying the originals
     tracker = deepcopy(tracker)
     RIPcounts = deepcopy(RIPcounts)
@@ -772,8 +796,13 @@ def correctRIP(
     # Initialize dictionary to store RIP categories for each position
     markupdict = {'rip_product': [], 'rip_substrate': [], 'non_rip_deamination': []}
 
-    # Process each column in the alignment
-    for colIdx in range(align.get_alignment_length()):
+    # Process each column in the alignment with progress bar
+    for colIdx in tqdm(
+        range(align.get_alignment_length()),
+        desc='Scanning for RIP mutations',
+        unit='column',
+        ncols=80,
+    ):
         # Track if we revert T→C or A→G in this column
         modC = False
         modG = False
@@ -1115,6 +1144,8 @@ def summarizeRIP(RIPcounts: Dict[int, NamedTuple]) -> None:
     None
         This function only prints information to stderr and doesn't return a value.
     """
+    logging.debug('Summarizing RIP mutation counts...')
+
     from io import StringIO
 
     import pandas as pd
@@ -1175,6 +1206,8 @@ def setRefSeq(
     int
         Row index of the best reference sequence.
     """
+    logging.debug('Selecting reference sequence for filling remaining positions...')
+
     # Ignore RIP sorting if getMaxGC is set
     if getMaxGC:
         getMinRIP = False
@@ -1281,6 +1314,8 @@ def getDERIP(
     Bio.SeqRecord.SeqRecord
         SeqRecord object containing the deRIPed consensus sequence.
     """
+    logging.debug('Generating deRIPed sequence...')
+
     # Check that all positions have been filled
     if None in [x.base for x in tracker.values()]:
         raise ValueError('Not all positions have been filled in the tracker!')
