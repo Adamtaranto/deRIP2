@@ -100,6 +100,7 @@ derip2 -i tests/data/mintest.fa --format fasta \
 **Output:**
 
 - `results/derip_output.fasta` - Corrected sequence
+- `results/derip_output_alignment.fasta` - Alignment with masked corrections
 - `results/derip_output_masked_alignment.fasta` - Alignment with masked corrections
 
 ### With vizualization
@@ -145,21 +146,26 @@ Alternatively, the `--fill-index` option can be used to force selection of align
 
 If the `--reaminate` option is set, all deamination events will be corrected, regardless of RIP context.
 
+`--plot-rip-type product` is used to highlight the product of RIP events in the visualization.
+Non-RIP deamination events are also highlighted.
+
 ```bash
 derip2 -i tests/data/mintest.fa \
   --max-gaps 0.7 \
   --reaminate \
   -d results \
   --plot \
-  --plot-rip-type both \
+  --plot-rip-type product \
   --prefix derip_reaminated
 ```
 
 **Output:**
 
 - `results/derip_reaminated.fasta` - Corrected sequence using highest GC content sequence for filling
-- `results/derip_reaminated.fasta` - Alignment with corrected sequence appended
-- `results/derip_reaminated.png` - Visualization of the alignment with RIP markup
+- `results/derip_reaminated_alignment.fasta` - Alignment with corrected sequence appended
+- `results/derip_reaminated_vizualization.png` - Visualization of the alignment with RIP markup
+
+![Visualization of the alignment with RIP markup](docs/img/derip_reaminated_visualization.png)
 
 ## Standard Options
 
