@@ -6,6 +6,16 @@ dependencies:
   - python 3.12
   - pip
   - pip:
+      - argparse_tui
       - biopython
+      - biopython
+      - click
       - hatch
+      - isort
+      - matplotlib
+      - numpy
+      - numpydoc-validation
+      - pre-commit
       - pytest
+      - ruff
+      - tqdm
