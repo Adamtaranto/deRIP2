@@ -11,15 +11,16 @@
 ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝╚═╝     ╚══════╝
 ```
 
-Predict ancestral fungal transposon sequences by correcting for RIP-like mutations
+deRIP2 scans aligned sequences for evidence of un-RIP'd precursor states, allowing
+for improved RIP-correction across large repeat families in which members are
+independently RIP'd.
+
+Use deRIP2 to:
+
+- Predict ancestral fungal transposon sequences by correcting for RIP-like mutations
 (CpA --> TpA) and cytosine deamination (C --> T) events.
 
-deRIP2 searches all available sequences for evidence of un-RIP'd precursor states
-at each aligned position, allowing for improved RIP-correction across large repeat
-families in which members are independently RIP'd.
-
-deRIP2 can also mask RIP or deamination events as ambiguous bases to remove RIP signal
-from phylogenetic analyses.
+- Mask RIP or deamination events as ambiguous bases to remove RIP signal from phylogenetic analyses.
 
 ## Table of contents
 
