@@ -19,7 +19,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 
-dependencies = ["argparse_tui", "biopython", "matplotlib", "click", "numpy", "tqdm"]
+dependencies = ["biopython", "click", "matplotlib", "numpy", "tqdm"]
 
 dynamic = ["version"]
 

@@ -21,8 +21,6 @@ import logging
 from os import path
 import sys
 
-from argparse_tui import add_tui_argument
-
 from derip2._version import __version__
 import derip2.aln_ops as ao
 from derip2.utils.checks import dochecks
@@ -187,9 +185,6 @@ def mainArgs() -> argparse.Namespace:
         choices=['both', 'product', 'substrate'],
         help='Specify the type of RIP events to be displayed in the alignment visualization. Default: both',
     )
-
-    # Add terminal UI support
-    add_tui_argument(parser, option_strings=['--tui'])
 
     # Parse arguments
     args = parser.parse_args()

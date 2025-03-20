@@ -98,12 +98,6 @@ derip2 -i tests/data/mintest.fa --format fasta \
 - results/derip_prediction.fa
 - results/masked_aligment_with_deRIP.fa
 
-To launch the graphical interface:
-
-```bash
-derip2 --tui
-```
-
 ## Standard Options
 
 ```code
