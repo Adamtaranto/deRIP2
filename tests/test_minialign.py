@@ -6,13 +6,13 @@ import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
+from Bio.Align import MultipleSeqAlignment
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 import matplotlib
 import matplotlib.colors
 import numpy as np
 import pytest
-from Bio.Align import MultipleSeqAlignment
-from Bio.SeqRecord import SeqRecord
-from Bio.Seq import Seq
 
 from derip2.plotting.minialign import (
     MSAToArray,
