@@ -1126,13 +1126,13 @@ def updateMarkupDict(
     return markupdict
 
 
-def summarizeRIP(RIPcounts: Dict[int, NamedTuple]) -> None:
+def summarizeRIP(RIPcounts: Dict[int, NamedTuple]) -> str:
     """
-    Print a summary of RIP mutation counts and GC content for each sequence.
+    Generate a summary of RIP mutation counts and GC content for each sequence.
 
     This function generates a well-formatted tabular report showing the frequency
     of RIP-like mutations detected in each sequence of the alignment, along with
-    their GC content. The report is printed to standard error (stderr).
+    their GC content.
 
     Parameters
     ----------
@@ -1141,16 +1141,13 @@ def summarizeRIP(RIPcounts: Dict[int, NamedTuple]) -> None:
 
     Returns
     -------
-    None
-        This function only prints information to stderr and doesn't return a value.
+    str
+        A formatted string containing the RIP summary table.
     """
     logging.debug('Summarizing RIP mutation counts...')
 
     from io import StringIO
-
     import pandas as pd
-
-    logging.info('Summarizing RIP')
 
     # Create data for pandas DataFrame
     data = []
@@ -1173,8 +1170,8 @@ def summarizeRIP(RIPcounts: Dict[int, NamedTuple]) -> None:
     buffer = StringIO()
     df.to_string(buffer, index=False)
 
-    # Print to stderr
-    print(buffer.getvalue(), file=sys.stderr)
+    # Return the formatted string
+    return buffer.getvalue()
 
 
 def setRefSeq(
