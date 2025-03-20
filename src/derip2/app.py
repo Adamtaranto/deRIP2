@@ -181,6 +181,12 @@ def mainArgs() -> argparse.Namespace:
         default=None,
         help='Create a visualization of the alignment with RIP markup.',
     )
+    parser.add_argument(
+        '--plot-rip-type',
+        default='both',
+        choices=['both', 'product', 'substrate'],
+        help='Specify the type of RIP events to be displayed in the alignment visualization. Default: both',
+    )
 
     # Add terminal UI support
     add_tui_argument(parser, option_strings=['--tui'])
@@ -341,6 +347,7 @@ def main() -> None:
 
             # Determine height of alignment for visualization
             ali_height = len(outputAlign)
+            ali_length = len(outputAlign[0])
 
             # Draw the alignment with RIP markup
             viz_result = drawMiniAlignment(
@@ -351,11 +358,16 @@ def main() -> None:
                 show_chars=(
                     ali_height <= 25
                 ),  # Show characters only for small alignments
+                draw_boxes=(
+                    ali_height <= 25
+                ),  # Draw boxes around characters for small alignments
                 consensus_seq=consensus_str,
                 corrected_positions=corrected_positions,
                 reaminate=args.reaminate,
-                show_rip='both',
+                show_rip=args.plot_rip_type,
                 reference_seq_index=refID,
+                highlight_corrected=(ali_height >= 25),
+                flag_corrected=(ali_length < 200),
             )
 
             if viz_result:
