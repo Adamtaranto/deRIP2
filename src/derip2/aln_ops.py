@@ -1147,6 +1147,7 @@ def summarizeRIP(RIPcounts: Dict[int, NamedTuple]) -> str:
     logging.debug('Summarizing RIP mutation counts...')
 
     from io import StringIO
+
     import pandas as pd
 
     # Create data for pandas DataFrame
