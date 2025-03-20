@@ -7,18 +7,129 @@ derived from the CIAlign package (https://github.com/KatyBrown/CIAlign) with
 modifications for the deRIP2 project.
 """
 
+import logging
 from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union
 
 from Bio.Align import MultipleSeqAlignment
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from tqdm import tqdm
 
 matplotlib.use('Agg')  # Use non-interactive backend for server environments
 
 RIPPosition = NamedTuple(
     'RIPPosition', [('colIdx', int), ('rowIdx', int), ('base', str), ('offset', int)]
 )
+
+
+def get_color_palette(palette: str = 'colorblind') -> Dict[str, str]:
+    """
+    Get a color palette mapping DNA bases to hexadecimal color codes.
+
+    This function provides access to predefined color schemes for visualizing
+    DNA sequence alignments. Different palettes are optimized for various
+    purposes including colorblind accessibility, high contrast, and specific
+    visualization preferences.
+
+    Parameters
+    ----------
+    palette : str, optional
+        Name of the color palette to use. Options include:
+        - 'colorblind': Colors chosen to be distinguishable by people with color vision deficiencies
+        - 'bright': High-contrast vibrant colors
+        - 'tetrimmer': Traditional nucleotide coloring scheme
+        - 'basegrey': All bases colored in grey (for contrast with markup)
+        - 'derip2': Default scheme for deRIP2 with bright, distinct colors
+        Default is 'colorblind'.
+
+    Returns
+    -------
+    Dict[str, str]
+        Dictionary mapping nucleotide characters to hexadecimal color codes.
+        Keys include 'A', 'C', 'G', 'T', 'N', '-' (gap), and sometimes lowercase
+        or additional variants.
+
+    Notes
+    -----
+    The coloring schemes generally follow these conventions:
+    - A: Green or Red
+    - G: Yellow or Gray
+    - T: Red or Green
+    - C: Blue
+    - N: Gray or Light Blue
+    - Gaps (-): White
+
+    Examples
+    --------
+    >>> palette = get_color_palette('derip2')
+    >>> palette['A']
+    '#ff3f3f'
+    """
+    # Define color palettes for different visualization preferences
+    # Each palette maps DNA bases to their respective hexadecimal color codes
+    color_palettes = {
+        # Colorblind-friendly palette (default)
+        'colorblind': {
+            'A': '#56ae6c',  # Green
+            'G': '#c9c433',  # Yellow
+            'T': '#a22c49',  # Red
+            'C': '#0038a2',  # Blue
+            'N': '#6979d3',  # Light blue
+            'n': '#6979d3',  # Light blue (lowercase)
+            '-': '#FFFFFF',  # White (gap)
+            'X': '#6979d3',  # Light blue (unknown)
+        },
+        # Bright color palette for high contrast
+        'bright': {
+            'A': '#f20707',  # Bright red
+            'G': '#ffd500',  # Bright yellow
+            'T': '#64bc3c',  # Bright green
+            'C': '#0907f2',  # Bright blue
+            'N': '#c7d1d0',  # Gray
+            'n': '#c7d1d0',  # Gray (lowercase)
+            '-': '#FFFFFF',  # White (gap)
+            'X': '#c7d1d0',  # Gray (unknown)
+        },
+        # Traditional tetrimmer color scheme
+        'tetrimmer': {
+            'A': '#00CC00',  # Green
+            'G': '#949494',  # Gray
+            'T': '#FF6666',  # Pink/red
+            'C': '#6161ff',  # Blue
+            'N': '#c7d1d0',  # Light gray
+            'n': '#c7d1d0',  # Light gray (lowercase)
+            '-': '#FFFFFF',  # White (gap)
+            'X': '#c7d1d0',  # Light gray (unknown)
+        },
+        # Grayscale palette for bases (useful for highlighting only markup)
+        'basegrey': {
+            'A': '#c7d1d0',  # Gray
+            'G': '#c7d1d0',  # Gray
+            'T': '#c7d1d0',  # Gray
+            'C': '#c7d1d0',  # Gray
+            'N': '#c7d1d0',  # Light gray
+            'n': '#c7d1d0',  # Light gray (lowercase)
+            '-': '#FFFFFF',  # White (gap)
+            'X': '#c7d1d0',  # Light gray (unknown)
+        },
+        # DeRIP2 color scheme - optimized for the deRIP2 tool visualization
+        'derip2': {
+            'A': '#ff3f3f',  # Bright red
+            'G': '#fbe216',  # Bright yellow
+            'T': '#64bc3c',  # Bright green
+            'C': '#55c1ed',  # Bright blue
+            'N': '#c7d1d0',  # Gray
+            '-': '#FFFFFF',  # White (gap)
+        },
+    }
+
+    # Return the requested palette or default to colorblind if not found
+    if palette not in color_palettes:
+        logging.warning(f"Palette '{palette}' not found, using 'colorblind' instead")
+        return color_palettes['colorblind']
+
+    return color_palettes[palette]
 
 
 def MSAToArray(
@@ -53,6 +164,9 @@ def MSAToArray(
     ValueError
         If the alignment is empty or sequences have different lengths.
     """
+    # DEBUG: Print function parameters for troubleshooting
+    logging.debug(f'MSAToArray: alignment={alignment}')
+
     # Check if alignment is empty
     if not alignment or len(alignment) == 0:
         raise ValueError('Empty alignment provided')
@@ -120,67 +234,8 @@ def arrNumeric(
     # Flip the array vertically so the output image matches input alignment order
     arr = np.flip(arr, axis=0)
 
-    # Define color palettes for different visualization preferences
-    color_palettes = {
-        # Colorblind-friendly palette (default)
-        'colorblind': {
-            'A': '#56ae6c',  # Green
-            'G': '#c9c433',  # Yellow
-            'T': '#a22c49',  # Red
-            'C': '#0038a2',  # Blue
-            'N': '#6979d3',  # Light blue
-            'n': '#6979d3',  # Light blue (lowercase)
-            '-': '#FFFFFF',  # White (gap)
-            'X': '#6979d3',  # Light blue (unknown)
-        },
-        # Bright color palette for high contrast
-        'bright': {
-            'A': '#f20707',  # Bright red
-            'G': '#ffd500',  # Bright yellow
-            'T': '#64bc3c',  # Bright green
-            'C': '#0907f2',  # Bright blue
-            'N': '#c7d1d0',  # Gray
-            'n': '#c7d1d0',  # Gray (lowercase)
-            '-': '#FFFFFF',  # White (gap)
-            'X': '#c7d1d0',  # Gray (unknown)
-        },
-        # Traditional tetrimmer color scheme
-        'tetrimmer': {
-            'A': '#00CC00',  # Green
-            'G': '#949494',  # Gray
-            'T': '#FF6666',  # Pink/red
-            'C': '#6161ff',  # Blue
-            'N': '#c7d1d0',  # Light gray
-            'n': '#c7d1d0',  # Light gray (lowercase)
-            '-': '#FFFFFF',  # White (gap)
-            'X': '#c7d1d0',  # Light gray (unknown)
-        },
-        # Traditional tetrimmer color scheme
-        'basegrey': {
-            'A': '#c7d1d0',  # Green
-            'G': '#c7d1d0',  # Gray
-            'T': '#c7d1d0',  # Pink/red
-            'C': '#c7d1d0',  # Blue
-            'N': '#c7d1d0',  # Light gray
-            'n': '#c7d1d0',  # Light gray (lowercase)
-            '-': '#FFFFFF',  # White (gap)
-            'X': '#c7d1d0',  # Light gray (unknown)
-        },
-        # DeRIP2 color scheme
-        'derip2': {
-            'A': '#ff3f3f',  # Bright red
-            'G': '#fbe216',  # Bright yellow
-            'T': '#64bc3c',  # Bright green
-            'C': '#55c1ed',  # Bright blue
-            'N': '#c7d1d0',  # Gray
-            '-': '#FFFFFF',  # White (gap)
-        },
-    }
-
     # Select the appropriate color pattern or default to colorblind
-    if palette not in color_palettes:
-        palette = 'colorblind'
-    color_pattern = color_palettes[palette]
+    color_pattern = get_color_palette(palette)
 
     # Get dimensions of the alignment
     ali_height, ali_width = np.shape(arr)
@@ -220,15 +275,18 @@ def drawMiniAlignment(
     orig_nams: Optional[List[str]] = None,
     keep_numbers: bool = False,
     force_numbers: bool = False,
-    palette: str = 'basegrey',
+    palette: str = 'derip2',
     markupdict: Optional[Dict[str, List[RIPPosition]]] = None,
     column_ranges: Optional[List[Tuple[int, int, str, str]]] = None,
     show_chars: bool = False,
+    draw_boxes: bool = False,
     consensus_seq: Optional[str] = None,
     corrected_positions: Optional[List[int]] = None,
     reaminate: bool = False,
     reference_seq_index: Optional[int] = None,
     show_rip: str = 'both',  # 'substrate', 'product', or 'both'
+    highlight_corrected: bool = True,
+    flag_corrected: bool = False,
 ) -> Union[str, bool]:
     """
     Generate a visualization of a DNA sequence alignment with optional RIP markup.
@@ -266,6 +324,8 @@ def drawMiniAlignment(
         List of column ranges to mark, each as (start_col, end_col, color, label).
     show_chars : bool, optional
         Whether to display sequence characters inside the colored cells (default: False).
+    draw_boxes : bool, optional
+        Whether to draw black borders around highlighted bases (default: False).
     consensus_seq : str, optional
         Consensus sequence to display in a separate subplot below the alignment (default: None).
     corrected_positions : List[int], optional
@@ -276,6 +336,10 @@ def drawMiniAlignment(
         Index of the reference sequence used to fill uncorrected positions (default: None).
     show_rip : str, optional
         Which RIP markup categories to include: 'substrate', 'product', or 'both' (default: 'both').
+    highlight_corrected : bool, optional
+        If True, only corrected positions in the consensus will be colored, all others will be gray (default: True).
+    flag_corrected : bool, optional
+        If True, corrected positions will be marked with a large asterisk above the consensus (default: False).
 
     Returns
     -------
@@ -298,6 +362,10 @@ def drawMiniAlignment(
     - RIP substrates are highlighted in blue
     - Non-RIP deamination events are highlighted in orange
     """
+    # DEBUG: Print function parameters for troubleshooting
+    logging.debug(
+        f'drawMiniAlignment: outfile={outfile}, dpi={dpi}, title={title}, width={width}, height={height}, orig_nams={orig_nams}, keep_numbers={keep_numbers}, force_numbers={force_numbers}, palette={palette}, markupdict={markupdict}, column_ranges={column_ranges}, show_chars={show_chars}, consensus_seq={consensus_seq}, corrected_positions={corrected_positions}, reaminate={reaminate}, reference_seq_index={reference_seq_index}, show_rip={show_rip}, highlight_corrected={highlight_corrected}'
+    )
     # Handle default value for orig_nams
     if orig_nams is None:
         orig_nams = []
@@ -375,7 +443,7 @@ def drawMiniAlignment(
     a.set_ylim(-0.5, ali_height - 0.5)
 
     # Convert alignment to numeric form and get color map
-    arr2, cm = arrNumeric(arr, palette=palette)
+    arr2, cm = arrNumeric(arr, palette='basegrey')
 
     # Process markup if provided
     if markupdict:
@@ -415,7 +483,7 @@ def drawMiniAlignment(
 
         # Draw the colored highlights on top
         highlighted_positions, target_positions = markupRIPBases(
-            a, filtered_markup, ali_height, arr, reaminate
+            a, filtered_markup, ali_height, arr, reaminate, palette, draw_boxes
         )
     else:
         # No markup, just draw the regular alignment
@@ -555,14 +623,14 @@ def drawMiniAlignment(
     # If consensus sequence is provided, add it to the second subplot
     if consensus_seq is not None and consensus_ax is not None:
         # Determine colors for each nucleotide
-        nuc_colors = {
-            'A': '#ff3f3f',  # Bright red
-            'G': '#fbe216',  # Bright yellow
-            'T': '#64bc3c',  # Bright green
-            'C': '#55c1ed',  # Bright blue
-            'N': '#c7d1d0',  # Gray
-            '-': '#FFFFFF',  # White (gap)
-        }
+        nuc_colors = get_color_palette(palette)
+
+        # If highlighting only corrected positions, ensure we have a valid list
+        corrected_set = (
+            set(corrected_positions)
+            if corrected_positions and highlight_corrected
+            else set()
+        )
 
         # Set up the consensus subplot with extra space for asterisks
         consensus_ax.set_xlim(-0.5, len(consensus_seq) - 0.5)
@@ -589,10 +657,17 @@ def drawMiniAlignment(
 
         # Plot each base in the consensus as a colored cell with character
         for i, base in enumerate(consensus_seq):
+            # Determine cell color based on whether this is a corrected position
+            if highlight_corrected and i not in corrected_set:
+                # Use gray for non-corrected positions when highlight_corrected is True
+                color = '#c7d1d0'  # Standard gray color
+            else:
+                # Use the regular color palette for this base
+                color = nuc_colors.get(
+                    base.upper(), '#CCCCCC'
+                )  # Default to gray for unknown bases
+
             # Create colored rectangle for this base
-            color = nuc_colors.get(
-                base.upper(), '#CCCCCC'
-            )  # Default to gray for unknown bases
             consensus_ax.add_patch(
                 matplotlib.patches.Rectangle(
                     (i - 0.5, -0.5),  # bottom left corner
@@ -604,32 +679,42 @@ def drawMiniAlignment(
             )
 
             # Add the character as text with increased font size
-            consensus_ax.text(
-                i,
-                0,
-                base,
-                ha='center',
-                va='center',
-                fontsize=min(
-                    18, 30 - len(consensus_seq) / 100
-                ),  # Further increased font size
-                color='black',
-                fontweight='bold',
-                zorder=20,
-            )
+            if show_chars:
+                # Determine text color - use black for all characters for better readability
+                text_color = 'black'
+
+                consensus_ax.text(
+                    i,
+                    0,
+                    base,
+                    ha='center',
+                    va='center',
+                    fontsize=min(
+                        18, 30 - len(consensus_seq) / 100
+                    ),  # Further increased font size
+                    color=text_color,
+                    fontweight='bold',
+                    zorder=20,
+                )
 
         # Add markers for corrected positions if provided
-        if corrected_positions:
+        if corrected_positions and flag_corrected:
             for pos in corrected_positions:
                 if 0 <= pos < len(consensus_seq):
+                    # Calculate appropriate font size based on sequence length
+                    # Scale inversely with sequence length to fit within cells
+                    # Use a slightly larger size than the base characters to stand out
+                    asterisk_fontsize = min(24, max(14, 40 - len(consensus_seq) / 50))
+
                     # Draw a large asterisk centered in the space above each corrected position
+                    # Size now scales with the cell dimensions
                     consensus_ax.text(
                         pos,  # x position
                         1.0,  # y position (centered in new space above sequence)
                         '*',  # asterisk character
                         ha='center',  # horizontally centered
                         va='center',  # vertically centered
-                        fontsize=24,  # much larger font size
+                        fontsize=asterisk_fontsize,  # dynamically scaled font size
                         color='red',  # red color
                         fontweight='bold',  # bold for emphasis
                         zorder=30,  # ensure it's on top
@@ -651,6 +736,8 @@ def markupRIPBases(
     ali_height: int,
     arr: np.ndarray = None,
     reaminate: bool = False,
+    palette: str = 'derip2',
+    draw_boxes: bool = True,
 ) -> Tuple[Set[Tuple[int, int]], Set[Tuple[int, int]]]:
     """
     Highlight RIP-related bases in the alignment plot with color coding and borders.
@@ -682,6 +769,10 @@ def markupRIPBases(
         Shape should be (ali_height, alignment_width).
     reaminate : bool, optional
         Whether to include non-RIP deamination highlights (default: False).
+    palette : str, optional
+        Color palette to use for base highlighting (default: 'derip2').
+    draw_boxes : bool, optional
+        Whether to draw black borders around highlighted bases (default: True).
 
     Returns
     -------
@@ -692,11 +783,7 @@ def markupRIPBases(
         Set of only the primary mutation site (col_idx, y_coord) positions,
         excluding offset positions. Used for text coloring elsewhere.
 
-    See Also
-    --------
-    drawMiniAlignment : Main function that calls this to create alignment visualizations.
-
-        Notes
+    Notes
     -----
     - Target bases are drawn with full opacity and black borders
     - Offset bases (context) are drawn with 70% opacity
@@ -704,20 +791,34 @@ def markupRIPBases(
     - Coordinates in returned sets are in matplotlib coordinates, where y-axis
       is flipped compared to the alignment array (0 at bottom, increasing upward)
     """
+    # DEBUG: Print function parameters for troubleshooting
+    logging.debug(
+        f'markupRIPBases: markupdict={markupdict}, ali_height={ali_height}, arr={arr}, reaminate={reaminate}, palette={palette}, draw_boxes={draw_boxes}'
+    )
+
     highlighted_positions = set()
     target_positions = set()  # Track primary target positions separately
     border_thickness = 2.5  # Border thickness
     inset = 0.05  # Smaller inset for borders to reduce gap with grid lines
 
     # Define colors for nucleotide bases
-    nuc_colors = {
-        'A': '#ff3f3f',  # Bright red
-        'G': '#fbe216',  # Bright yellow
-        'T': '#64bc3c',  # Bright green
-        'C': '#55c1ed',  # Bright blue
-        'N': '#c7d1d0',  # Gray
-        '-': '#FFFFFF',  # White (gap)
-    }
+    nuc_colors = get_color_palette(palette)
+
+    # Count total positions to process for progress bar
+    total_positions = sum(
+        len(positions)
+        for category, positions in markupdict.items()
+        if category != 'non_rip_deamination' or reaminate
+    )
+
+    # Create one progress bar for all positions
+    pbar = tqdm(
+        total=total_positions,
+        desc='Highlighting RIP positions',
+        unit='pos',
+        ncols=80,
+        leave=False,
+    )
 
     # Process all positions in the markup dictionary
     for category, positions in markupdict.items():
@@ -725,6 +826,10 @@ def markupRIPBases(
         if category == 'non_rip_deamination' and not reaminate:
             continue
 
+        # Update progress bar description to show current category
+        pbar.set_description(f'Highlighting {category}')
+
+        # Process each position with progress tracking
         for pos in positions:
             col_idx, row_idx, base, offset = pos
             y = ali_height - row_idx - 1
@@ -752,20 +857,21 @@ def markupRIPBases(
                     )
 
                     # Draw black border with smaller inset and thinner line for cleaner appearance
-                    a.add_patch(
-                        matplotlib.patches.Rectangle(
-                            (
-                                col_idx - 0.5 + inset,
-                                y - 0.5 + inset,
-                            ),  # Inset from cell edge
-                            1.0 - 2 * inset,  # Width with minimal inset
-                            1.0 - 2 * inset,  # Height with minimal inset
-                            facecolor='none',
-                            edgecolor='black',
-                            linewidth=border_thickness,
-                            zorder=150,  # Above grid lines (100)
+                    if draw_boxes:
+                        a.add_patch(
+                            matplotlib.patches.Rectangle(
+                                (
+                                    col_idx - 0.5 + inset,
+                                    y - 0.5 + inset,
+                                ),  # Inset from cell edge
+                                1.0 - 2 * inset,  # Width with minimal inset
+                                1.0 - 2 * inset,  # Height with minimal inset
+                                facecolor='none',
+                                edgecolor='black',
+                                linewidth=border_thickness,
+                                zorder=150,  # Above grid lines (100)
+                            )
                         )
-                    )
 
             # Case 2: Multiple positions (with offset)
             elif offset != 0:
@@ -792,6 +898,7 @@ def markupRIPBases(
                     valid_indices.append(i)
 
                 if not valid_indices:
+                    pbar.update(1)  # Update progress bar even if skipping
                     continue
 
                 # Fill cells with appropriate colors (full-size) - use EXACT cell dimensions
@@ -827,7 +934,7 @@ def markupRIPBases(
                     )
 
                 # Draw border with smaller inset
-                if valid_indices:
+                if valid_indices and draw_boxes:
                     start_i = min(valid_indices)
                     end_i = max(valid_indices)
 
@@ -842,6 +949,12 @@ def markupRIPBases(
                             zorder=150,  # Above grid lines
                         )
                     )
+
+            # Update progress bar
+            pbar.update(1)
+
+    # Close the progress bar
+    pbar.close()
 
     return highlighted_positions, target_positions
 
