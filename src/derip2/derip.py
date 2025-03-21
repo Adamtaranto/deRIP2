@@ -7,6 +7,7 @@ Repeat-Induced Point (RIP) mutations in fungal DNA alignments.
 
 import logging
 from os import path
+import sys
 from typing import List, Optional, Tuple
 
 # import click
@@ -719,223 +720,467 @@ class DeRIP:
         logging.info(f'Alignment visualization saved to {output_file}')
         return result
 
+    def calculate_dinucleotide_frequency(self, sequence):
+        """
+        Calculate the frequency of specific dinucleotides in a sequence.
 
-# def run_derip(
-#    input_file: str,
-#    output_file: str,
-#    consensus_name: str = 'derip_consensus',
-#    maxSNPnoise: float = 0.5,
-#    minRIPlike: float = 0.1,
-#    maxGaps: float = 0.7,
-#    reaminate: bool = False,
-#    fillindex: Optional[int] = None,
-#    fillmaxgc: bool = False,
-# ):
-#    """
-#    Generate a deRIPed consensus sequence from an alignment file.
-#
-#    This function processes a DNA alignment file to identify and correct Repeat-Induced
-#    Point (RIP) mutations, then writes the corrected consensus sequence to an output file.
-#    It also prints a summary of identified RIP mutations and alignment information.
-#
-#    Parameters
-#    ----------
-#    input_file : str
-#        Path to the input alignment file in FASTA format.
-#    output_file : str
-#        Path where the consensus sequence will be written.
-#    consensus_name : str, optional
-#        Name for the consensus sequence in the output file (default: 'derip_consensus').
-#    maxSNPnoise : float, optional
-#        Maximum proportion of conflicting SNPs permitted before excluding a column
-#        from RIP/deamination assessment (default: 0.5).
-#    minRIPlike : float, optional
-#        Minimum proportion of deamination events in RIP context required for a
-#        column to be deRIPed in final sequence (default: 0.1).
-#    maxGaps : float, optional
-#        Maximum proportion of gaps in a column before considering it a gap
-#        in the consensus sequence (default: 0.7).
-#    reaminate : bool, optional
-#        Whether to correct all deamination events independent of RIP context (default: False).
-#    fillindex : int, optional
-#        Index of row to use for filling uncorrected positions (default: None).
-#    fillmaxgc : bool, optional
-#        Whether to use the sequence with highest GC content for filling if
-#        no row index is specified (default: False).
-#
-#    Returns
-#    -------
-#    None
-#        This function writes to a file and prints to stdout but doesn't return a value.
-#
-#    Raises
-#    ------
-#    FileNotFoundError
-#        If the specified input file does not exist.
-#
-#    Notes
-#    -----
-#    The function prints summary information to standard output, including:
-#    - Number of columns repaired
-#    - RIP mutation summary by sequence
-#    - Visualization of the masked alignment
-#    - Gapped consensus sequence
-#    """
-#    if path.isfile(input_file):
-#        derip_object = DeRIP(
-#            input_file,
-#            maxSNPnoise=maxSNPnoise,
-#            minRIPlike=minRIPlike,
-#            maxGaps=maxGaps,
-#            reaminate=reaminate,
-#            fillindex=fillindex,
-#            fillmaxgc=fillmaxgc,
-#        )
-#
-#        # Calculate RIP mutations
-#        derip_object.calculate_rip(label=consensus_name)
-#
-#        # Access corrected positions
-#        print(
-#            f'\nDeRIP2 found {len(derip_object.corrected_positions)} columns to be repaired.\n'
-#        )
-#
-#        # Print RIP summary
-#        print(f'RIP summary by row:\n{derip_object.rip_summary()}')
-#
-#        # Print colourized alignment + consensus
-#        print(f'\n{derip_object}')
-#
-#        # Print masked alignment
-#        print(f'\nMutation masked alignment:\n{derip_object.colored_masked_alignment}')
-#        print(f'{derip_object.colored_consensus} {consensus_name}\n')
-#
-#        # Opt1: Write output consensus to file
-#        derip_object.write_consensus(output_file, consensus_id=consensus_name)
-#
-#        # Opt2: Write original alignment with appened deRIP'd sequence to output file
-#        derip_object.write_alignment(output_file, append_consensus=True, mask_rip=False)
-#
-#        # Opt3: Write alignment plot to file
-#        derip_object.plot_alignment(output_file.replace('.fa', '.png'), show_chars=True, title='DeRIP2 alignment', draw_boxes=True, show_rip='product', highlight_corrected=True)
-#    else:
-#        raise FileNotFoundError(f"The file '{input_file}' does not exist.")
-#
-#
-# @click.command()
-# @click.option(
-#    '--input_file',
-#    '-i',
-#    required=True,
-#    type=str,
-#    help='Multiple sequence alignment FASTA file path',
-# )
-# @click.option('--output_file', '-o', required=True, type=str, help='Output file')
-# @click.option(
-#    '--consensus_name',
-#    '-n',
-#    type=str,
-#    default='derip_consensus',
-#    help='Name of the consensus sequence (default: derip_consensus)',
-# )
-# @click.option(
-#    '--maxSNPnoise',
-#    type=float,
-#    default=0.5,
-#    help='Maximum proportion of conflicting SNPs permitted before excluding column from RIP/deamination assessment (default: 0.5)',
-# )
-# @click.option(
-#    '--minRIPlike',
-#    type=float,
-#    default=0.1,
-#    help='Minimum proportion of deamination events in RIP context required for column to be deRIPd in final sequence (default: 0.1)',
-# )
-# @click.option(
-#    '--maxGaps',
-#    type=float,
-#    default=0.7,
-#    help='Maximum proportion of gaps in a column before considering it a gap in consensus (default: 0.7)',
-# )
-# @click.option(
-#    '--reaminate',
-#    is_flag=True,
-#    help='Correct all deamination events independent of RIP context',
-# )
-# @click.option(
-#    '--fillindex',
-#    type=int,
-#    help='Index of row to use for filling uncorrected positions',
-# )
-# @click.option(
-#    '--fillmaxgc',
-#    is_flag=True,
-#    help='Use sequence with highest GC content for filling if no row index is specified',
-# )
-# def main(
-#    input_file,
-#    output_file,
-#    consensus_name,
-#    maxsnpnoise,
-#    minriplike,
-#    maxgaps,
-#    reaminate,
-#    fillindex,
-#    fillmaxgc,
-# ):
-#    """
-#    Command line interface for the deRIP consensus generation tool.
-#
-#    This function serves as the entry point for the command line interface,
-#    processing arguments from Click decorators and passing them to the
-#    get_derip_consensus function.
-#
-#    Parameters
-#    ----------
-#    input_file : str
-#        Path to the input alignment file in FASTA format.
-#    output_file : str
-#        Path where the consensus sequence will be written.
-#    consensus_name : str
-#        Name for the consensus sequence in the output file.
-#    maxsnpnoise : float
-#        Maximum proportion of conflicting SNPs permitted before excluding a column
-#        from RIP/deamination assessment.
-#    minriplike : float
-#        Minimum proportion of deamination events in RIP context required for a
-#        column to be deRIPed in final sequence.
-#    maxgaps : float
-#        Maximum proportion of gaps in a column before considering it a gap
-#        in the consensus sequence.
-#    reaminate : bool
-#        Whether to correct all deamination events independent of RIP context.
-#    fillindex : int or None
-#        Index of row to use for filling uncorrected positions.
-#    fillmaxgc : bool
-#        Whether to use the sequence with highest GC content for filling if
-#        no row index is specified.
-#
-#    Returns
-#    -------
-#    None
-#        This function calls get_derip_consensus which writes output to a file
-#        and prints information to stdout.
-#
-#    Notes
-#    -----
-#    This function is intended to be used with Click as a command-line entry point
-#    and should not typically be called directly in code.
-#    """
-#    run_derip(
-#        input_file=input_file,
-#        output_file=output_file,
-#        consensus_name=consensus_name,
-#        maxSNPnoise=maxsnpnoise,
-#        minRIPlike=minriplike,
-#        maxGaps=maxgaps,
-#        reaminate=reaminate,
-#        fillindex=fillindex,
-#        fillmaxgc=fillmaxgc,
-#    )
-#
-# if __name__ == '__main__':
-#    main()
+        Parameters
+        ----------
+        sequence : str
+            The DNA sequence to analyze.
+
+        Returns
+        -------
+        dict
+            A dictionary with dinucleotide counts.
+        """
+        # Convert to uppercase and remove gaps
+        seq = sequence.upper().replace('-', '')
+
+        # Count dinucleotides
+        dinucleotides = {'TpA': 0, 'ApT': 0, 'CpA': 0, 'TpG': 0, 'ApC': 0, 'GpT': 0}
+
+        for i in range(len(seq) - 1):
+            di = seq[i : i + 2]
+            if di == 'TA':
+                dinucleotides['TpA'] += 1
+            elif di == 'AT':
+                dinucleotides['ApT'] += 1
+            elif di == 'CA':
+                dinucleotides['CpA'] += 1
+            elif di == 'TG':
+                dinucleotides['TpG'] += 1
+            elif di == 'AC':
+                dinucleotides['ApC'] += 1
+            elif di == 'GT':
+                dinucleotides['GpT'] += 1
+
+        return dinucleotides
+
+    def calculate_cri(self, sequence):
+        """
+        Calculate the Composite RIP Index (CRI) for a DNA sequence.
+
+        Parameters
+        ----------
+        sequence : str
+            The DNA sequence to analyze.
+
+        Returns
+        -------
+        tuple
+            (cri, pi, si) - Composite RIP Index, Product Index, and Substrate Index.
+        """
+        dinucleotides = self.calculate_dinucleotide_frequency(sequence)
+
+        # Calculate RIP product index (PI) = TpA / ApT
+        pi = (
+            dinucleotides['TpA'] / dinucleotides['ApT']
+            if dinucleotides['ApT'] != 0
+            else 0
+        )
+
+        # Calculate RIP substrate index (SI) = (CpA + TpG) / (ApC + GpT)
+        numerator = dinucleotides['CpA'] + dinucleotides['TpG']
+        denominator = dinucleotides['ApC'] + dinucleotides['GpT']
+        si = numerator / denominator if denominator != 0 else 0
+
+        # Calculate composite RIP index (CRI) = PI - SI
+        cri = pi - si
+
+        return cri, pi, si
+
+    def calculate_cri_for_all(self):
+        """
+        Calculate the Composite RIP Index (CRI) for each sequence in the alignment
+        and assign CRI values as annotations to each sequence record.
+
+        Returns
+        -------
+        Bio.Align.MultipleSeqAlignment
+            The alignment with CRI metadata added to each record.
+
+        Notes
+        -----
+        This method calculates:
+        - Product Index (PI) = TpA / ApT
+        - Substrate Index (SI) = (CpA + TpG) / (ApC + GpT)
+        - Composite RIP Index (CRI) = PI - SI
+
+        High CRI values indicate strong RIP activity.
+        """
+        if self.alignment is None:
+            raise ValueError('No alignment loaded')
+
+        # Process each sequence in the alignment
+        for record in self.alignment:
+            # Calculate CRI, PI, and SI for this sequence
+            cri, pi, si = self.calculate_cri(str(record.seq))
+
+            # Update the description to include CRI information
+            if record.description == record.id:
+                record.description = (
+                    f'{record.id} CRI={cri:.4f} PI={pi:.4f} SI={si:.4f}'
+                )
+            else:
+                record.description += f' CRI={cri:.4f} PI={pi:.4f} SI={si:.4f}'
+
+            # Add CRI values as annotations
+            if not hasattr(record, 'annotations'):
+                record.annotations = {}
+
+            record.annotations['CRI'] = cri
+            record.annotations['PI'] = pi
+            record.annotations['SI'] = si
+
+        logging.info(f'Calculated CRI values for {len(self.alignment)} sequences')
+        return self.alignment
+
+    def get_cri_values(self):
+        """
+        Return a list of CRI values for all sequences in the alignment.
+
+        If a sequence doesn't have a CRI value yet, calculate it first.
+
+        Returns
+        -------
+        list of dict
+            List of dictionaries containing CRI, PI, SI values and sequence ID,
+            in the same order as sequences appear in the alignment.
+        """
+        if self.alignment is None:
+            raise ValueError('No alignment loaded')
+
+        cri_values = []
+
+        # Process each sequence in the alignment
+        for record in self.alignment:
+            # Check if CRI is already calculated
+            if not hasattr(record, 'annotations') or 'CRI' not in record.annotations:
+                # Calculate CRI for this sequence
+                cri, pi, si = self.calculate_cri(str(record.seq))
+
+                # Store values in annotations
+                if not hasattr(record, 'annotations'):
+                    record.annotations = {}
+
+                record.annotations['CRI'] = cri
+                record.annotations['PI'] = pi
+                record.annotations['SI'] = si
+
+            # Add values to result list
+            cri_values.append(
+                {
+                    'id': record.id,
+                    'CRI': record.annotations['CRI'],
+                    'PI': record.annotations['PI'],
+                    'SI': record.annotations['SI'],
+                }
+            )
+
+        return cri_values
+
+    def sort_by_cri(self, descending=True):
+        """
+        Sort the alignment by CRI score.
+
+        Parameters
+        ----------
+        descending : bool, optional
+            If True, sort in descending order (highest CRI first). Default: True.
+
+        Returns
+        -------
+        Bio.Align.MultipleSeqAlignment
+            A new alignment with sequences sorted by CRI score.
+        """
+        from Bio.Align import MultipleSeqAlignment
+
+        # Ensure all sequences have CRI values
+        self.get_cri_values()
+
+        # Sort records by CRI score
+        sorted_records = sorted(
+            self.alignment,
+            key=lambda record: record.annotations['CRI'],
+            reverse=descending,
+        )
+
+        # Create a new alignment with the sorted records
+        sorted_alignment = MultipleSeqAlignment(sorted_records)
+
+        return sorted_alignment
+
+    def summarize_cri(self):
+        """
+        Generate a formatted table summarizing CRI values for all sequences.
+
+        Returns
+        -------
+        str
+            A formatted string containing the CRI summary table.
+        """
+        from io import StringIO
+
+        import pandas as pd
+
+        # Ensure all sequences have CRI values
+        cri_data = self.get_cri_values()
+
+        # Create DataFrame
+        df = pd.DataFrame(cri_data)
+
+        # Format floating point columns
+        for col in ['CRI', 'PI', 'SI']:
+            df[col] = df[col].map('{:.4f}'.format)
+
+        # Use StringIO to capture formatted output
+        buffer = StringIO()
+        df.to_string(buffer, index=False)
+
+        return buffer.getvalue()
+
+    def filter_by_cri(self, min_cri=0.0, inplace=False):
+        """
+        Filter the alignment to remove sequences with CRI values below a threshold.
+
+        Parameters
+        ----------
+        min_cri : float, optional
+            Minimum CRI value to keep a sequence in the alignment (default: 0.0).
+        inplace : bool, optional
+            If True, replace the current alignment with the filtered alignment.
+            If False, return a new alignment without modifying the original (default: False).
+
+        Returns
+        -------
+        Bio.Align.MultipleSeqAlignment
+            A new alignment containing only sequences with CRI values >= min_cri.
+
+        Raises
+        ------
+        ValueError
+            If no alignment is loaded or if filtering would remove all sequences.
+        Warning
+            If fewer than 2 sequences remain after filtering.
+
+        Notes
+        -----
+        CRI values will be calculated for sequences that don't already have them.
+        If inplace=True, this will modify the original alignment in the DeRIP object.
+        """
+        import warnings
+
+        from Bio.Align import MultipleSeqAlignment
+
+        if self.alignment is None:
+            raise ValueError('No alignment loaded')
+
+        # Ensure all sequences have CRI values
+        self.get_cri_values()
+
+        # Filter sequences based on CRI threshold
+        filtered_records = [
+            record for record in self.alignment if record.annotations['CRI'] >= min_cri
+        ]
+
+        # Check if any sequences remain after filtering
+        if not filtered_records:
+            raise ValueError(
+                f'No sequences remain after filtering with min_cri={min_cri}. '
+                f'The highest CRI value in the alignment is {max([r.annotations["CRI"] for r in self.alignment]):.4f}'
+            )
+
+        # Warn if fewer than 2 sequences remain
+        if len(filtered_records) < 2:
+            passed_records = [(r.id, r.annotations['CRI']) for r in filtered_records]
+            failed_records = [
+                (r.id, r.annotations['CRI'])
+                for r in self.alignment
+                if r.id not in [rec.id for rec in filtered_records]
+            ]
+
+            print(
+                f'DEBUG: Records that passed filter threshold {min_cri}: {len(passed_records)}',
+                file=sys.stderr,
+            )
+            print(
+                f'DEBUG: Records that failed filter threshold {min_cri}: {len(failed_records)}',
+                file=sys.stderr,
+            )
+
+            warnings.warn(
+                f'Only {len(filtered_records)} sequence remains after CRI filtering. DeRIP works best with multiple sequences.',
+                stacklevel=2,
+            )
+        elif len(filtered_records) < len(self.alignment):
+            logging.info(
+                f'CRI filtering removed {len(self.alignment) - len(filtered_records)} sequences '
+                f'({len(filtered_records)}/{len(self.alignment)} sequences remaining)'
+            )
+
+        # Create new alignment with filtered records
+        filtered_alignment = MultipleSeqAlignment(filtered_records)
+
+        # Replace current alignment if inplace=True
+        if inplace:
+            self.alignment = filtered_alignment
+            logging.info('Updated alignment in-place with CRI-filtered sequences')
+
+            # Clear calculated results since alignment changed
+            self.masked_alignment = None
+            self.consensus = None
+            self.gapped_consensus = None
+            self.consensus_tracker = None
+            self.rip_counts = None
+            self.corrected_positions = {}
+            self.colored_consensus = None
+            self.colored_alignment = None
+            self.colored_masked_alignment = None
+            self.markupdict = None
+
+        return filtered_alignment
+
+    def get_gc_content(self):
+        """
+        Calculate and return the GC content for all sequences in the alignment.
+
+        Returns
+        -------
+        list of dict
+            List of dictionaries containing sequence ID and GC content,
+            in the same order as sequences appear in the alignment.
+
+        Raises
+        ------
+        ValueError
+            If no alignment is loaded.
+        """
+        if self.alignment is None:
+            raise ValueError('No alignment loaded')
+
+        # Import the gc_fraction function from Bio.SeqUtils
+        from Bio.SeqUtils import gc_fraction
+
+        gc_values = []
+
+        # Process each sequence in the alignment
+        for record in self.alignment:
+            # Get sequence without gaps - using string replacement instead of ungap method
+            seq_no_gaps = str(record.seq).replace('-', '')
+
+            # Calculate GC content using Bio.SeqUtils.gc_fraction
+            # This returns a value between 0 and 1, which is what we want
+            gc_content = gc_fraction(seq_no_gaps)
+
+            # Store GC content in annotations
+            if not hasattr(record, 'annotations'):
+                record.annotations = {}
+
+            record.annotations['GC_content'] = gc_content
+
+            # Update the description to include GC content if not already present
+            if 'GC=' not in record.description:
+                if record.description == record.id:
+                    record.description = f'{record.id} GC={gc_content:.4f}'
+                else:
+                    record.description += f' GC={gc_content:.4f}'
+
+            # Add GC content to result list
+            gc_values.append({'id': record.id, 'GC_content': gc_content})
+
+        return gc_values
+
+    def filter_by_gc(self, min_gc=0.0, inplace=False):
+        """
+        Filter the alignment to remove sequences with GC content below a threshold.
+
+        Parameters
+        ----------
+        min_gc : float, optional
+            Minimum GC content to keep a sequence in the alignment (default: 0.0).
+            Value should be between 0.0 and 1.0.
+        inplace : bool, optional
+            If True, replace the current alignment with the filtered alignment.
+            If False, return a new alignment without modifying the original (default: False).
+
+        Returns
+        -------
+        Bio.Align.MultipleSeqAlignment
+            A new alignment containing only sequences with GC content >= min_gc.
+
+        Raises
+        ------
+        ValueError
+            If no alignment is loaded or if filtering would remove all sequences.
+        Warning
+            If fewer than 2 sequences remain after filtering.
+
+        Notes
+        -----
+        GC content will be calculated for sequences that don't already have it.
+        If inplace=True, this will modify the original alignment in the DeRIP object.
+        """
+        import warnings
+
+        from Bio.Align import MultipleSeqAlignment
+
+        if self.alignment is None:
+            raise ValueError('No alignment loaded')
+
+        # Ensure all sequences have GC content values
+        self.get_gc_content()
+
+        # Validate min_gc is in valid range
+        if not 0.0 <= min_gc <= 1.0:
+            raise ValueError(f'min_gc must be between 0.0 and 1.0, got {min_gc}')
+
+        # Filter sequences based on GC content threshold
+        filtered_records = [
+            record
+            for record in self.alignment
+            if record.annotations['GC_content'] >= min_gc
+        ]
+
+        # Check if any sequences remain after filtering
+        if not filtered_records:
+            max_gc = max([r.annotations['GC_content'] for r in self.alignment])
+            raise ValueError(
+                f'No sequences remain after filtering with min_gc={min_gc}. '
+                f'The highest GC content in the alignment is {max_gc:.4f}'
+            )
+
+        # Warn if fewer than 2 sequences remain
+        if len(filtered_records) < 2:
+            warnings.warn(
+                f'Only {len(filtered_records)} sequence remains after GC filtering. '
+                f'DeRIP works best with multiple sequences.',
+                stacklevel=2,
+            )
+        elif len(filtered_records) < len(self.alignment):
+            logging.info(
+                f'GC filtering removed {len(self.alignment) - len(filtered_records)} sequences '
+                f'({len(filtered_records)}/{len(self.alignment)} sequences remaining)'
+            )
+
+        # Create new alignment with filtered records
+        filtered_alignment = MultipleSeqAlignment(filtered_records)
+
+        # Replace current alignment if inplace=True
+        if inplace:
+            self.alignment = filtered_alignment
+            logging.info('Updated alignment in-place with GC-filtered sequences')
+
+            # Clear calculated results since alignment changed
+            self.masked_alignment = None
+            self.consensus = None
+            self.gapped_consensus = None
+            self.consensus_tracker = None
+            self.rip_counts = None
+            self.corrected_positions = {}
+            self.colored_consensus = None
+            self.colored_alignment = None
+            self.colored_masked_alignment = None
+            self.markupdict = None
+
+        return filtered_alignment
