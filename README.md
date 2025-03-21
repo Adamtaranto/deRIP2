@@ -1,6 +1,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PyPI version](https://badge.fury.io/py/derip2.svg)](https://badge.fury.io/py/derip2)
+[![codecov](https://codecov.io/gh/adamtaranto/derip2/branch/main/graph/badge.svg)](https://codecov.io/gh/adamtaranto/derip2)
+
 
 ```code
 ██████╗ ███████╗██████╗ ██╗██████╗ ██████╗
