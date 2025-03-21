@@ -251,7 +251,7 @@ def main(
 
     # Create DeRIP object with command line parameters
     derip_obj = DeRIP(
-        alignment_file=input,
+        alignment_input=input,
         maxSNPnoise=max_snp_noise,
         minRIPlike=min_rip_like,
         reaminate=reaminate,

@@ -10,7 +10,6 @@ from os import path
 import sys
 from typing import List, Optional, Tuple
 
-# import click
 from Bio.Align import MultipleSeqAlignment
 
 import derip2.aln_ops as ao
@@ -25,8 +24,8 @@ class DeRIP:
 
     Parameters
     ----------
-    alignment_file : str
-        Path to the alignment file in FASTA format.
+    alignment_input : str or Bio.Align.MultipleSeqAlignment
+        Path to the alignment file in FASTA format or a pre-loaded MultipleSeqAlignment object.
     maxSNPnoise : float, optional
         Maximum proportion of conflicting SNPs permitted before excluding column
         from RIP/deamination assessment (default: 0.5).
@@ -70,7 +69,7 @@ class DeRIP:
 
     def __init__(
         self,
-        alignment_file: str,
+        alignment_input,
         maxSNPnoise: float = 0.5,
         minRIPlike: float = 0.1,
         reaminate: bool = False,
@@ -79,12 +78,13 @@ class DeRIP:
         maxGaps: float = 0.7,
     ) -> None:
         """
-        Initialize DeRIP with an alignment file and parameters.
+        Initialize DeRIP with an alignment file or MultipleSeqAlignment object and parameters.
 
         Parameters
         ----------
-        alignment_file : str
-            Path to the alignment file in FASTA format.
+        alignment_input : str or Bio.Align.MultipleSeqAlignment
+            Path to the alignment file in FASTA format or a pre-loaded MultipleSeqAlignment object.
+            If a MultipleSeqAlignment is provided, it must contain at least 2 sequences.
         maxSNPnoise : float, optional
             Maximum proportion of conflicting SNPs permitted before excluding column
             from RIP/deamination assessment (default: 0.5).
@@ -123,8 +123,65 @@ class DeRIP:
         self.colored_masked_alignment = None
         self.markupdict = None
 
-        # Load the alignment file
-        self._load_alignment(alignment_file)
+        # Load the alignment
+        self._load_alignment(alignment_input)
+
+    def _load_alignment(self, alignment_input):
+        """
+        Load and validate the alignment from file or MultipleSeqAlignment object.
+
+        Parameters
+        ----------
+        alignment_input : str or Bio.Align.MultipleSeqAlignment
+            Path to the alignment file or a pre-loaded MultipleSeqAlignment object.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the alignment file path does not exist.
+        ValueError
+            If the alignment contains fewer than two sequences, has duplicate IDs,
+            or if the input type is not supported.
+        """
+        from Bio.Align import MultipleSeqAlignment
+
+        # Check if input is a MultipleSeqAlignment object
+        if isinstance(alignment_input, MultipleSeqAlignment):
+            # Directly use the provided alignment
+            self.alignment = alignment_input
+            logging.info(
+                f'Using provided MultipleSeqAlignment with {len(self.alignment)} sequences'
+            )
+
+            # Validate the alignment has at least 2 sequences
+            if len(self.alignment) < 2:
+                raise ValueError('Alignment must contain at least 2 sequences')
+
+        # Check if input is a string (file path)
+        elif isinstance(alignment_input, str):
+            # Check if file exists
+            if not path.isfile(alignment_input):
+                raise FileNotFoundError(f'Alignment file not found: {alignment_input}')
+
+            # Load alignment using aln_ops function
+            try:
+                self.alignment = ao.loadAlign(alignment_input, alnFormat='fasta')
+                logging.info(
+                    f'Loaded alignment from file with {len(self.alignment)} sequences'
+                )
+
+                # Validate the alignment has at least 2 sequences
+                if len(self.alignment) < 2:
+                    raise ValueError('Alignment must contain at least 2 sequences')
+
+            except Exception as e:
+                raise ValueError(f'Error loading alignment: {str(e)}') from e
+        else:
+            # Neither a string nor a MultipleSeqAlignment
+            raise ValueError(
+                f'alignment_input must be either a file path (str) or a MultipleSeqAlignment object, '
+                f'got {type(alignment_input).__name__}'
+            )
 
     def __str__(self) -> str:
         """
@@ -161,33 +218,6 @@ class DeRIP:
         else:
             # No alignment loaded
             return 'DeRIP object (no alignment loaded)'
-
-    def _load_alignment(self, alignment_file: str) -> None:
-        """
-        Load and validate the alignment file.
-
-        Parameters
-        ----------
-        alignment_file : str
-            Path to the alignment file.
-
-        Raises
-        ------
-        FileNotFoundError
-            If the alignment file does not exist.
-        ValueError
-            If the alignment contains fewer than two sequences or has duplicate IDs.
-        """
-        # Check if file exists
-        if not path.isfile(alignment_file):
-            raise FileNotFoundError(f'Alignment file not found: {alignment_file}')
-
-        # Load alignment using aln_ops function
-        try:
-            self.alignment = ao.loadAlign(alignment_file, alnFormat='fasta')
-            logging.info(f'Loaded alignment with {len(self.alignment)} sequences')
-        except Exception as e:
-            raise ValueError(f'Error loading alignment: {str(e)}') from e
 
     def calculate_rip(self, label: str = 'deRIPseq') -> None:
         """
@@ -880,7 +910,7 @@ class DeRIP:
 
         return cri_values
 
-    def sort_by_cri(self, descending=True):
+    def sort_by_cri(self, descending=True, inplace=False):
         """
         Sort the alignment by CRI score.
 
@@ -888,6 +918,9 @@ class DeRIP:
         ----------
         descending : bool, optional
             If True, sort in descending order (highest CRI first). Default: True.
+        inplace : bool, optional
+            If True, replace the current alignment with the sorted alignment.
+            If False, return a new alignment without modifying the original (default: False).
 
         Returns
         -------
@@ -908,6 +941,23 @@ class DeRIP:
 
         # Create a new alignment with the sorted records
         sorted_alignment = MultipleSeqAlignment(sorted_records)
+
+        # Replace current alignment if inplace=True
+        if inplace:
+            self.alignment = sorted_alignment
+            logging.info('Updated alignment in-place with CRI-sorted sequences')
+
+            # Clear calculated results since alignment changed
+            self.masked_alignment = None
+            self.consensus = None
+            self.gapped_consensus = None
+            self.consensus_tracker = None
+            self.rip_counts = None
+            self.corrected_positions = {}
+            self.colored_consensus = None
+            self.colored_alignment = None
+            self.colored_masked_alignment = None
+            self.markupdict = None
 
         return sorted_alignment
 
@@ -1040,6 +1090,99 @@ class DeRIP:
             self.markupdict = None
 
         return filtered_alignment
+
+    def keep_low_cri(self, n=2, inplace=False):
+        """
+        Retain only the n sequences with the lowest CRI values.
+
+        Parameters
+        ----------
+        n : int, optional
+            Number of sequences with lowest CRI values to keep (default: 2).
+        inplace : bool, optional
+            If True, replace the current alignment with the filtered alignment.
+            If False, return a new alignment without modifying the original (default: False).
+
+        Returns
+        -------
+        Bio.Align.MultipleSeqAlignment
+            A new alignment containing only the n sequences with lowest CRI values.
+
+        Raises
+        ------
+        ValueError
+            If no alignment is loaded.
+
+        Notes
+        -----
+        CRI values will be calculated for sequences that don't already have them.
+        If inplace=True, this will modify the original alignment in the DeRIP object.
+        If n is greater than the number of sequences, no filtering occurs.
+        If n is less than 2, no filtering occurs to ensure DeRIP has enough sequences to work with.
+        """
+        import logging
+
+        from Bio.Align import MultipleSeqAlignment
+
+        if self.alignment is None:
+            raise ValueError('No alignment loaded')
+
+        # Ensure all sequences have CRI values
+        self.get_cri_values()
+
+        # Check if n exceeds alignment length
+        if n >= len(self.alignment):
+            logging.info(
+                f'Requested to keep {n} sequences but alignment only has {len(self.alignment)}. No filtering performed.'
+            )
+            return self.alignment
+
+        # Check if n is too small
+        if n < 2:
+            logging.warning(
+                f'Cannot keep fewer than 2 sequences (requested {n}). DeRIP works best with multiple sequences. No filtering performed.'
+            )
+            return self.alignment
+
+        # Sort records by CRI values (ascending order - lowest first)
+        sorted_records = sorted(
+            self.alignment, key=lambda record: record.annotations['CRI']
+        )
+
+        # Keep only the first n sequences with lowest CRI
+        kept_records = sorted_records[:n]
+
+        # Create new alignment with kept records
+        kept_alignment = MultipleSeqAlignment(kept_records)
+
+        # Log which sequences were kept
+        kept_ids = [record.id for record in kept_records]
+        cri_values = [record.annotations['CRI'] for record in kept_records]
+        logging.info(
+            f'Kept {n} sequences with lowest CRI values: {list(zip(kept_ids, cri_values))}'
+        )
+        logging.info(
+            f'Removed {len(self.alignment) - n} sequences with higher CRI values'
+        )
+
+        # Replace current alignment if inplace=True
+        if inplace:
+            self.alignment = kept_alignment
+            logging.info('Updated alignment in-place with low-CRI filtered sequences')
+
+            # Clear calculated results since alignment changed
+            self.masked_alignment = None
+            self.consensus = None
+            self.gapped_consensus = None
+            self.consensus_tracker = None
+            self.rip_counts = None
+            self.corrected_positions = {}
+            self.colored_consensus = None
+            self.colored_alignment = None
+            self.colored_masked_alignment = None
+            self.markupdict = None
+
+        return kept_alignment
 
     def get_gc_content(self):
         """
@@ -1184,3 +1327,98 @@ class DeRIP:
             self.markupdict = None
 
         return filtered_alignment
+
+    def keep_high_gc(self, n=2, inplace=False):
+        """
+        Retain only the n sequences with the highest GC content.
+
+        Parameters
+        ----------
+        n : int, optional
+            Number of sequences with highest GC content to keep (default: 2).
+        inplace : bool, optional
+            If True, replace the current alignment with the filtered alignment.
+            If False, return a new alignment without modifying the original (default: False).
+
+        Returns
+        -------
+        Bio.Align.MultipleSeqAlignment
+            A new alignment containing only the n sequences with highest GC content.
+
+        Raises
+        ------
+        ValueError
+            If no alignment is loaded.
+
+        Notes
+        -----
+        GC content will be calculated for sequences that don't already have it.
+        If inplace=True, this will modify the original alignment in the DeRIP object.
+        If n is greater than the number of sequences, no filtering occurs.
+        If n is less than 2, no filtering occurs to ensure DeRIP has enough sequences to work with.
+        """
+        import logging
+
+        from Bio.Align import MultipleSeqAlignment
+
+        if self.alignment is None:
+            raise ValueError('No alignment loaded')
+
+        # Ensure all sequences have GC content values
+        self.get_gc_content()
+
+        # Check if n exceeds alignment length
+        if n >= len(self.alignment):
+            logging.info(
+                f'Requested to keep {n} sequences but alignment only has {len(self.alignment)}. No filtering performed.'
+            )
+            return self.alignment
+
+        # Check if n is too small
+        if n < 2:
+            logging.warning(
+                f'Cannot keep fewer than 2 sequences (requested {n}). DeRIP works best with multiple sequences. No filtering performed.'
+            )
+            return self.alignment
+
+        # Sort records by GC content values (descending order - highest first)
+        sorted_records = sorted(
+            self.alignment,
+            key=lambda record: record.annotations['GC_content'],
+            reverse=True,
+        )
+
+        # Keep only the first n sequences with highest GC content
+        kept_records = sorted_records[:n]
+
+        # Create new alignment with kept records
+        kept_alignment = MultipleSeqAlignment(kept_records)
+
+        # Log which sequences were kept
+        kept_ids = [record.id for record in kept_records]
+        gc_values = [record.annotations['GC_content'] for record in kept_records]
+        logging.info(
+            f'Kept {n} sequences with highest GC content: {list(zip(kept_ids, gc_values))}'
+        )
+        logging.info(
+            f'Removed {len(self.alignment) - n} sequences with lower GC content'
+        )
+
+        # Replace current alignment if inplace=True
+        if inplace:
+            self.alignment = kept_alignment
+            logging.info('Updated alignment in-place with high-GC filtered sequences')
+
+            # Clear calculated results since alignment changed
+            self.masked_alignment = None
+            self.consensus = None
+            self.gapped_consensus = None
+            self.consensus_tracker = None
+            self.rip_counts = None
+            self.corrected_positions = {}
+            self.colored_consensus = None
+            self.colored_alignment = None
+            self.colored_masked_alignment = None
+            self.markupdict = None
+
+        return kept_alignment
