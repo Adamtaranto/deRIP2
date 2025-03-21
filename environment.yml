@@ -6,14 +6,14 @@ dependencies:
   - python 3.12
   - pip
   - pip:
-      - biopython
-      - biopython
+      - "biopython >=1.80"
       - click
       - hatch
       - isort
       - matplotlib
       - numpy
       - numpydoc-validation
+      - pandas
       - pre-commit
       - pytest
       - ruff
