@@ -151,24 +151,52 @@ class TestDeRIPMethods:
         # Calculate CRI values first
         derip_instance.calculate_cri_for_all()
 
-        # Get original CRI order
+        # Store original alignment sequence IDs and CRI values
+        original_ids = [record.id for record in derip_instance.alignment]
         original_cri_values = [
             record.annotations['CRI'] for record in derip_instance.alignment
         ]
 
-        # Sort by CRI (descending by default)
-        sorted_alignment = derip_instance.sort_by_cri()
+        # Test 1: Sort by CRI (descending by default) with inplace=False
+        sorted_alignment = derip_instance.sort_by_cri(inplace=False)
 
-        # Check that the alignment is sorted correctly
+        # Check that the returned alignment is sorted correctly
         sorted_cri_values = [record.annotations['CRI'] for record in sorted_alignment]
         assert sorted_cri_values == sorted(original_cri_values, reverse=True)
 
-        # Test ascending order
-        sorted_alignment_asc = derip_instance.sort_by_cri(descending=False)
+        # Check that the original alignment is unchanged
+        current_ids = [record.id for record in derip_instance.alignment]
+        assert current_ids == original_ids
+
+        # Test 2: Sort ascending with inplace=False
+        sorted_alignment_asc = derip_instance.sort_by_cri(
+            descending=False, inplace=False
+        )
         sorted_cri_values_asc = [
             record.annotations['CRI'] for record in sorted_alignment_asc
         ]
         assert sorted_cri_values_asc == sorted(original_cri_values)
+
+        # Test 3: Sort with inplace=True (should modify original alignment)
+        # First calculate RIP to populate calculated results
+        derip_instance.calculate_rip()
+        assert derip_instance.consensus is not None  # Verify we have calculated results
+
+        # Now sort in-place
+        result = derip_instance.sort_by_cri(inplace=True)
+
+        # Check that both the returned alignment and the instance's alignment are sorted
+        assert [r.annotations['CRI'] for r in result] == sorted(
+            original_cri_values, reverse=True
+        )
+        assert [r.annotations['CRI'] for r in derip_instance.alignment] == sorted(
+            original_cri_values, reverse=True
+        )
+
+        # Check that calculated results are cleared
+        assert derip_instance.consensus is None
+        assert derip_instance.masked_alignment is None
+        assert derip_instance.colored_alignment is None
 
     def test_summarize_cri(self, derip_instance):
         """Test CRI summary table generation."""
@@ -405,3 +433,164 @@ class TestDeRIPMethods:
         single_base = 'A'
         cri, pi, si = derip_instance.calculate_cri(single_base)
         assert cri == 0 and pi == 0 and si == 0  # Should handle single base gracefully
+
+        def test_keep_low_cri(self, derip_instance):
+            """Test retaining only the sequences with lowest CRI values."""
+            # Calculate CRI values first
+            derip_instance.calculate_cri_for_all()
+
+            # Remember original sequence count
+            original_count = len(derip_instance.alignment)
+
+            # Get original CRI values for checking later
+            original_cri = [
+                record.annotations['CRI'] for record in derip_instance.alignment
+            ]
+            sorted_cri = sorted(original_cri)
+
+            # Test keeping 3 sequences with lowest CRI
+            filtered = derip_instance.keep_low_cri(n=3, inplace=False)
+            assert len(filtered) == 3
+
+            # Verify the 3 lowest CRI sequences were kept
+            kept_cri = [record.annotations['CRI'] for record in filtered]
+            assert sorted(kept_cri) == sorted_cri[:3]
+
+            # Check inplace=False didn't modify original alignment
+            assert len(derip_instance.alignment) == original_count
+
+            # Test with inplace=True
+            derip_instance.keep_low_cri(n=2, inplace=True)
+            assert len(derip_instance.alignment) == 2
+
+            # Verify the 2 lowest CRI sequences were kept
+            kept_cri = [
+                record.annotations['CRI'] for record in derip_instance.alignment
+            ]
+            assert sorted(kept_cri) == sorted_cri[:2]
+
+        def test_keep_low_cri_edge_cases(self, derip_instance):
+            """Test edge cases for keep_low_cri method."""
+            # Calculate CRI values
+            derip_instance.calculate_cri_for_all()
+
+            # Test with n greater than number of sequences
+            original_count = len(derip_instance.alignment)
+            filtered = derip_instance.keep_low_cri(n=original_count + 5)
+            assert len(filtered) == original_count  # Should keep all sequences
+
+            # Test with n < 2 (should enforce minimum of 2)
+            filtered = derip_instance.keep_low_cri(n=1)
+            assert len(filtered) == original_count  # Should not filter
+
+        def test_keep_high_gc(self, derip_instance):
+            """Test retaining only the sequences with highest GC content."""
+            # Calculate GC content first
+            derip_instance.get_gc_content()
+
+            # Remember original sequence count
+            original_count = len(derip_instance.alignment)
+
+            # Get original GC values for checking later
+            original_gc = [
+                record.annotations['GC_content'] for record in derip_instance.alignment
+            ]
+            sorted_gc = sorted(
+                original_gc, reverse=True
+            )  # Descending order for highest GC
+
+            # Test keeping 3 sequences with highest GC
+            filtered = derip_instance.keep_high_gc(n=3, inplace=False)
+            assert len(filtered) == 3
+
+            # Verify the 3 highest GC sequences were kept
+            kept_gc = [record.annotations['GC_content'] for record in filtered]
+            assert sorted(kept_gc, reverse=True) == sorted_gc[:3]
+
+            # Check inplace=False didn't modify original alignment
+            assert len(derip_instance.alignment) == original_count
+
+            # Test with inplace=True
+            derip_instance.keep_high_gc(n=2, inplace=True)
+            assert len(derip_instance.alignment) == 2
+
+            # Verify the 2 highest GC sequences were kept
+            kept_gc = [
+                record.annotations['GC_content'] for record in derip_instance.alignment
+            ]
+            assert sorted(kept_gc, reverse=True) == sorted_gc[:2]
+
+        def test_keep_high_gc_edge_cases(self, derip_instance):
+            """Test edge cases for keep_high_gc method."""
+            # Calculate GC content
+            derip_instance.get_gc_content()
+
+            # Test with n greater than number of sequences
+            original_count = len(derip_instance.alignment)
+            filtered = derip_instance.keep_high_gc(n=original_count + 5)
+            assert len(filtered) == original_count  # Should keep all sequences
+
+            # Test with n < 2 (should enforce minimum of 2)
+            filtered = derip_instance.keep_high_gc(n=1)
+            assert len(filtered) == original_count  # Should not filter
+
+        def test_keep_default_params(self, derip_instance):
+            """Test default parameter values for keep_low_cri and keep_high_gc."""
+            # Calculate CRI and GC content
+            derip_instance.calculate_cri_for_all()
+            derip_instance.get_gc_content()
+
+            # Get original values for checking
+            original_cri = [
+                record.annotations['CRI'] for record in derip_instance.alignment
+            ]
+            original_gc = [
+                record.annotations['GC_content'] for record in derip_instance.alignment
+            ]
+
+            # Sort for comparison
+            sorted_cri = sorted(original_cri)
+            sorted_gc = sorted(original_gc, reverse=True)
+
+            # Test keep_low_cri with default n=2
+            filtered_cri = derip_instance.keep_low_cri()
+            assert len(filtered_cri) == 2
+            kept_cri = [record.annotations['CRI'] for record in filtered_cri]
+            assert sorted(kept_cri) == sorted_cri[:2]
+
+            # Test keep_high_gc with default n=2
+            filtered_gc = derip_instance.keep_high_gc()
+            assert len(filtered_gc) == 2
+            kept_gc = [record.annotations['GC_content'] for record in filtered_gc]
+            assert sorted(kept_gc, reverse=True) == sorted_gc[:2]
+
+        def test_clearing_results_after_filtering(self, derip_instance):
+            """Test that calculated results are cleared after in-place filtering."""
+            # First calculate RIP
+            derip_instance.calculate_rip()
+
+            # Verify we have calculated results
+            assert derip_instance.consensus is not None
+            assert derip_instance.masked_alignment is not None
+            assert derip_instance.colored_alignment is not None
+
+            # Apply in-place filtering
+            derip_instance.keep_low_cri(inplace=True)
+
+            # Verify results were cleared
+            assert derip_instance.consensus is None
+            assert derip_instance.masked_alignment is None
+            assert derip_instance.colored_alignment is None
+
+            # Run the same test with keep_high_gc
+            # First recalculate RIP
+            derip_instance.calculate_rip()
+
+            # Verify we have calculated results again
+            assert derip_instance.consensus is not None
+
+            # Apply in-place filtering
+            derip_instance.keep_high_gc(inplace=True)
+
+            # Verify results were cleared again
+            assert derip_instance.consensus is None
