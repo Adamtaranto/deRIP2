@@ -24,8 +24,6 @@ def test_main_function():
             [
                 '-i',
                 'tests/data/mintest.fa',
-                '--format',
-                'fasta',
                 '--max-gaps',
                 '0.7',
                 '--reaminate',
@@ -88,8 +86,6 @@ def test_main_function_with_visualization():
             [
                 '-i',
                 'tests/data/mintest.fa',
-                '--format',
-                'fasta',
                 '--max-gaps',
                 '0.7',
                 '--reaminate',
@@ -145,8 +141,6 @@ def test_noappend_option():
             [
                 '-i',
                 'tests/data/mintest.fa',
-                '--format',
-                'fasta',
                 '--no-append',
                 '--out-dir',
                 temp_dir,
