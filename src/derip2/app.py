@@ -38,13 +38,6 @@ from derip2.utils.logs import colored, init_logging
 @click.option(
     '-i', '--input', required=True, type=str, help='Multiple sequence alignment.'
 )
-@click.option(
-    '--format',
-    type=click.Choice(['clustal', 'emboss', 'fasta', 'nexus', 'stockholm']),
-    default='fasta',
-    show_default=True,
-    help='Format of input alignment.',
-)
 # Algorithm parameters
 @click.option(
     '-g',
@@ -146,7 +139,6 @@ from derip2.utils.logs import colored, init_logging
 @click.option('--logfile', default=None, help='Log file path.')
 def main(
     input,
-    format,
     max_gaps,
     reaminate,
     max_snp_noise,
@@ -178,9 +170,6 @@ def main(
     ----------
     input : str
         Path to multiple sequence alignment file.
-    format : str
-        Format of input alignment. One of: 'clustal', 'emboss', 'fasta', 'nexus',
-        or 'stockholm'. Default: 'fasta'.
     max_gaps : float
         Maximum proportion of gapped positions in column to be tolerated before
         forcing a gap in final deRIP sequence. Default: 0.7.

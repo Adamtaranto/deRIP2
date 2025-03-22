@@ -35,8 +35,6 @@ Use deRIP2 to:
 
 ## Installation
 
-Requires Python => v3.8
-
 Install from PyPi.
 
 ```bash
@@ -90,7 +88,7 @@ For aligned sequences in 'mintest.fa':
 ### Basic usage with masking
 
 ```bash
-derip2 -i tests/data/mintest.fa --format fasta \
+derip2 -i tests/data/mintest.fa \
   --max-gaps 0.7 \
   --max-snp-noise 0.2 \
   --min-rip-like 0.5 \
@@ -110,7 +108,7 @@ derip2 -i tests/data/mintest.fa --format fasta \
 The `--plot` option will create a visualization of the alignment with RIP markup. The `--plot-rip-type` option can be used to specify the type of RIP events to be displayed in the alignment visualization `product`, `substrate`, or `both`.
 
 ```bash
-derip2 -i tests/data/mintest.fa --format fasta \
+derip2 -i tests/data/mintest.fa \
   --max-gaps 0.7 \
   --max-snp-noise 0.2 \
   --min-rip-like 0.5 \
@@ -174,8 +172,6 @@ derip2 -i tests/data/mintest.fa \
 ```code
   --version                       Show the version and exit.
   -i, --input TEXT                Multiple sequence alignment.  [required]
-  --format [clustal|emboss|fasta|nexus|stockholm]
-                                  Format of input alignment.  [default: fasta]
   -g, --max-gaps FLOAT            Maximum proportion of gapped positions in
                                   column to be tolerated before forcing a gap
                                   in final deRIP sequence.  [default: 0.7]
