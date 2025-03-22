@@ -62,19 +62,19 @@ To set up your development environment:
 3. Create and activate a virtual environment
 
   ```bash
-  python -m venv venv
-  source venv/bin/activate  # On Windows: venv\Scripts\activate
+  conda env create -f environment.yml
+  conda activate derip2
   ```
 
 3. Install development dependencies
 
   ```bash
-  pip install -e ".[tests]"
+  pip install -e ".[dev]"
   ```
 
 ## Style Guidelines
 
-We follow PEP 8 style guidelines and use NumPy-style docstrings. 
+We follow PEP 8 style guidelines and use NumPy-style docstrings.
 
 Key points:
 
@@ -112,4 +112,4 @@ pytest tests/
 
 If you have questions about contributing, please [open an issue](https://github.com/Adamtaranto/deRIP2/issues) or contact the maintainer directly.
 
-Thank you for contributing to deRIP2! 
+Thank you for contributing to deRIP2!
