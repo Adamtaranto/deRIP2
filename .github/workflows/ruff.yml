@@ -15,11 +15,11 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
       - uses: chartboost/ruff-action@v1
         with:
-          src: './src/derip2'
+          src: './src/derip2 ./tests'
           args: 'format'
       - uses: chartboost/ruff-action@v1
         with:
-          src: './src/derip2'
+          src: './src/derip2 ./tests'
           args: 'check'
       - uses: isort/isort-action@v1
         with:
