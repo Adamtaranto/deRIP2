@@ -5,26 +5,19 @@
       members:
         - __init__
         - calculate_rip
-        - write_alignment
-        - write_consensus
-        - get_consensus_string
-        - rip_summary
-        - plot_alignment
-        - calculate_dinucleotide_frequency
         - calculate_cri
         - calculate_cri_for_all
-        - get_cri_values
-        - sort_by_cri
+        - calculate_dinucleotide_frequency
+        - rip_summary
         - summarize_cri
-        - filter_by_cri
-        - keep_low_cri
+        - write_alignment
+        - write_consensus
+        - plot_alignment
+        - get_cri_values
         - get_gc_content
+        - get_consensus_string
+        - sort_by_cri
+        - filter_by_cri
         - filter_by_gc
+        - keep_low_cri
         - keep_high_gc
-        - alignment
-        - masked_alignment
-        - consensus
-        - gapped_consensus
-        - rip_counts
-        - corrected_positions
-        - markupdict
