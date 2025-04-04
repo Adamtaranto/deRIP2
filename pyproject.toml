@@ -52,7 +52,7 @@ version-file = "src/derip2/_version.py"
 
 # Optional dependencies for testing
 [project.optional-dependencies]
-dev = ["hatch", "isort", "notebook", "numpydoc-validation", "pre-commit", "pytest", "pytest-cov", "ruff", "seaborn"]
+dev = ["hatch", "isort", "notebook", "numpydoc-validation", "pre-commit", "pytest", "pytest-cov", "ruff", "seaborn", "mkdocs", "mkdocs-material", "pymdown-extensions", "mkdocstrings", "mkdocstrings-python"]
 
 [tool.pytest.ini_options]
 addopts = "-v --cov=derip2 --cov-branch --cov-report=xml --cov-report=term"
