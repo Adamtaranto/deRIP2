@@ -1159,7 +1159,7 @@ class DeRIP:
         kept_ids = [record.id for record in kept_records]
         cri_values = [record.annotations['CRI'] for record in kept_records]
         logging.info(
-            f'Kept {n} sequences with lowest CRI values: {list(zip(kept_ids, cri_values, strict=False))}'
+            f'Kept {n} sequences with lowest CRI values: {list(zip(kept_ids, cri_values))}'
         )
         logging.info(
             f'Removed {len(self.alignment) - n} sequences with higher CRI values'
@@ -1398,7 +1398,7 @@ class DeRIP:
         kept_ids = [record.id for record in kept_records]
         gc_values = [record.annotations['GC_content'] for record in kept_records]
         logging.info(
-            f'Kept {n} sequences with highest GC content: {list(zip(kept_ids, gc_values, strict=False))}'
+            f'Kept {n} sequences with highest GC content: {list(zip(kept_ids, gc_values))}'
         )
         logging.info(
             f'Removed {len(self.alignment) - n} sequences with lower GC content'
