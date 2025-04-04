@@ -92,7 +92,7 @@ derip2 -i tests/data/mintest.fa \
   --max-gaps 0.7 \
   --max-snp-noise 0.2 \
   --min-rip-like 0.5 \
-  --mask \ # Write masked alignment to file
+  --mask \
   -d results \
   --prefix derip_output
 ```
