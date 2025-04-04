@@ -301,66 +301,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#example-usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      Example usage
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Example usage">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#basic-usage-with-masking" class="md-nav__link">
-    <span class="md-ellipsis">
-      Basic usage with masking
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#with-vizualization" class="md-nav__link">
-    <span class="md-ellipsis">
-      With vizualization
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#using-maximum-gc-content-for-filling" class="md-nav__link">
-    <span class="md-ellipsis">
-      Using maximum GC content for filling
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#correcting-all-deamination-events" class="md-nav__link">
-    <span class="md-ellipsis">
-      Correcting all deamination events
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#standard-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      Standard Options
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#algorithm-overview" class="md-nav__link">
     <span class="md-ellipsis">
       Algorithm overview
@@ -519,66 +459,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#example-usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      Example usage
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Example usage">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#basic-usage-with-masking" class="md-nav__link">
-    <span class="md-ellipsis">
-      Basic usage with masking
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#with-vizualization" class="md-nav__link">
-    <span class="md-ellipsis">
-      With vizualization
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#using-maximum-gc-content-for-filling" class="md-nav__link">
-    <span class="md-ellipsis">
-      Using maximum GC content for filling
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#correcting-all-deamination-events" class="md-nav__link">
-    <span class="md-ellipsis">
-      Correcting all deamination events
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#standard-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      Standard Options
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#algorithm-overview" class="md-nav__link">
     <span class="md-ellipsis">
       Algorithm overview
@@ -649,8 +529,6 @@ independently RIP'd.</p>
 <h2 id="table-of-contents">Table of contents</h2>
 <ul>
 <li><a href="#installation">Installation</a></li>
-<li><a href="#example-usage">Example usage</a></li>
-<li><a href="#standard-options">Standard Options</a></li>
 <li><a href="#algorithm-overview">Algorithm overview</a></li>
 <li><a href="#issues">Report Issues</a></li>
 <li><a href="#license">License</a></li>
@@ -683,128 +561,6 @@ independently RIP'd.</p>
 <a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="c1"># Install package in editable mode</span>
 <a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s1">&#39;.[dev]&#39;</span>
 </code></pre></div>
-<h2 id="example-usage">Example usage</h2>
-<p>For aligned sequences in 'mintest.fa':</p>
-<ul>
-<li>Any column with &gt;= 70% gap positions will not be corrected and a gap inserted in corrected sequence.</li>
-<li>Bases in column must be &gt;= 80% C/T or G/A</li>
-<li>At least 50% bases in a column must be in RIP dinucleotide context (C/T as CpA / TpA) for correction.</li>
-<li>Default: Inherit all remaining uncorrected positions from the least RIP'd sequence.</li>
-<li>Mask all substrate and product motifs from corrected columns as ambiguous bases (i.e. CpA to TpA --&gt; YpA)</li>
-</ul>
-<h3 id="basic-usage-with-masking">Basic usage with masking</h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>derip2<span class="w"> </span>-i<span class="w"> </span>tests/data/mintest.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--max-gaps<span class="w"> </span><span class="m">0</span>.7<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--max-snp-noise<span class="w"> </span><span class="m">0</span>.2<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span>--min-rip-like<span class="w"> </span><span class="m">0</span>.5<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span>--mask<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span>-d<span class="w"> </span>results<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">  </span>--prefix<span class="w"> </span>derip_output
-</code></pre></div>
-<p><strong>Output:</strong></p>
-<ul>
-<li><code>results/derip_output.fasta</code> - Corrected sequence</li>
-<li><code>results/derip_output_alignment.fasta</code> - Alignment with masked corrections</li>
-<li><code>results/derip_output_masked_alignment.fasta</code> - Alignment with masked corrections</li>
-</ul>
-<h3 id="with-vizualization">With vizualization</h3>
-<p>The <code>--plot</code> option will create a visualization of the alignment with RIP markup. The <code>--plot-rip-type</code> option can be used to specify the type of RIP events to be displayed in the alignment visualization <code>product</code>, <code>substrate</code>, or <code>both</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>derip2<span class="w"> </span>-i<span class="w"> </span>tests/data/mintest.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>--max-gaps<span class="w"> </span><span class="m">0</span>.7<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--max-snp-noise<span class="w"> </span><span class="m">0</span>.2<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>--min-rip-like<span class="w"> </span><span class="m">0</span>.5<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span>--plot<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span>--plot-rip-type<span class="w"> </span>both<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span>-d<span class="w"> </span>results<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">  </span>--prefix<span class="w"> </span>derip_output
-</code></pre></div>
-<p><strong>Output:</strong></p>
-<ul>
-<li><code>results/derip_output.fasta</code> - Corrected sequence</li>
-<li><code>results/derip_output_masked_alignment.fasta</code> - Alignment with masked corrections</li>
-<li><code>results/derip_output_visualization.png</code> - Visualization of the alignment with RIP markup</li>
-</ul>
-<p><img alt="Visualization of the alignment with RIP markup" src="https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_output_visualization.png" /></p>
-<h3 id="using-maximum-gc-content-for-filling">Using maximum GC content for filling</h3>
-<p>By default uncorrected positions in the output sequence are filled from the sequence with the lowest RIP count. If the <code>--fill-max-gc</code> option is set, remaining positions are filled from the sequence with the highest G/C content sequence instead.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>derip2<span class="w"> </span>-i<span class="w"> </span>tests/data/mintest.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span>--max-gaps<span class="w"> </span><span class="m">0</span>.7<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>--max-snp-noise<span class="w"> </span><span class="m">0</span>.2<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span>--min-rip-like<span class="w"> </span><span class="m">0</span>.5<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span>--fill-max-gc<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">  </span>-d<span class="w"> </span>results<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">  </span>--prefix<span class="w"> </span>derip_gc_filled
-</code></pre></div>
-<p>Alternatively, the <code>--fill-index</code> option can be used to force selection of alignment row to fill uncorrected positions from by row index number (indexed from 0). Note: This will override the <code>--fill-max-gc</code> option.</p>
-<h3 id="correcting-all-deamination-events">Correcting all deamination events</h3>
-<p>If the <code>--reaminate</code> option is set, all deamination events will be corrected, regardless of RIP context.</p>
-<p><code>--plot-rip-type product</code> is used to highlight the product of RIP events in the visualization.
-Non-RIP deamination events are also highlighted.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>derip2<span class="w"> </span>-i<span class="w"> </span>tests/data/mintest.fa<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span>--max-gaps<span class="w"> </span><span class="m">0</span>.7<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span>--reaminate<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span>-d<span class="w"> </span>results<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span>--plot<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">  </span>--plot-rip-type<span class="w"> </span>product<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">  </span>--prefix<span class="w"> </span>derip_reaminated
-</code></pre></div>
-<p><strong>Output:</strong></p>
-<ul>
-<li><code>results/derip_reaminated.fasta</code> - Corrected sequence using highest GC content sequence for filling</li>
-<li><code>results/derip_reaminated_alignment.fasta</code> - Alignment with corrected sequence appended</li>
-<li><code>results/derip_reaminated_vizualization.png</code> - Visualization of the alignment with RIP markup</li>
-</ul>
-<p><img alt="Visualization of the alignment with RIP markup" src="https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_reaminated_visualization.png" /></p>
-<h2 id="standard-options">Standard Options</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>  --version                       Show the version and exit.
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  -i, --input TEXT                Multiple sequence alignment.  [required]
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  -g, --max-gaps FLOAT            Maximum proportion of gapped positions in
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>                                  column to be tolerated before forcing a gap
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>                                  in final deRIP sequence.  [default: 0.7]
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>  -a, --reaminate                 Correct all deamination events independent
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>                                  of RIP context.
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>  --max-snp-noise FLOAT           Maximum proportion of conflicting SNPs
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>                                  permitted before excluding column from
-<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>                                  RIP/deamination assessment. i.e. By default
-<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>                                  a column with &gt;= 0.5 &#39;C/T&#39; bases will have
-<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>                                  &#39;TpA&#39; positions logged as RIP events.
-<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>                                  [default: 0.5]
-<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>  --min-rip-like FLOAT            Minimum proportion of deamination events in
-<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>                                  RIP context (5&#39; CpA 3&#39; --&gt; 5&#39; TpA 3&#39;)
-<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>                                  required for column to deRIP&#39;d in final
-<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>                                  sequence. Note: If &#39;reaminate&#39; option is set
-<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>                                  all deamination events will be corrected.
-<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>                                  [default: 0.1]
-<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a>  --fill-max-gc                   By default uncorrected positions in the
-<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a>                                  output sequence are filled from the sequence
-<a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a>                                  with the lowest RIP count. If this option is
-<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a>                                  set remaining positions are filled from the
-<a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a>                                  sequence with the highest G/C content.
-<a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a>  --fill-index INTEGER            Force selection of alignment row to fill
-<a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a>                                  uncorrected positions from by row index
-<a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a>                                  number (indexed from 0). Note: Will override
-<a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a>                                  &#39;--fill-max-gc&#39; option.
-<a id="__codelineno-9-29" name="__codelineno-9-29" href="#__codelineno-9-29"></a>  --mask                          Mask corrected positions in alignment with
-<a id="__codelineno-9-30" name="__codelineno-9-30" href="#__codelineno-9-30"></a>                                  degenerate IUPAC codes.
-<a id="__codelineno-9-31" name="__codelineno-9-31" href="#__codelineno-9-31"></a>  --no-append                     If set, do not append deRIP&#39;d sequence to
-<a id="__codelineno-9-32" name="__codelineno-9-32" href="#__codelineno-9-32"></a>                                  output alignment.
-<a id="__codelineno-9-33" name="__codelineno-9-33" href="#__codelineno-9-33"></a>  -d, --out-dir TEXT              Directory for deRIP&#39;d sequence files to be
-<a id="__codelineno-9-34" name="__codelineno-9-34" href="#__codelineno-9-34"></a>                                  written to.
-<a id="__codelineno-9-35" name="__codelineno-9-35" href="#__codelineno-9-35"></a>  -p, --prefix TEXT               Prefix for output files. Output files will
-<a id="__codelineno-9-36" name="__codelineno-9-36" href="#__codelineno-9-36"></a>                                  be named prefix.fasta,
-<a id="__codelineno-9-37" name="__codelineno-9-37" href="#__codelineno-9-37"></a>                                  prefix_alignment.fasta, etc.  [default:
-<a id="__codelineno-9-38" name="__codelineno-9-38" href="#__codelineno-9-38"></a>                                  deRIPseq]
-<a id="__codelineno-9-39" name="__codelineno-9-39" href="#__codelineno-9-39"></a>  --plot                          Create a visualization of the alignment with
-<a id="__codelineno-9-40" name="__codelineno-9-40" href="#__codelineno-9-40"></a>                                  RIP markup.
-<a id="__codelineno-9-41" name="__codelineno-9-41" href="#__codelineno-9-41"></a>  --plot-rip-type [both|product|substrate]
-<a id="__codelineno-9-42" name="__codelineno-9-42" href="#__codelineno-9-42"></a>                                  Specify the type of RIP events to be
-<a id="__codelineno-9-43" name="__codelineno-9-43" href="#__codelineno-9-43"></a>                                  displayed in the alignment visualization.
-<a id="__codelineno-9-44" name="__codelineno-9-44" href="#__codelineno-9-44"></a>                                  [default: both]
-<a id="__codelineno-9-45" name="__codelineno-9-45" href="#__codelineno-9-45"></a>  --loglevel [DEBUG|INFO|WARNING|ERROR|CRITICAL]
-<a id="__codelineno-9-46" name="__codelineno-9-46" href="#__codelineno-9-46"></a>                                  Set logging level.  [default: INFO]
-<a id="__codelineno-9-47" name="__codelineno-9-47" href="#__codelineno-9-47"></a>  --logfile TEXT                  Log file path.
-<a id="__codelineno-9-48" name="__codelineno-9-48" href="#__codelineno-9-48"></a>  -h, --help                      Show this message and exit.
-</code></pre></div>
 <h2 id="algorithm-overview">Algorithm overview</h2>
 <p>For each column in input alignment:</p>
 <ul>
@@ -817,7 +573,7 @@ Non-RIP deamination events are also highlighted.</p>
 <li>For all remaining positions in output sequence (not filled by gap, reaminate, or RIP-correction) inherit sequence from input sequence with the fewest observed RIP events (or greatest GC content if RIP is not detected or multiple sequences sharing min-RIP count).</li>
 </ul>
 <h2 id="issues">Issues</h2>
-<p>Submit feedback to the <a href="https://github.com/Adamtaranto/deRIP2/issues">Issue Tracker</a></p>
+<p>Submit feedback and questions in the <a href="https://github.com/Adamtaranto/deRIP2/discussions">discussion forum</a></p>
 <h2 id="license">License</h2>
 <p>Software provided under MIT license.</p>
 
