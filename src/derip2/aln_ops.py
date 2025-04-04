@@ -411,7 +411,7 @@ def updateRIPCount(
 def fillConserved(
     align: 'AlignIO.MultipleSeqAlignment',
     tracker: Dict[int, NamedTuple],
-    maxGaps: float = 0.7,
+    max_gaps: float = 0.7,
 ) -> Dict[int, NamedTuple]:
     """
     Update tracker with bases from invariant or highly gapped alignment columns.
@@ -420,7 +420,7 @@ def fillConserved(
     with bases from positions that are:
     1. Completely invariant (all non-gap positions have the same base)
     2. Invariant except for gaps (all non-gap positions have the same base)
-    3. Highly gapped columns (gap proportion exceeds maxGaps threshold)
+    3. Highly gapped columns (gap proportion exceeds max_gaps threshold)
 
     Parameters
     ----------
@@ -428,7 +428,7 @@ def fillConserved(
         The input sequence alignment to analyze.
     tracker : Dict[int, NamedTuple]
         Dictionary tracking the consensus sequence state for each column.
-    maxGaps : float, optional
+    max_gaps : float, optional
         Maximum proportion of gaps allowed in a column before considering
         it a gap column in the consensus (default: 0.7).
 
@@ -457,11 +457,11 @@ def fillConserved(
         for base in [k for k, v in colProps.items() if v + colProps['-'] == 1]:
             # Exclude gap character as potential base
             # Only update if gap proportion is below threshold
-            if base != '-' and colProps['-'] < maxGaps:
+            if base != '-' and colProps['-'] < max_gaps:
                 tracker = updateTracker(idx, base, tracker, force=False)
 
         # Case 3: If column has more gaps than threshold, use gap character
-        if itemgetter('-')(colProps) >= maxGaps:
+        if itemgetter('-')(colProps) >= max_gaps:
             # Set this position to gap in the tracker
             tracker = updateTracker(idx, '-', tracker, force=False)
 
@@ -717,8 +717,8 @@ def correctRIP(
     align: 'AlignIO.MultipleSeqAlignment',
     tracker: Dict[int, NamedTuple],
     RIPcounts: Dict[int, NamedTuple],
-    maxSNPnoise: float = 0.5,
-    minRIPlike: float = 0.1,
+    max_snp_noise: float = 0.5,
+    min_rip_like: float = 0.1,
     reaminate: bool = True,
     mask: bool = False,
 ) -> Tuple[
@@ -754,10 +754,10 @@ def correctRIP(
         Dictionary tracking the consensus sequence state for each column.
     RIPcounts : Dict[int, NamedTuple]
         Dictionary tracking RIP mutation counts for each sequence.
-    maxSNPnoise : float, optional
+    max_snp_noise : float, optional
         Minimum proportion of positions in a column that must be C/T or G/A to be
         considered for RIP correction (default: 0.5).
-    minRIPlike : float, optional
+    min_rip_like : float, optional
         Minimum proportion of C→T or G→A transitions that must be in a RIP-like
         context to trigger correction (default: 0.1).
     reaminate : bool, optional
@@ -823,7 +823,7 @@ def correctRIP(
 
             # FORWARD STRAND RIP DETECTION (C→T)
             # Check if column has sufficient C/T content
-            if CTprop >= maxSNPnoise:
+            if CTprop >= max_snp_noise:
                 # Find rows where C is followed by A (RIP substrate)
                 # Even if whole column is C, we can still have RIP substrate
                 CArows, _CA_nextbase_offsets = nextBase(align, colIdx, motif='CA')
@@ -893,7 +893,7 @@ def correctRIP(
                             )
 
                         # If sufficient mutations are in RIP context, correct to ancestral C
-                        if propRIPlike >= minRIPlike:
+                        if propRIPlike >= min_rip_like:
                             tracker = updateTracker(colIdx, 'C', tracker, force=False)
                             modC = True
                             # Log corrected position in tracker
@@ -928,7 +928,7 @@ def correctRIP(
 
             # REVERSE STRAND RIP DETECTION (G→A)
             # Check if column has sufficient G/A content and both G and A are present
-            if GAprop >= maxSNPnoise:
+            if GAprop >= max_snp_noise:
                 # Find rows where G is followed by T (RIP substrate)
                 # Even if whole column is G, we can still have RIP substrate
                 TGrows, _TG_lastbase_offsets = lastBase(align, colIdx, motif='TG')
@@ -998,7 +998,7 @@ def correctRIP(
                             )
 
                         # If sufficient mutations are in RIP context, correct to ancestral G
-                        if propRIPlike >= minRIPlike:
+                        if propRIPlike >= min_rip_like:
                             tracker = updateTracker(colIdx, 'G', tracker, force=False)
                             modG = True
                             # Log corrected position in tracker

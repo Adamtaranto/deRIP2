@@ -241,12 +241,12 @@ def main(
     # Create DeRIP object with command line parameters
     derip_obj = DeRIP(
         alignment_input=input,
-        maxSNPnoise=max_snp_noise,
-        minRIPlike=min_rip_like,
+        max_snp_noise=max_snp_noise,
+        min_rip_like=min_rip_like,
         reaminate=reaminate,
-        fillindex=fill_index,
-        fillmaxgc=fill_max_gc,
-        maxGaps=max_gaps,
+        fill_index=fill_index,
+        fill_max_gc=fill_max_gc,
+        max_gaps=max_gaps,
     )
 
     # Report alignment summary

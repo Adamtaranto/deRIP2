@@ -26,20 +26,20 @@ class DeRIP:
     ----------
     alignment_input : str or Bio.Align.MultipleSeqAlignment
         Path to the alignment file in FASTA format or a pre-loaded MultipleSeqAlignment object.
-    maxSNPnoise : float, optional
+    max_snp_noise : float, optional
         Maximum proportion of conflicting SNPs permitted before excluding column
         from RIP/deamination assessment (default: 0.5).
-    minRIPlike : float, optional
+    min_rip_like : float, optional
         Minimum proportion of deamination events in RIP context required for
         column to be deRIP'd in final sequence (default: 0.1).
     reaminate : bool, optional
         Whether to correct all deamination events independent of RIP context (default: False).
-    fillindex : int, optional
+    fill_index : int, optional
         Index of row to use for filling uncorrected positions (default: None).
-    fillmaxgc : bool, optional
+    fill_max_gc : bool, optional
         Whether to use sequence with highest GC content for filling if
         no row index is specified (default: False).
-    maxGaps : float, optional
+    max_gaps : float, optional
         Maximum proportion of gaps in a column before considering it a gap
         in consensus (default: 0.7).
 
@@ -70,12 +70,12 @@ class DeRIP:
     def __init__(
         self,
         alignment_input,
-        maxSNPnoise: float = 0.5,
-        minRIPlike: float = 0.1,
+        max_snp_noise: float = 0.5,
+        min_rip_like: float = 0.1,
         reaminate: bool = False,
-        fillindex: Optional[int] = None,
-        fillmaxgc: bool = False,
-        maxGaps: float = 0.7,
+        fill_index: Optional[int] = None,
+        fill_max_gc: bool = False,
+        max_gaps: float = 0.7,
     ) -> None:
         """
         Initialize DeRIP with an alignment file or MultipleSeqAlignment object and parameters.
@@ -85,30 +85,30 @@ class DeRIP:
         alignment_input : str or Bio.Align.MultipleSeqAlignment
             Path to the alignment file in FASTA format or a pre-loaded MultipleSeqAlignment object.
             If a MultipleSeqAlignment is provided, it must contain at least 2 sequences.
-        maxSNPnoise : float, optional
+        max_snp_noise : float, optional
             Maximum proportion of conflicting SNPs permitted before excluding column
             from RIP/deamination assessment (default: 0.5).
-        minRIPlike : float, optional
+        min_rip_like : float, optional
             Minimum proportion of deamination events in RIP context required for
             column to be deRIP'd in final sequence (default: 0.1).
         reaminate : bool, optional
             Whether to correct all deamination events independent of RIP context (default: False).
-        fillindex : int, optional
+        fill_index : int, optional
             Index of row to use for filling uncorrected positions (default: None).
-        fillmaxgc : bool, optional
+        fill_max_gc : bool, optional
             Whether to use sequence with highest GC content for filling if
             no row index is specified (default: False).
-        maxGaps : float, optional
+        max_gaps : float, optional
             Maximum proportion of gaps in a column before considering it a gap
             in consensus (default: 0.7).
         """
         # Store parameters
-        self.maxSNPnoise = maxSNPnoise
-        self.minRIPlike = minRIPlike
+        self.max_snp_noise = max_snp_noise
+        self.min_rip_like = min_rip_like
         self.reaminate = reaminate
-        self.fillindex = fillindex
-        self.fillmaxgc = fillmaxgc
-        self.maxGaps = maxGaps
+        self.fill_index = fill_index
+        self.fill_max_gc = fill_max_gc
+        self.max_gaps = max_gaps
 
         # Initialize attributes
         self.alignment = None
@@ -245,7 +245,7 @@ class DeRIP:
         rip_counts = ao.initRIPCounter(self.alignment)
 
         # Pre-fill conserved positions
-        tracker = ao.fillConserved(self.alignment, tracker, self.maxGaps)
+        tracker = ao.fillConserved(self.alignment, tracker, self.max_gaps)
 
         # Detect and correct RIP mutations
         tracker, rip_counts, masked_alignment, corrected_positions, markupdict = (
@@ -253,8 +253,8 @@ class DeRIP:
                 self.alignment,
                 tracker,
                 rip_counts,
-                maxSNPnoise=self.maxSNPnoise,
-                minRIPlike=self.minRIPlike,
+                max_snp_noise=self.max_snp_noise,
+                min_rip_like=self.min_rip_like,
                 reaminate=self.reaminate,
                 mask=True,  # Always mask so we have the masked alignment available
             )
@@ -267,20 +267,20 @@ class DeRIP:
         self._build_corrected_positions(self.alignment, masked_alignment)
 
         # Select reference sequence for filling uncorrected positions
-        if self.fillindex is not None:
+        if self.fill_index is not None:
             # Validate index is within range
-            ao.checkrow(self.alignment, idx=self.fillindex)
-            ref_id = self.fillindex
+            ao.checkrow(self.alignment, idx=self.fill_index)
+            ref_id = self.fill_index
         else:
             # Select based on RIP counts or GC content
             ref_id = ao.setRefSeq(
                 self.alignment,
                 rip_counts,
-                getMinRIP=not self.fillmaxgc,  # Use sequence with fewest RIPs if not filling with max GC
-                getMaxGC=self.fillmaxgc,
+                getMinRIP=not self.fill_max_gc,  # Use sequence with fewest RIPs if not filling with max GC
+                getMaxGC=self.fill_max_gc,
             )
-            # Set fillindex to the selected reference sequence ID
-            self.fillindex = ref_id
+            # Set fill_index to the selected reference sequence ID
+            self.fill_index = ref_id
 
         # Fill remaining positions from selected reference sequence
         tracker = ao.fillRemainder(self.alignment, ref_id, tracker)
@@ -740,7 +740,7 @@ class DeRIP:
             consensus_seq=str(self.gapped_consensus.seq),
             corrected_positions=corrected_pos,
             reaminate=self.reaminate,
-            reference_seq_index=self.fillindex,
+            reference_seq_index=self.fill_index,
             show_rip=show_rip,
             highlight_corrected=highlight_corrected,
             flag_corrected=flag_corrected,
