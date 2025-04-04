@@ -40,8 +40,10 @@ jobs:
           pytest --cov=derip2 --cov-branch --cov-report=xml
 
       # Upload coverage report to Codecov
+      # Only upload coverage for the latest Python version
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
+        if: matrix.python-version == '3.13'
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: Adamtaranto/deRIP2
