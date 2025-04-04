@@ -856,7 +856,9 @@ def correctRIP(
                         propRIPlike = (len(TArows) + len(CArows)) / len(CTinCol)
 
                         # Record forward strand RIP substrate for CA rows
-                        for rowCA, offset in zip(CArows, _CA_nextbase_offsets, strict=False):
+                        for rowCA, offset in zip(
+                            CArows, _CA_nextbase_offsets, strict=False
+                        ):
                             markupdict = updateMarkupDict(
                                 'rip_substrate',
                                 markupdict,
@@ -870,7 +872,9 @@ def correctRIP(
                         for rowTA in set(TArows):
                             RIPcounts = updateRIPCount(rowTA, RIPcounts, addFwd=1)
 
-                        for rowTA, offset in zip(TArows, _TA_nextbase_offsets, strict=False):
+                        for rowTA, offset in zip(
+                            TArows, _TA_nextbase_offsets, strict=False
+                        ):
                             markupdict = updateMarkupDict(
                                 'rip_product',
                                 markupdict,
@@ -961,7 +965,9 @@ def correctRIP(
                         propRIPlike = (len(TGrows) + len(TArows)) / len(GAinCol)
 
                         # Record forward strand RIP substrate for TG rows
-                        for rowTG, offset in zip(TGrows, _TG_lastbase_offsets, strict=False):
+                        for rowTG, offset in zip(
+                            TGrows, _TG_lastbase_offsets, strict=False
+                        ):
                             markupdict = updateMarkupDict(
                                 'rip_substrate',
                                 markupdict,
@@ -975,7 +981,9 @@ def correctRIP(
                         for rowTA in set(TArows):
                             RIPcounts = updateRIPCount(rowTA, RIPcounts, addRev=1)
 
-                        for rowTA, offset in zip(TArows, _TA_lastbase_offsets, strict=False):
+                        for rowTA, offset in zip(
+                            TArows, _TA_lastbase_offsets, strict=False
+                        ):
                             markupdict = updateMarkupDict(
                                 'rip_product',
                                 markupdict,
