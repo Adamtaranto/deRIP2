@@ -62,7 +62,10 @@ python_files = ["test_*.py"]
 [tool.ruff]
 target-version = "py312"
 line-length = 88
-lint.select = [
+fix = true
+
+[tool.ruff.lint]
+select = [
     "C",  # mccabe rules
     "F",  # pyflakes rules
     "E",  # pycodestyle error rules
@@ -70,7 +73,7 @@ lint.select = [
     "B",  # flake8-bugbear rules
     "I",  # isort rules
 ]
-lint.ignore = [
+ignore = [
     "C901",  # max-complexity-10
     "E501",  # line-too-long
     "I001",  # isort-imports
