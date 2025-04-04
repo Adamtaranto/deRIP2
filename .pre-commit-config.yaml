@@ -24,8 +24,9 @@ repos:
     rev: v0.9.9
     hooks:
       - id: ruff
-        args: [--fix, --exit-non-zero-on-fix, --show-fixes]
+        args: [--fix, --exit-non-zero-on-fix, --show-fixes, --config=pyproject.toml]
       - id: ruff-format
+        args: [--config=pyproject.toml]
 
   - repo: https://github.com/numpy/numpydoc
     rev: v1.6.0
