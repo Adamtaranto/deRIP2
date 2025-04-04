@@ -828,7 +828,7 @@ def correctRIP(
                 # Even if whole column is C, we can still have RIP substrate
                 CArows, _CA_nextbase_offsets = nextBase(align, colIdx, motif='CA')
                 # Record forward strand RIP substrate for CA rows
-                for rowCA, offset in zip(CArows, _CA_nextbase_offsets):
+                for rowCA, offset in zip(CArows, _CA_nextbase_offsets, strict=False):
                     markupdict = updateMarkupDict(
                         'rip_substrate',
                         markupdict,
@@ -856,7 +856,7 @@ def correctRIP(
                         propRIPlike = (len(TArows) + len(CArows)) / len(CTinCol)
 
                         # Record forward strand RIP substrate for CA rows
-                        for rowCA, offset in zip(CArows, _CA_nextbase_offsets):
+                        for rowCA, offset in zip(CArows, _CA_nextbase_offsets, strict=False):
                             markupdict = updateMarkupDict(
                                 'rip_substrate',
                                 markupdict,
@@ -870,7 +870,7 @@ def correctRIP(
                         for rowTA in set(TArows):
                             RIPcounts = updateRIPCount(rowTA, RIPcounts, addFwd=1)
 
-                        for rowTA, offset in zip(TArows, _TA_nextbase_offsets):
+                        for rowTA, offset in zip(TArows, _TA_nextbase_offsets, strict=False):
                             markupdict = updateMarkupDict(
                                 'rip_product',
                                 markupdict,
@@ -933,7 +933,7 @@ def correctRIP(
                 # Even if whole column is G, we can still have RIP substrate
                 TGrows, _TG_lastbase_offsets = lastBase(align, colIdx, motif='TG')
                 # Record forward strand RIP substrate for TG rows
-                for rowTG, offset in zip(TGrows, _TG_lastbase_offsets):
+                for rowTG, offset in zip(TGrows, _TG_lastbase_offsets, strict=False):
                     markupdict = updateMarkupDict(
                         'rip_substrate',
                         markupdict,
@@ -961,7 +961,7 @@ def correctRIP(
                         propRIPlike = (len(TGrows) + len(TArows)) / len(GAinCol)
 
                         # Record forward strand RIP substrate for TG rows
-                        for rowTG, offset in zip(TGrows, _TG_lastbase_offsets):
+                        for rowTG, offset in zip(TGrows, _TG_lastbase_offsets, strict=False):
                             markupdict = updateMarkupDict(
                                 'rip_substrate',
                                 markupdict,
@@ -975,7 +975,7 @@ def correctRIP(
                         for rowTA in set(TArows):
                             RIPcounts = updateRIPCount(rowTA, RIPcounts, addRev=1)
 
-                        for rowTA, offset in zip(TArows, _TA_lastbase_offsets):
+                        for rowTA, offset in zip(TArows, _TA_lastbase_offsets, strict=False):
                             markupdict = updateMarkupDict(
                                 'rip_product',
                                 markupdict,
