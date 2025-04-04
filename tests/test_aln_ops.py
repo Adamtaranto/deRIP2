@@ -323,7 +323,7 @@ def test_fill_conserved(gapped_alignment):
     tracker = initTracker(gapped_alignment)
 
     # Fill conserved positions
-    updated_tracker = fillConserved(gapped_alignment, tracker, maxGaps=0.5)
+    updated_tracker = fillConserved(gapped_alignment, tracker, max_gaps=0.5)
 
     # First 4 positions are invariant 'ACGT'
     assert updated_tracker[0].base == 'A'
@@ -331,10 +331,10 @@ def test_fill_conserved(gapped_alignment):
     assert updated_tracker[2].base == 'G'
     assert updated_tracker[3].base == 'T'
 
-    # Position 5 has 1/3 gaps but < maxGaps, should have base 'A'
+    # Position 5 has 1/3 gaps but < max_gaps, should have base 'A'
     assert updated_tracker[4].base == 'A'
 
-    # Position 6-8 should be conserved except position 6 which has 2/3 gaps > maxGaps
+    # Position 6-8 should be conserved except position 6 which has 2/3 gaps > max_gaps
     assert updated_tracker[5].base == '-'
     assert updated_tracker[6].base == 'G'  # 1/3 gaps
     assert updated_tracker[7].base == 'T'
@@ -436,8 +436,8 @@ def test_correct_rip(rip_alignment):
             rip_alignment,
             tracker,
             rip_counts,
-            maxSNPnoise=0.5,
-            minRIPlike=0.1,
+            max_snp_noise=0.5,
+            min_rip_like=0.1,
             reaminate=False,
             mask=True,
         )
@@ -480,8 +480,8 @@ def test_correct_rip_with_deamination(rip_alignment):
             rip_alignment,
             tracker,
             rip_counts,
-            maxSNPnoise=0.5,
-            minRIPlike=0.1,
+            max_snp_noise=0.5,
+            min_rip_like=0.1,
             reaminate=True,
             mask=True,
         )
