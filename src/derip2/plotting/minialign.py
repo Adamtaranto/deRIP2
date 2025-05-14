@@ -287,6 +287,8 @@ def drawMiniAlignment(
     show_rip: str = 'both',  # 'substrate', 'product', or 'both'
     highlight_corrected: bool = True,
     flag_corrected: bool = False,
+    num_threads: int = None,
+    min_items_for_threading: int = 500,
 ) -> Union[str, bool]:
     """
     Generate a visualization of a DNA sequence alignment with optional RIP markup.
@@ -340,6 +342,12 @@ def drawMiniAlignment(
         If True, only corrected positions in the consensus will be colored, all others will be gray (default: True).
     flag_corrected : bool, optional
         If True, corrected positions will be marked with a large asterisk above the consensus (default: False).
+    num_threads : int, optional
+        Number of threads to use for parallel processing. If None, uses the number
+        of CPU cores available (default: None).
+    min_items_for_threading : int, optional
+        Minimum number of cells/characters required to use parallel processing.
+        For smaller alignments, sequential processing is used (default: 500).
 
     Returns
     -------
@@ -362,10 +370,32 @@ def drawMiniAlignment(
     - RIP substrates are highlighted in blue
     - Non-RIP deamination events are highlighted in orange
     """
-    # DEBUG: Print function parameters for troubleshooting
+    import concurrent.futures
+    import threading
+    import time
+    from multiprocessing import cpu_count
+
+    start_time = time.time()
+
+    # Set number of threads to use if not specified
+    if num_threads is None:
+        num_threads = cpu_count()
+
+    # If num_threads > available CPU cores, set to available cores
+    if num_threads > cpu_count():
+        logging.warning(
+            f'Requested {num_threads} threads, but only {cpu_count()} available. Using {cpu_count()} threads.'
+        )
+        num_threads = cpu_count()
+
+    # Log function call with important parameters
     logging.debug(
-        f'drawMiniAlignment: outfile={outfile}, dpi={dpi}, title={title}, width={width}, height={height}, orig_nams={orig_nams}, keep_numbers={keep_numbers}, force_numbers={force_numbers}, palette={palette}, markupdict={markupdict}, column_ranges={column_ranges}, show_chars={show_chars}, consensus_seq={consensus_seq}, corrected_positions={corrected_positions}, reaminate={reaminate}, reference_seq_index={reference_seq_index}, show_rip={show_rip}, highlight_corrected={highlight_corrected}'
+        f'drawMiniAlignment: outfile={outfile}, dpi={dpi}, title={title}, width={width}, height={height}, '
+        f'show_chars={show_chars}, consensus_seq={"provided" if consensus_seq else "None"}, '
+        f'corrected_positions={"provided" if corrected_positions else "None"}, '
+        f'num_threads={num_threads}, min_items_for_threading={min_items_for_threading}'
     )
+
     # Handle default value for orig_nams
     if orig_nams is None:
         orig_nams = []
@@ -386,6 +416,15 @@ def drawMiniAlignment(
     # Get alignment dimensions
     ali_height, ali_width = np.shape(arr)
 
+    # Calculate total cells for threading decisions
+    total_cells = ali_height * ali_width
+    use_threading_for_chars = (
+        show_chars
+        and total_cells >= min_items_for_threading
+        and num_threads > 1
+        and ali_width < 500
+    )
+
     # Define plot styling parameters
     fontsize = 14
 
@@ -398,9 +437,6 @@ def drawMiniAlignment(
         tickint = 10
     else:
         tickint = 100
-
-    # The rest of the function is identical to drawMiniAlignment,
-    # continuing with the same plotting logic
 
     # Calculate line weights based on alignment dimensions
     lineweight_h = 10 / ali_height  # Horizontal grid lines
@@ -447,6 +483,8 @@ def drawMiniAlignment(
 
     # Process markup if provided
     if markupdict:
+        markup_start_time = time.time()
+
         # Filter the markup dictionary based on show_rip parameter
         filtered_markup = {}
 
@@ -481,18 +519,26 @@ def drawMiniAlignment(
             masked_arr2, cmap=cm, aspect='auto', interpolation='nearest', zorder=10
         )
 
-        # Draw the colored highlights on top
+        # Draw the colored highlights on top using the parallelized function
         highlighted_positions, target_positions = markupRIPBases(
-            a, filtered_markup, ali_height, arr, reaminate, palette, draw_boxes
+            a,
+            filtered_markup,
+            ali_height,
+            arr,
+            reaminate,
+            palette,
+            draw_boxes,
+            num_threads=num_threads,
+            min_items_for_threading=min_items_for_threading,
         )
+
+        markup_time = time.time() - markup_start_time
+        logging.info(f'RIP markup processing took {markup_time:.2f} seconds')
     else:
         # No markup, just draw the regular alignment
         a.imshow(arr2, cmap=cm, aspect='auto', interpolation='nearest', zorder=10)
         _highlighted_positions = set()
         target_positions = set()
-
-    # Continue with the rest of the plotting code from drawMiniAlignment...
-    # (Including grid lines, reference marker, labels, text, etc.)
 
     # Add grid lines
     a.hlines(
@@ -587,41 +633,119 @@ def drawMiniAlignment(
 
     # Display sequence characters if requested and alignment isn't too large
     if show_chars and ali_width < 500:  # Limit for performance reasons
+        chars_start_time = time.time()
+
         # Increase font size for better visibility
         char_fontsize = min(
             14, 18000 / (ali_width * ali_height)
         )  # Adjusted for larger font
 
-        # Don't show characters if they'll be too small
+        # Skip character rendering if they'll be too small
         if char_fontsize >= 4:
-            for y in range(ali_height):
-                for x in range(ali_width):
-                    # Flip y-coordinate to match alignment orientation
-                    flipped_y = ali_height - y - 1
+            # Use multithreaded character rendering for large alignments
+            if use_threading_for_chars:
+                logging.info(
+                    f'Using {num_threads} threads to render {total_cells} characters'
+                )
 
-                    # Get the character at this position
-                    char = arr[y, x]
+                # Text commands to be executed sequentially (for matplotlib thread safety)
+                text_commands = []
+                text_lock = threading.Lock()
 
-                    # Determine text color based on whether position is a target position
-                    text_color = (
-                        'black' if (x, flipped_y) in target_positions else '#777777'
-                    )  # Lighter grey for non-target bases (including offsets)
+                # Process a chunk of rows
+                def process_rows(row_range):
+                    nonlocal arr, ali_width, ali_height, target_positions
+                    local_commands = []
+                    for y in row_range:
+                        for x in range(ali_width):
+                            flipped_y = ali_height - y - 1
+                            char = arr[y, x]
+                            text_color = (
+                                'black'
+                                if (x, flipped_y) in target_positions
+                                else '#777777'
+                            )
 
-                    # Add character as text annotation
+                            # Store text parameters rather than rendering directly
+                            local_commands.append((x, flipped_y, char, text_color))
+                    return local_commands
+
+                # Create chunks of rows for parallel processing
+                chunk_size = max(
+                    1, ali_height // (num_threads * 2)
+                )  # Ensure at least 1 row per chunk
+                row_chunks = [
+                    range(i, min(i + chunk_size, ali_height))
+                    for i in range(0, ali_height, chunk_size)
+                ]
+
+                # Process row chunks in parallel
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=num_threads
+                ) as executor:
+                    # Submit all row chunk processing jobs
+                    future_to_chunk = {
+                        executor.submit(process_rows, chunk): i
+                        for i, chunk in enumerate(row_chunks)
+                    }
+
+                    # Process results as they complete
+                    with tqdm(
+                        total=len(row_chunks), desc='Rendering text', unit='chunk'
+                    ) as pbar:
+                        for future in concurrent.futures.as_completed(future_to_chunk):
+                            try:
+                                commands = future.result()
+                                with text_lock:
+                                    text_commands.extend(commands)
+                                pbar.update(1)
+                            except Exception as e:
+                                logging.error(f'Error processing text chunk: {e}')
+
+                # Render all text commands sequentially (for matplotlib thread safety)
+                for x, y, char, color in text_commands:
                     a.text(
                         x,
-                        flipped_y,
+                        y,
                         char,
                         ha='center',
                         va='center',
                         fontsize=char_fontsize,
-                        color=text_color,
+                        color=color,
                         fontweight='bold',
-                        zorder=200,  # Make sure characters are on top of everything
+                        zorder=200,
                     )
+            else:
+                # Sequential processing for smaller alignments
+                for y in tqdm(range(ali_height), desc='Rendering text', unit='row'):
+                    for x in range(ali_width):
+                        flipped_y = ali_height - y - 1
+                        char = arr[y, x]
+                        text_color = (
+                            'black' if (x, flipped_y) in target_positions else '#777777'
+                        )
+
+                        a.text(
+                            x,
+                            flipped_y,
+                            char,
+                            ha='center',
+                            va='center',
+                            fontsize=char_fontsize,
+                            color=text_color,
+                            fontweight='bold',
+                            zorder=200,  # Make sure characters are on top of everything
+                        )
+
+            chars_time = time.time() - chars_start_time
+            logging.info(
+                f'Character rendering took {chars_time:.2f} seconds for {total_cells} cells'
+            )
 
     # If consensus sequence is provided, add it to the second subplot
     if consensus_seq is not None and consensus_ax is not None:
+        consensus_start_time = time.time()
+
         # Determine colors for each nucleotide
         nuc_colors = get_color_palette(palette)
 
@@ -655,77 +779,206 @@ def drawMiniAlignment(
             zorder=100,
         )
 
-        # Plot each base in the consensus as a colored cell with character
-        for i, base in enumerate(consensus_seq):
-            # Determine cell color based on whether this is a corrected position
-            if highlight_corrected and i not in corrected_set:
-                # Use gray for non-corrected positions when highlight_corrected is True
-                color = '#c7d1d0'  # Standard gray color
-            else:
-                # Use the regular color palette for this base
-                color = nuc_colors.get(
-                    base.upper(), '#CCCCCC'
-                )  # Default to gray for unknown bases
+        # Determine if we should use threading for consensus visualization
+        use_threading_for_consensus = (
+            len(consensus_seq) >= min_items_for_threading and num_threads > 1
+        )
 
-            # Create colored rectangle for this base
-            consensus_ax.add_patch(
-                matplotlib.patches.Rectangle(
-                    (i - 0.5, -0.5),  # bottom left corner
-                    1,
-                    1,  # width, height
-                    color=color,
-                    zorder=10,
-                )
+        if use_threading_for_consensus:
+            logging.info(
+                f'Using {num_threads} threads to render consensus sequence ({len(consensus_seq)} bases)'
             )
 
-            # Add the character as text with increased font size
-            if show_chars:
-                # Determine text color - use black for all characters for better readability
-                text_color = 'black'
+            # Queue to collect drawing operations
+            drawing_queue = []
+            drawing_lock = threading.Lock()
 
-                consensus_ax.text(
-                    i,
-                    0,
-                    base,
-                    ha='center',
-                    va='center',
-                    fontsize=min(
-                        18, 30 - len(consensus_seq) / 100
-                    ),  # Further increased font size
-                    color=text_color,
-                    fontweight='bold',
-                    zorder=20,
-                )
+            # Function to process a chunk of the consensus sequence
+            def process_consensus_chunk(base_range):
+                local_drawing_ops = []
 
-        # Add markers for corrected positions if provided
-        if corrected_positions and flag_corrected:
-            for pos in corrected_positions:
-                if 0 <= pos < len(consensus_seq):
-                    # Calculate appropriate font size based on sequence length
-                    # Scale inversely with sequence length to fit within cells
-                    # Use a slightly larger size than the base characters to stand out
-                    asterisk_fontsize = min(24, max(14, 40 - len(consensus_seq) / 50))
+                for i in base_range:
+                    base = consensus_seq[i]
 
-                    # Draw a large asterisk centered in the space above each corrected position
-                    # Size now scales with the cell dimensions
-                    consensus_ax.text(
-                        pos,  # x position
-                        1.0,  # y position (centered in new space above sequence)
-                        '*',  # asterisk character
-                        ha='center',  # horizontally centered
-                        va='center',  # vertically centered
-                        fontsize=asterisk_fontsize,  # dynamically scaled font size
-                        color='red',  # red color
-                        fontweight='bold',  # bold for emphasis
-                        zorder=30,  # ensure it's on top
+                    # Determine cell color based on whether this is a corrected position
+                    if highlight_corrected and i not in corrected_set:
+                        color = '#c7d1d0'  # Standard gray for non-corrected
+                    else:
+                        color = nuc_colors.get(
+                            base.upper(), '#CCCCCC'
+                        )  # Default to gray for unknown
+
+                    # Add colored rectangle for this base
+                    local_drawing_ops.append(
+                        (
+                            'rect',
+                            i,
+                            {
+                                'xy': (i - 0.5, -0.5),
+                                'width': 1,
+                                'height': 1,
+                                'color': color,
+                                'zorder': 10,
+                            },
+                        )
                     )
 
+                    # Add character as text if requested
+                    if show_chars:
+                        text_color = 'black'  # For better readability
+                        fontsize = min(18, 30 - len(consensus_seq) / 100)
+
+                        local_drawing_ops.append(
+                            (
+                                'text',
+                                i,
+                                {
+                                    'x': i,
+                                    'y': 0,
+                                    'text': base,
+                                    'ha': 'center',
+                                    'va': 'center',
+                                    'fontsize': fontsize,
+                                    'color': text_color,
+                                    'fontweight': 'bold',
+                                    'zorder': 20,
+                                },
+                            )
+                        )
+
+                    # Add marker for corrected positions if requested
+                    if corrected_positions and flag_corrected and i in corrected_set:
+                        asterisk_fontsize = min(
+                            24, max(14, 40 - len(consensus_seq) / 50)
+                        )
+
+                        local_drawing_ops.append(
+                            (
+                                'text',
+                                i,
+                                {
+                                    'x': i,
+                                    'y': 1.0,
+                                    'text': '*',
+                                    'ha': 'center',
+                                    'va': 'center',
+                                    'fontsize': asterisk_fontsize,
+                                    'color': 'red',
+                                    'fontweight': 'bold',
+                                    'zorder': 30,
+                                },
+                            )
+                        )
+
+                return local_drawing_ops
+
+            # Create chunks of consensus sequence bases for parallel processing
+            chunk_size = max(1, len(consensus_seq) // (num_threads * 2))
+            base_chunks = [
+                range(i, min(i + chunk_size, len(consensus_seq)))
+                for i in range(0, len(consensus_seq), chunk_size)
+            ]
+
+            # Process chunks in parallel
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=num_threads
+            ) as executor:
+                future_to_chunk = {
+                    executor.submit(process_consensus_chunk, chunk): i
+                    for i, chunk in enumerate(base_chunks)
+                }
+
+                # Process results as they complete
+                with tqdm(
+                    total=len(base_chunks), desc='Rendering consensus', unit='chunk'
+                ) as pbar:
+                    for future in concurrent.futures.as_completed(future_to_chunk):
+                        try:
+                            local_ops = future.result()
+                            with drawing_lock:
+                                drawing_queue.extend(local_ops)
+                            pbar.update(1)
+                        except Exception as e:
+                            logging.error(f'Error processing consensus chunk: {e}')
+
+            # Sort operations by index for consistent rendering
+            drawing_queue.sort(key=lambda x: x[1])
+
+            # Execute all drawing operations sequentially on the consensus axis
+            for op_type, _, params in drawing_queue:
+                if op_type == 'rect':
+                    consensus_ax.add_patch(matplotlib.patches.Rectangle(**params))
+                elif op_type == 'text':
+                    consensus_ax.text(**params)
+        else:
+            # Sequential processing for consensus visualization
+            for i in tqdm(
+                range(len(consensus_seq)), desc='Rendering consensus', unit='base'
+            ):
+                base = consensus_seq[i]
+
+                # Determine cell color
+                if highlight_corrected and i not in corrected_set:
+                    color = '#c7d1d0'  # Standard gray for non-corrected
+                else:
+                    color = nuc_colors.get(base.upper(), '#CCCCCC')
+
+                # Add colored rectangle
+                consensus_ax.add_patch(
+                    matplotlib.patches.Rectangle(
+                        (i - 0.5, -0.5),  # bottom left corner
+                        1,
+                        1,  # width, height
+                        color=color,
+                        zorder=10,
+                    )
+                )
+
+                # Add character text if requested
+                if show_chars:
+                    consensus_ax.text(
+                        i,
+                        0,
+                        base,
+                        ha='center',
+                        va='center',
+                        fontsize=min(18, 30 - len(consensus_seq) / 100),
+                        color='black',
+                        fontweight='bold',
+                        zorder=20,
+                    )
+
+                # Add asterisk for corrected positions if requested
+                if corrected_positions and flag_corrected and i in corrected_set:
+                    asterisk_fontsize = min(24, max(14, 40 - len(consensus_seq) / 50))
+                    consensus_ax.text(
+                        i,
+                        1.0,
+                        '*',
+                        ha='center',
+                        va='center',
+                        fontsize=asterisk_fontsize,
+                        color='red',
+                        fontweight='bold',
+                        zorder=30,
+                    )
+
+        consensus_time = time.time() - consensus_start_time
+        logging.info(
+            f'Consensus visualization took {consensus_time:.2f} seconds for {len(consensus_seq)} bases'
+        )
+
     # Save the plot as a PNG image
+    logging.info(f'Saving figure to {outfile}')
     f.savefig(outfile, format='png')
 
     # Clean up resources
     plt.close()
     del arr, arr2, nams
+
+    # Report total processing time
+    total_time = time.time() - start_time
+    logging.info(f'Total visualization time: {total_time:.2f} seconds')
 
     return outfile
 
@@ -738,6 +991,8 @@ def markupRIPBases(
     reaminate: bool = False,
     palette: str = 'derip2',
     draw_boxes: bool = True,
+    num_threads: int = None,
+    min_items_for_threading: int = 100,
 ) -> Tuple[Set[Tuple[int, int]], Set[Tuple[int, int]]]:
     """
     Highlight RIP-related bases in the alignment plot with color coding and borders.
@@ -773,6 +1028,12 @@ def markupRIPBases(
         Color palette to use for base highlighting (default: 'derip2').
     draw_boxes : bool, optional
         Whether to draw black borders around highlighted bases (default: True).
+    num_threads : int, optional
+        Number of threads to use for parallel processing. If None, uses the number
+        of CPU cores available (default: None).
+    min_items_for_threading : int, optional
+        Minimum number of positions required to use parallel processing.
+        For smaller datasets, sequential processing is used (default: 100).
 
     Returns
     -------
@@ -791,25 +1052,60 @@ def markupRIPBases(
     - Coordinates in returned sets are in matplotlib coordinates, where y-axis
       is flipped compared to the alignment array (0 at bottom, increasing upward)
     """
+    import concurrent.futures
+    import threading
+    import time
+    from multiprocessing import cpu_count
+
+    start_time = time.time()
+
     # DEBUG: Print function parameters for troubleshooting
     logging.debug(
-        f'markupRIPBases: markupdict={markupdict}, ali_height={ali_height}, arr={arr}, reaminate={reaminate}, palette={palette}, draw_boxes={draw_boxes}'
+        f'markupRIPBases: markupdict={markupdict}, ali_height={ali_height}, arr={arr}, '
+        f'reaminate={reaminate}, palette={palette}, draw_boxes={draw_boxes}, '
+        f'num_threads={num_threads}, min_items_for_threading={min_items_for_threading}'
     )
 
+    # Initialize result sets with thread locks
     highlighted_positions = set()
-    target_positions = set()  # Track primary target positions separately
+    target_positions = set()
+    highlighted_lock = threading.Lock()
+    target_lock = threading.Lock()
+
+    # Styling parameters
     border_thickness = 2.5  # Border thickness
     inset = 0.05  # Smaller inset for borders to reduce gap with grid lines
 
     # Define colors for nucleotide bases
     nuc_colors = get_color_palette(palette)
 
-    # Count total positions to process for progress bar
+    # Count total positions to process and determine if threading should be used
     total_positions = sum(
         len(positions)
         for category, positions in markupdict.items()
         if category != 'non_rip_deamination' or reaminate
     )
+
+    # Set number of threads to use
+    if num_threads is None:
+        num_threads = cpu_count()
+
+    # If num_threads > available CPU cores, set to available cores
+    if num_threads > cpu_count():
+        logging.warning(
+            f'Requested {num_threads} threads, but only {cpu_count()} available. Using {cpu_count()} threads.'
+        )
+        num_threads = cpu_count()
+
+    # Determine if we should use threading based on dataset size
+    use_threading = (total_positions >= min_items_for_threading) and (num_threads > 1)
+
+    if use_threading:
+        logging.info(
+            f'Using {num_threads} threads to process {total_positions} RIP positions'
+        )
+    else:
+        logging.info(f'Using sequential processing for {total_positions} RIP positions')
 
     # Create one progress bar for all positions
     pbar = tqdm(
@@ -820,141 +1116,268 @@ def markupRIPBases(
         leave=False,
     )
 
-    # Process all positions in the markup dictionary
-    for category, positions in markupdict.items():
-        # Skip non-RIP deamination if reaminate is False
-        if category == 'non_rip_deamination' and not reaminate:
-            continue
+    # Store drawing instructions to handle matplotlib's thread-safety issues
+    # We'll collect all drawing instructions and execute them sequentially
+    drawing_queue = []
+    drawing_lock = threading.Lock()
 
-        # Update progress bar description to show current category
-        pbar.set_description(f'Highlighting {category}')
+    def process_position(category, pos):
+        """
+        Process a single RIP position and generate drawing instructions.
 
-        # Process each position with progress tracking
-        for pos in positions:
-            col_idx, row_idx, base, offset = pos
-            y = ali_height - row_idx - 1
-            highlighted_positions.add((col_idx, y))
-            target_positions.add(
-                (col_idx, y)
-            )  # Add only the target position to target set
+        This function handles the visualization of a single RIP-related position,
+        generating appropriate drawing instructions for both the target nucleotide
+        and any context nucleotides (specified by offset). It creates rectangles
+        with appropriate colors and, if requested, black borders around the highlighted
+        regions.
 
-            # Case 1: Single base (no offset or offset=0)
-            if offset is None or offset == 0:
-                if base in nuc_colors:
-                    color = nuc_colors[base]
+        Parameters
+        ----------
+        category : str
+            The category of RIP mutation ('rip_product', 'rip_substrate',
+            or 'non_rip_deamination').
+        pos : RIPPosition
+            A named tuple containing:
+            - colIdx : int
+                Column index in the alignment matrix.
+            - rowIdx : int
+                Row index in the alignment matrix.
+            - base : str
+                Nucleotide base at this position.
+            - offset : int or None
+                Context range around the mutation, negative=left, positive=right.
 
-                    # Draw the base with full-size colored rectangle - use EXACT cell dimensions
-                    a.add_patch(
-                        matplotlib.patches.Rectangle(
-                            (col_idx - 0.5, y - 0.5),  # Exact cell boundaries
-                            1.0,  # Full width
-                            1.0,  # Full height
-                            facecolor=color,
-                            edgecolor='none',
-                            linewidth=0,
-                            zorder=50,  # Above base image (10), below grid lines (100)
+        Returns
+        -------
+        tuple
+            A tuple containing three elements:
+            - local_highlighted : set
+                Set of (x, y) coordinate tuples for all highlighted positions.
+            - local_target : set
+                Set of (x, y) coordinate tuples for primary mutation sites.
+            - local_draw_instructions : list
+                List of drawing instruction tuples, each containing:
+                ('rect', {rectangle_parameters}) for matplotlib rendering.
+
+        Notes
+        -----
+        This function accesses several variables from the outer scope:
+        - ali_height : int
+            Height of the alignment in rows.
+        - arr : np.ndarray
+            Original alignment array for accessing base information.
+        - nuc_colors : dict
+            Dictionary mapping nucleotides to color codes.
+        - draw_boxes : bool
+            Whether to draw borders around highlighted positions.
+        - inset : float
+            Inset amount for drawing borders.
+        - border_thickness : float
+            Thickness of the border lines.
+        """
+        col_idx, row_idx, base, offset = pos
+        y = ali_height - row_idx - 1
+
+        # Local results to collect
+        local_highlighted = set()
+        local_target = set()
+        local_draw_instructions = []
+
+        # Add target position to highlighted set
+        local_highlighted.add((col_idx, y))
+        local_target.add((col_idx, y))
+
+        # Case 1: Single base (no offset or offset=0)
+        if offset is None or offset == 0:
+            if base in nuc_colors:
+                color = nuc_colors[base]
+
+                # Queue drawing instruction for the base rectangle
+                local_draw_instructions.append(
+                    (
+                        'rect',
+                        {
+                            'xy': (col_idx - 0.5, y - 0.5),
+                            'width': 1.0,
+                            'height': 1.0,
+                            'facecolor': color,
+                            'edgecolor': 'none',
+                            'linewidth': 0,
+                            'zorder': 50,
+                        },
+                    )
+                )
+
+                # Queue drawing instruction for the border if needed
+                if draw_boxes:
+                    local_draw_instructions.append(
+                        (
+                            'rect',
+                            {
+                                'xy': (col_idx - 0.5 + inset, y - 0.5 + inset),
+                                'width': 1.0 - 2 * inset,
+                                'height': 1.0 - 2 * inset,
+                                'facecolor': 'none',
+                                'edgecolor': 'black',
+                                'linewidth': border_thickness,
+                                'zorder': 150,
+                            },
                         )
                     )
 
-                    # Draw black border with smaller inset and thinner line for cleaner appearance
-                    if draw_boxes:
-                        a.add_patch(
-                            matplotlib.patches.Rectangle(
-                                (
-                                    col_idx - 0.5 + inset,
-                                    y - 0.5 + inset,
-                                ),  # Inset from cell edge
-                                1.0 - 2 * inset,  # Width with minimal inset
-                                1.0 - 2 * inset,  # Height with minimal inset
-                                facecolor='none',
-                                edgecolor='black',
-                                linewidth=border_thickness,
-                                zorder=150,  # Above grid lines (100)
-                            )
-                        )
+        # Case 2: Multiple positions (with offset)
+        elif offset != 0:
+            # Process range and get valid cell indices
+            if offset < 0:  # Positions to the left
+                start_idx = max(0, col_idx + offset)
+                end_idx = col_idx
+            else:  # Positions to the right
+                start_idx = col_idx
+                end_idx = (
+                    min(arr.shape[1] - 1, col_idx + offset)
+                    if arr is not None
+                    else col_idx + offset
+                )
 
-            # Case 2: Multiple positions (with offset)
-            elif offset != 0:
-                # Process range and get valid cells as before
-                if offset < 0:  # Positions to the left
-                    start_idx = max(0, col_idx + offset)
-                    end_idx = col_idx
-                else:  # Positions to the right
-                    start_idx = col_idx
-                    end_idx = (
-                        min(arr.shape[1] - 1, col_idx + offset)
-                        if arr is not None
-                        else col_idx + offset
-                    )
-
-                # Skip gaps and out-of-bounds positions
-                valid_indices = []
-                for i in range(start_idx, end_idx + 1):
-                    if i < 0 or (
-                        arr is not None
-                        and (i >= arr.shape[1] or arr[ali_height - y - 1, i] == '-')
-                    ):
-                        continue
-                    valid_indices.append(i)
-
-                if not valid_indices:
-                    pbar.update(1)  # Update progress bar even if skipping
+            # Collect valid indices (excluding gaps and out-of-bounds)
+            valid_indices = []
+            for i in range(start_idx, end_idx + 1):
+                if i < 0 or (
+                    arr is not None
+                    and (i >= arr.shape[1] or arr[ali_height - y - 1, i] == '-')
+                ):
                     continue
+                valid_indices.append(i)
 
-                # Fill cells with appropriate colors (full-size) - use EXACT cell dimensions
-                for i in valid_indices:
-                    # Add to highlighted positions
-                    highlighted_positions.add((i, y))
-                    # Note: We don't add offset positions to target_positions
+            if not valid_indices:
+                return local_highlighted, local_target, local_draw_instructions
 
-                    # Get color for this base
-                    cell_base = arr[ali_height - y - 1, i] if arr is not None else base
-                    cell_color = nuc_colors.get(cell_base, '#CCCCCC')
+            # Queue drawing instructions for each valid cell
+            for i in valid_indices:
+                # Add position to highlighted set
+                local_highlighted.add((i, y))
 
-                    # Determine alpha value based on whether this is the target cell or an offset cell
-                    # For cells with offset > 0, make offset cells semi-transparent
-                    cell_alpha = 1.0
-                    if (
-                        offset > 0 or offset < 0
-                    ) and i != col_idx:  # This is an offset cell
-                        cell_alpha = 0.7
+                # Get color for this base
+                cell_base = arr[ali_height - y - 1, i] if arr is not None else base
+                cell_color = nuc_colors.get(cell_base, '#CCCCCC')
 
-                    # Draw full-size colored cell with appropriate transparency
-                    a.add_patch(
-                        matplotlib.patches.Rectangle(
-                            (i - 0.5, y - 0.5),  # Exact cell boundaries
-                            1.0,  # Full width
-                            1.0,  # Full height
-                            facecolor=cell_color,
-                            edgecolor='none',
-                            linewidth=0,
-                            alpha=cell_alpha,  # Apply transparency to offset cells
-                            zorder=50,  # Above base image, below grid
-                        )
+                # Determine transparency based on whether it's target or context
+                cell_alpha = 1.0
+                if (offset > 0 or offset < 0) and i != col_idx:
+                    cell_alpha = 0.7
+
+                # Queue drawing instruction
+                local_draw_instructions.append(
+                    (
+                        'rect',
+                        {
+                            'xy': (i - 0.5, y - 0.5),
+                            'width': 1.0,
+                            'height': 1.0,
+                            'facecolor': cell_color,
+                            'edgecolor': 'none',
+                            'linewidth': 0,
+                            'alpha': cell_alpha,
+                            'zorder': 50,
+                        },
                     )
+                )
 
-                # Draw border with smaller inset
-                if valid_indices and draw_boxes:
-                    start_i = min(valid_indices)
-                    end_i = max(valid_indices)
+            # Queue drawing instruction for the border around the whole group
+            if valid_indices and draw_boxes:
+                start_i = min(valid_indices)
+                end_i = max(valid_indices)
 
-                    a.add_patch(
-                        matplotlib.patches.Rectangle(
-                            (start_i - 0.5 + inset, y - 0.5 + inset),
-                            (end_i - start_i + 1) - 2 * inset,
-                            1.0 - 2 * inset,
-                            facecolor='none',
-                            edgecolor='black',
-                            linewidth=border_thickness,
-                            zorder=150,  # Above grid lines
-                        )
+                local_draw_instructions.append(
+                    (
+                        'rect',
+                        {
+                            'xy': (start_i - 0.5 + inset, y - 0.5 + inset),
+                            'width': (end_i - start_i + 1) - 2 * inset,
+                            'height': 1.0 - 2 * inset,
+                            'facecolor': 'none',
+                            'edgecolor': 'black',
+                            'linewidth': border_thickness,
+                            'zorder': 150,
+                        },
                     )
+                )
 
-            # Update progress bar
-            pbar.update(1)
+        return local_highlighted, local_target, local_draw_instructions
+
+    # Process positions either in parallel or sequentially
+    if use_threading:
+        # Prepare all tasks for processing
+        all_tasks = []
+        for category, positions in markupdict.items():
+            # Skip non-RIP deamination if reaminate is False
+            if category == 'non_rip_deamination' and not reaminate:
+                continue
+            for pos in positions:
+                all_tasks.append((category, pos))
+
+        # Process in parallel using ThreadPoolExecutor
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+            # Submit all position processing jobs
+            future_results = {
+                executor.submit(process_position, category, pos): (category, pos)
+                for category, pos in all_tasks
+            }
+
+            # Process results as they complete
+            for future in concurrent.futures.as_completed(future_results):
+                try:
+                    local_highlighted, local_target, local_draw = future.result()
+
+                    # Synchronize results with locks
+                    with highlighted_lock:
+                        highlighted_positions.update(local_highlighted)
+                    with target_lock:
+                        target_positions.update(local_target)
+                    with drawing_lock:
+                        drawing_queue.extend(local_draw)
+
+                    # Update progress bar
+                    pbar.update(1)
+
+                except Exception as e:
+                    logging.error(f'Error processing position: {e}')
+    else:
+        # Sequential processing
+        for category, positions in markupdict.items():
+            # Skip non-RIP deamination if reaminate is False
+            if category == 'non_rip_deamination' and not reaminate:
+                continue
+
+            # Update progress bar description to show current category
+            pbar.set_description(f'Highlighting {category}')
+
+            # Process each position sequentially
+            for pos in positions:
+                local_highlighted, local_target, local_draw = process_position(
+                    category, pos
+                )
+                highlighted_positions.update(local_highlighted)
+                target_positions.update(local_target)
+                drawing_queue.extend(local_draw)
+                pbar.update(1)
 
     # Close the progress bar
     pbar.close()
+
+    # Execute all drawing operations sequentially (for matplotlib thread safety)
+    for draw_type, params in drawing_queue:
+        if draw_type == 'rect':
+            a.add_patch(matplotlib.patches.Rectangle(**params))
+
+    # Report processing time
+    elapsed_time = time.time() - start_time
+    logging.info(
+        f'RIP highlighting completed in {elapsed_time:.2f} seconds ({total_positions} positions)'
+    )
+    logging.info(
+        f'Highlighted {len(highlighted_positions)} total positions, {len(target_positions)} target positions'
+    )
 
     return highlighted_positions, target_positions
 
@@ -1014,6 +1437,8 @@ def getHighlightedPositions(
     ali_height: int,
     arr: np.ndarray = None,
     reaminate: bool = False,
+    num_threads: int = None,
+    min_items_for_threading: int = 1000,
 ) -> Set[Tuple[int, int]]:
     """
     Get all positions that should be highlighted based on the markup dictionary.
@@ -1028,43 +1453,167 @@ def getHighlightedPositions(
         The original alignment array, used to check for gap positions.
     reaminate : bool, optional
         Whether to include non-RIP deamination positions.
+    num_threads : int, optional
+        Number of threads to use for parallel processing. If None, uses the number
+        of CPU cores available (default: None).
+    min_items_for_threading : int, optional
+        Minimum number of positions required to use parallel processing.
+        For smaller datasets, sequential processing is used (default: 100).
 
     Returns
     -------
     Set[Tuple[int, int]]
         Set of (col_idx, flipped_y) tuples for all highlighted positions.
     """
+    import concurrent.futures
+    import threading
+    import time
+    from multiprocessing import cpu_count
+
+    start_time = time.time()
+
+    # Shared set for collecting results with thread safety
     highlighted_positions = set()
+    positions_lock = threading.Lock()
 
-    for category, positions in markupdict.items():
-        # Skip non-RIP deamination if reaminate is False
-        if category == 'non_rip_deamination' and not reaminate:
-            continue
+    # Set number of threads to use if not specified
+    if num_threads is None:
+        num_threads = cpu_count()
 
-        for pos in positions:
-            col_idx, row_idx, base, offset = pos
+    # If num_threads > available CPU cores, set to available cores
+    if num_threads > cpu_count():
+        logging.warning(
+            f'Requested {num_threads} threads, but only {cpu_count()} available. Using {cpu_count()} threads.'
+        )
+        num_threads = cpu_count()
 
-            # Convert row index to matplotlib coordinates (flipped)
-            y = ali_height - row_idx - 1
+    # Count total positions to determine if threading should be used
+    total_positions = sum(
+        len(positions)
+        for category, positions in markupdict.items()
+        if category != 'non_rip_deamination' or reaminate
+    )
 
-            # Add target position to highlighted set
-            highlighted_positions.add((col_idx, y))
+    # Determine if threading should be used
+    use_threading = total_positions >= min_items_for_threading and num_threads > 1
 
-            # Handle offset positions
-            if offset is not None:
-                if offset < 0:
-                    # Negative offset means positions to the left
-                    for i in range(col_idx + offset, col_idx):
-                        if i >= 0 and (
-                            arr is None or arr[ali_height - y - 1, i] != '-'
-                        ):
-                            highlighted_positions.add((i, y))
-                elif offset > 0:
-                    # Positive offset means positions to the right
-                    for i in range(col_idx + 1, col_idx + offset + 1):
-                        if i <= arr.shape[1] - 1 and (
-                            arr is None or arr[ali_height - y - 1, i] != '-'
-                        ):
-                            highlighted_positions.add((i, y))
+    # Function to process a single markup position
+    def process_position(pos):
+        """
+        Process a single position and collect its coordinates for highlighting.
+
+        This function takes a RIP position and determines all coordinates that should
+        be highlighted in the visualization. It handles both the target position itself
+        and any context positions specified by the offset parameter, taking into account
+        alignment boundaries and gaps.
+
+        Parameters
+        ----------
+        pos : RIPPosition
+            A named tuple containing:
+            - colIdx : int
+                Column index in the alignment matrix.
+            - rowIdx : int
+                Row index in the alignment matrix.
+            - base : str
+                Nucleotide base at this position.
+            - offset : int or None
+                Context range around the mutation, negative=left, positive=right.
+
+        Returns
+        -------
+        set
+            Set of (col_idx, y) coordinate tuples for all positions that should be
+            highlighted, where y is the flipped row index in matplotlib coordinates.
+
+        Notes
+        -----
+        This function accesses several variables from the outer scope:
+        - ali_height : int
+            Height of the alignment in rows.
+        - arr : np.ndarray
+            Original alignment array for checking gap positions.
+        """
+        col_idx, row_idx, base, offset = pos
+        local_positions = set()
+
+        # Convert row index to matplotlib coordinates (flipped)
+        y = ali_height - row_idx - 1
+
+        # Add target position to highlighted set
+        local_positions.add((col_idx, y))
+
+        # Handle offset positions
+        if offset is not None:
+            if offset < 0:
+                # Negative offset means positions to the left
+                for i in range(col_idx + offset, col_idx):
+                    if i >= 0 and (arr is None or arr[ali_height - y - 1, i] != '-'):
+                        local_positions.add((i, y))
+            elif offset > 0:
+                # Positive offset means positions to the right
+                for i in range(col_idx + 1, col_idx + offset + 1):
+                    if arr is None or (
+                        i < arr.shape[1] and arr[ali_height - y - 1, i] != '-'
+                    ):
+                        local_positions.add((i, y))
+
+        return local_positions
+
+    if use_threading:
+        logging.debug(
+            f'Using {num_threads} threads to process {total_positions} positions for highlighting'
+        )
+
+        # Collect all positions to process
+        positions_to_process = []
+        for category, positions in markupdict.items():
+            # Skip non-RIP deamination if reaminate is False
+            if category != 'non_rip_deamination' or reaminate:
+                positions_to_process.extend(positions)
+
+        # Process positions in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+            # Create progress bar for parallel processing
+            with tqdm(
+                total=total_positions, desc='Finding highlight positions', unit='pos'
+            ) as pbar:
+                # Submit all positions for processing
+                future_to_pos = {
+                    executor.submit(process_position, pos): pos
+                    for pos in positions_to_process
+                }
+
+                # Process results as they complete
+                for future in concurrent.futures.as_completed(future_to_pos):
+                    try:
+                        local_positions = future.result()
+                        # Synchronize results
+                        with positions_lock:
+                            highlighted_positions.update(local_positions)
+                        pbar.update(1)
+                    except Exception as e:
+                        logging.error(f'Error processing position: {e}')
+    else:
+        # Sequential processing
+        for category, positions in markupdict.items():
+            # Skip non-RIP deamination if reaminate is False
+            if category == 'non_rip_deamination' and not reaminate:
+                continue
+
+            # Process each position sequentially with progress tracking
+            with tqdm(
+                total=len(positions), desc=f'Finding {category} positions', unit='pos'
+            ) as pbar:
+                for pos in positions:
+                    local_positions = process_position(pos)
+                    highlighted_positions.update(local_positions)
+                    pbar.update(1)
+
+    elapsed_time = time.time() - start_time
+    logging.info(
+        f'Position highlighting calculation completed in {elapsed_time:.2f} seconds'
+    )
+    logging.info(f'Found {len(highlighted_positions)} positions to highlight')
 
     return highlighted_positions
