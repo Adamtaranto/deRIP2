@@ -789,9 +789,9 @@ def correctRIP(
           'non_rip_deamination': Positions with C→T or G→A outside of RIP context
     """
     import concurrent.futures
+    from multiprocessing import cpu_count
     import threading
     import time
-    from multiprocessing import cpu_count
 
     logging.debug('Correcting RIP-like mutations in the consensus sequence...')
 

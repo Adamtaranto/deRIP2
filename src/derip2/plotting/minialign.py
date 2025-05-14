@@ -371,9 +371,9 @@ def drawMiniAlignment(
     - Non-RIP deamination events are highlighted in orange
     """
     import concurrent.futures
+    from multiprocessing import cpu_count
     import threading
     import time
-    from multiprocessing import cpu_count
 
     start_time = time.time()
 
@@ -1053,9 +1053,9 @@ def markupRIPBases(
       is flipped compared to the alignment array (0 at bottom, increasing upward)
     """
     import concurrent.futures
+    from multiprocessing import cpu_count
     import threading
     import time
-    from multiprocessing import cpu_count
 
     start_time = time.time()
 
@@ -1466,9 +1466,9 @@ def getHighlightedPositions(
         Set of (col_idx, flipped_y) tuples for all highlighted positions.
     """
     import concurrent.futures
+    from multiprocessing import cpu_count
     import threading
     import time
-    from multiprocessing import cpu_count
 
     start_time = time.time()
 
