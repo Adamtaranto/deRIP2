@@ -6,7 +6,7 @@ For aligned sequences in 'mintest.fa':
 
 - Any column with >= 70% gap positions will not be corrected and a gap inserted in corrected sequence.
 - Bases in column must be >= 80% C/T or G/A
-- At least 50% bases in a column must be in RIP dinucleotide context (C/T as CpA / TpA) for correction.
+- At least 50% bases in a column must be in RIP dinucleotide context (C/T as CpA or TpA) for correction.
 - Default: Inherit all remaining uncorrected positions from the least RIP'd sequence.
 - Mask all substrate and product motifs from corrected columns as ambiguous bases (i.e. CpA to TpA --> YpA)
 
@@ -14,6 +14,7 @@ For aligned sequences in 'mintest.fa':
 
 ```bash
 derip2 -i tests/data/mintest.fa \
+  --threads 1 \
   --max-gaps 0.7 \
   --max-snp-noise 0.2 \
   --min-rip-like 0.5 \
@@ -34,6 +35,7 @@ The `--plot` option will create a visualization of the alignment with RIP markup
 
 ```bash
 derip2 -i tests/data/mintest.fa \
+  --threads 1 \
   --max-gaps 0.7 \
   --max-snp-noise 0.2 \
   --min-rip-like 0.5 \
@@ -57,6 +59,7 @@ By default uncorrected positions in the output sequence are filled from the sequ
 
 ```bash
 derip2 -i tests/data/mintest.fa \
+  --threads 1 \
   --max-gaps 0.7 \
   --max-snp-noise 0.2 \
   --min-rip-like 0.5 \
@@ -76,6 +79,7 @@ Non-RIP deamination events are also highlighted.
 
 ```bash
 derip2 -i tests/data/mintest.fa \
+  --threads 1 \
   --max-gaps 0.7 \
   --reaminate \
   -d results \
@@ -97,6 +101,8 @@ derip2 -i tests/data/mintest.fa \
 ```code
   --version                       Show the version and exit.
   -i, --input TEXT                Multiple sequence alignment.  [required]
+  -t, --threads INTEGER           Number of threads to use for processing.
+                                  Default: 1.  [default: 1]
   -g, --max-gaps FLOAT            Maximum proportion of gapped positions in
                                   column to be tolerated before forcing a gap
                                   in final deRIP sequence.  [default: 0.7]
