@@ -42,6 +42,8 @@ class DeRIP:
     max_gaps : float, optional
         Maximum proportion of gaps in a column before considering it a gap
         in consensus (default: 0.7).
+    num_threads : int, optional
+        Number of threads to use for parallel processing (default: 1).
 
     Attributes
     ----------
@@ -76,6 +78,7 @@ class DeRIP:
         fill_index: Optional[int] = None,
         fill_max_gc: bool = False,
         max_gaps: float = 0.7,
+        num_threads: int = 1,
     ) -> None:
         """
         Initialize DeRIP with an alignment file or MultipleSeqAlignment object and parameters.
@@ -101,6 +104,8 @@ class DeRIP:
         max_gaps : float, optional
             Maximum proportion of gaps in a column before considering it a gap
             in consensus (default: 0.7).
+        num_threads : int, optional
+            Number of threads to use for parallel processing (default: 1).
         """
         # Store parameters
         self.max_snp_noise = max_snp_noise
@@ -109,6 +114,7 @@ class DeRIP:
         self.fill_index = fill_index
         self.fill_max_gc = fill_max_gc
         self.max_gaps = max_gaps
+        self.num_threads = num_threads
 
         # Initialize attributes
         self.alignment = None
@@ -257,6 +263,7 @@ class DeRIP:
                 min_rip_like=self.min_rip_like,
                 reaminate=self.reaminate,
                 mask=True,  # Always mask so we have the masked alignment available
+                num_threads=self.num_threads,
             )
         )
 
@@ -744,6 +751,7 @@ class DeRIP:
             show_rip=show_rip,
             highlight_corrected=highlight_corrected,
             flag_corrected=flag_corrected,
+            num_threads=self.num_threads,
             **kwargs,  # Pass any additional customization options
         )
 
