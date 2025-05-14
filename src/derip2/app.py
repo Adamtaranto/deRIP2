@@ -19,6 +19,7 @@ independently RIP'd.
 import logging
 from os import path
 import sys
+import time
 
 import click
 
@@ -37,6 +38,15 @@ from derip2.utils.logs import colored, init_logging
 # Input options
 @click.option(
     '-i', '--input', required=True, type=str, help='Multiple sequence alignment.'
+)
+# Threads opton
+@click.option(
+    '-t',
+    '--threads',
+    type=int,
+    default=1,
+    show_default=True,
+    help='Number of threads to use for processing. Default: 1.',
 )
 # Algorithm parameters
 @click.option(
@@ -139,6 +149,7 @@ from derip2.utils.logs import colored, init_logging
 @click.option('--logfile', default=None, help='Log file path.')
 def main(
     input,
+    threads,
     max_gaps,
     reaminate,
     max_snp_noise,
@@ -170,6 +181,8 @@ def main(
     ----------
     input : str
         Path to multiple sequence alignment file.
+    threads : int
+        Number of threads to use for processing. Default: 1.
     max_gaps : float
         Maximum proportion of gapped positions in column to be tolerated before
         forcing a gap in final deRIP sequence. Default: 0.7.
@@ -217,6 +230,9 @@ def main(
     None
         Does not return any values, but writes output files and logs to the console.
     """
+    # Record start time for execution timing
+    start_time = time.time()
+
     # ---------- Setup ----------
     # Print full command line call
     print(f'Command line call: {colored.green(" ".join(sys.argv))}\n')
@@ -247,6 +263,7 @@ def main(
         fill_index=fill_index,
         fill_max_gc=fill_max_gc,
         max_gaps=max_gaps,
+        num_threads=threads,
     )
 
     # Report alignment summary
@@ -266,7 +283,16 @@ def main(
     logging.info(f'RIP summary by row:\n\033[0m{derip_obj.rip_summary()}\n')
 
     # Print colourized alignment + consensus
-    logging.info(f'Corrected alignment:\n\033[0m{derip_obj}\n')
+    # If the alignment is too large, skip printing
+    if derip_obj.alignment.get_alignment_length() > 200:
+        logging.info('Alignment is too large to print. Skipping alignment printout.\n')
+    else:
+        logging.info(
+            f'Alignment with RIP mutations highlighted:\n\033[0m{derip_obj.colored_alignment}\n'
+        )
+        logging.info(
+            f'Consensus sequence with RIP mutations highlighted:\n\033[0m{derip_obj.colored_consensus}\n'
+        )
 
     # ---------- Output Results ----------
     # Report deRIP'd sequence to stdout
@@ -324,6 +350,10 @@ def main(
             logging.info(f'RIP visualization created at: \033[0m{viz_path}')
         else:
             logging.warning('Failed to create RIP visualization')
+
+    # Calculate and log total execution time
+    elapsed_time = time.time() - start_time
+    logging.info(f'Total execution time: {elapsed_time:.2f} seconds')
 
 
 if __name__ == '__main__':
