@@ -18,7 +18,11 @@ from derip2.plotting.minialign import (
     MSAToArray,
     RIPPosition,
     addColumnRangeMarkers,
+)
+from derip2.plotting.minialign import (
     arrNumeric_optimized as arrNumeric,  # Import optimized version with alias
+)
+from derip2.plotting.minialign import (
     drawMiniAlignment,
     markupRIPBases,
 )

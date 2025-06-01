@@ -17,12 +17,12 @@ from operator import itemgetter
 import sys
 from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union
 
-import numpy as np  # Add numpy import
 from Bio import AlignIO, SeqIO
 from Bio.Align import AlignInfo, MultipleSeqAlignment
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqUtils import gc_fraction
+import numpy as np  # Add numpy import
 from tqdm import tqdm
 
 from derip2.utils.checks import isfile
