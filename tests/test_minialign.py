@@ -18,7 +18,7 @@ from derip2.plotting.minialign import (
     MSAToArray,
     RIPPosition,
     addColumnRangeMarkers,
-    arrNumeric,
+    arrNumeric_optimized as arrNumeric,  # Import optimized version with alias
     drawMiniAlignment,
     markupRIPBases,
 )
@@ -241,8 +241,10 @@ def test_drawMiniAlignment_single_sequence(mock_savefig, single_seq_alignment):
 
 
 @patch('matplotlib.figure.Figure.savefig')
-@patch('derip2.plotting.minialign.markupRIPBases')
-@patch('derip2.plotting.minialign.getHighlightedPositions')
+@patch('derip2.plotting.minialign.markupRIPBases_optimized')  # Fixed function name
+@patch(
+    'derip2.plotting.minialign.getHighlightedPositions_optimized'
+)  # Fixed function name
 def test_drawMiniAlignment_with_markup(
     mock_get_highlighted, mock_markup, mock_savefig, simple_alignment, rip_positions
 ):
@@ -292,8 +294,10 @@ def test_drawMiniAlignment_with_custom_dimensions(simple_alignment):
             mock_arr = np.full((3, 4), 'A')
             mock_msa_to_array.return_value = (mock_arr, ['seq1', 'seq2', 'seq3'], 3)
 
-            # Also mock arrNumeric to avoid string/numeric conversion issues
-            with patch('derip2.plotting.minialign.arrNumeric') as mock_arrnumeric:
+            # Also mock arrNumeric_optimized to avoid string/numeric conversion issues
+            with patch(
+                'derip2.plotting.minialign.arrNumeric_optimized'
+            ) as mock_arrnumeric:  # Fixed function name
                 mock_arrnumeric.return_value = (
                     np.zeros((3, 4)),
                     matplotlib.colors.ListedColormap(['#000000', '#FFFFFF']),
@@ -349,8 +353,8 @@ def test_drawMiniAlignment_different_palettes(mock_savefig, simple_alignment):
         # Reset the mock to clear call history between loop iterations
         mock_savefig.reset_mock()
 
-        # Fix: Create a proper mock for arrNumeric that returns valid objects
-        with patch('derip2.plotting.minialign.arrNumeric') as mock_arrNumeric:
+        # Fix: Create a proper mock for arrNumeric_optimized that returns valid objects
+        with patch('derip2.plotting.minialign.arrNumeric_optimized') as mock_arrNumeric:
             # Create a simple numeric array and a valid colormap
             numeric_arr = np.zeros((3, 4))
             cmap = matplotlib.colors.ListedColormap(['#ffffff', '#000000'])

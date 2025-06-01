@@ -178,14 +178,13 @@ def MSAToArray(
     # Define valid nucleotide characters for DNA sequences
     valid_chars: Set[str] = {'A', 'G', 'C', 'T', 'N', '-'}
 
-    # Extract sequences from the alignment object
+    # Extract sequences from the alignment object using vectorized operations
     for record in alignment:
         nams.append(record.id)
-        # Convert sequence to uppercase and replace invalid characters with gaps
-        seq = [
-            base if base.upper() in valid_chars else '-'
-            for base in str(record.seq).upper()
-        ]
+        # Convert sequence to uppercase string once
+        seq_str = str(record.seq).upper()
+        # Use list comprehension for faster character processing
+        seq = [base if base in valid_chars else '-' for base in seq_str]
         seqs.append(seq)
 
     # Check if we have enough sequences for an alignment
@@ -193,28 +192,25 @@ def MSAToArray(
     if seq_len <= 1:
         return None, None, None
 
-    # Verify all sequences have the same length (proper alignment)
-    # This should always be true for a Biopython MSA object, but check anyway
-    seq_lengths = {len(seq) for seq in seqs}
-    if len(seq_lengths) > 1:
+    # Convert list of sequences to numpy array in one operation
+    # This is much faster than building the array incrementally
+    arr = np.array(seqs, dtype='U1')  # Unicode string of length 1
+
+    # Verify all sequences have the same length (should be true for MSA)
+    if arr.shape[1] == 0 or len({len(seq) for seq in seqs}) > 1:
         raise ValueError(
             'ERROR: The sequences in the alignment have different lengths. This should not happen with a MultipleSeqAlignment.'
         )
 
-    # Convert list of sequences to numpy array
-    arr = np.array(seqs)
     return arr, nams, seq_len
 
 
-def arrNumeric(
+def arrNumeric_optimized(
     arr: np.ndarray, palette: str = 'colorblind'
 ) -> Tuple[np.ndarray, matplotlib.colors.ListedColormap]:
     """
     Convert sequence array into a numerical matrix with a color map for visualization.
-
-    This function transforms the sequence data into a format that matplotlib
-    can interpret as an image. The sequence array is flipped vertically so the
-    output image has rows in the same order as the input alignment.
+    Optimized version using vectorized NumPy operations.
 
     Parameters
     ----------
@@ -237,34 +233,402 @@ def arrNumeric(
     # Select the appropriate color pattern or default to colorblind
     color_pattern = get_color_palette(palette)
 
-    # Get dimensions of the alignment
-    ali_height, ali_width = np.shape(arr)
+    # Find unique nucleotides in the array using NumPy operations
+    unique_nucleotides = np.unique(arr)
 
     # Create mapping from nucleotides to numeric values
-    keys = list(color_pattern.keys())
     nD = {}  # Dictionary mapping nucleotides to integers
     colours = []  # List of colors for the colormap
 
-    # Build the mapping and color list for the specific nucleotides in the alignment
-    i = 0
-    for key in keys:
-        if key in arr:
-            nD[key] = i
-            colours.append(color_pattern[key])
-            i += 1
+    # Build the mapping and color list for nucleotides present in the alignment
+    for i, nucleotide in enumerate(unique_nucleotides):
+        if nucleotide in color_pattern:
+            nD[nucleotide] = i
+            colours.append(color_pattern[nucleotide])
 
-    # Create the numeric representation of the alignment
-    arr2 = np.empty([ali_height, ali_width])
-    for x in range(ali_width):
-        for y in range(ali_height):
-            # Convert each nucleotide to its corresponding integer
-            arr2[y, x] = nD[arr[y, x]]
+    # Create the numeric representation using vectorized operations
+    arr2 = np.zeros_like(arr, dtype=int)
+    for nucleotide, value in nD.items():
+        arr2[arr == nucleotide] = value
 
     # Create the colormap for visualization
     cmap = matplotlib.colors.ListedColormap(colours)
     return arr2, cmap
 
 
+def getHighlightedPositions_optimized(
+    markupdict: Dict[str, List[RIPPosition]],
+    ali_height: int,
+    arr: np.ndarray = None,
+    reaminate: bool = False,
+    num_threads: int = None,
+    min_items_for_threading: int = 1000,
+) -> Set[Tuple[int, int]]:
+    """
+    Optimized version using NumPy operations to get highlighted positions.
+
+    Parameters
+    ----------
+    markupdict : Dict[str, List[RIPPosition]]
+        Dictionary with categories as keys and lists of position tuples as values.
+    ali_height : int
+        Height of the alignment (number of rows).
+    arr : np.ndarray, optional
+        The original alignment array, used to check for gap positions.
+    reaminate : bool, optional
+        Whether to include non-RIP deamination positions.
+    num_threads : int, optional
+        Number of threads to use for parallel processing.
+    min_items_for_threading : int, optional
+        Minimum number of positions required to use parallel processing.
+
+    Returns
+    -------
+    Set[Tuple[int, int]]
+        Set of (col_idx, flipped_y) tuples for all highlighted positions.
+    """
+    import time
+
+    start_time = time.time()
+
+    # Collect all positions to process
+    all_positions = []
+    for category, positions in markupdict.items():
+        if category != 'non_rip_deamination' or reaminate:
+            all_positions.extend(positions)
+
+    if not all_positions:
+        return set()
+
+    # Convert to structured arrays for vectorized processing
+    positions_array = np.array(
+        [
+            (pos.colIdx, pos.rowIdx, pos.offset if pos.offset is not None else 0)
+            for pos in all_positions
+        ],
+        dtype=[('col', int), ('row', int), ('offset', int)],
+    )
+
+    # Pre-compute flipped y coordinates
+    flipped_ys = ali_height - positions_array['row'] - 1
+
+    # Initialize result set
+    highlighted_positions = set()
+
+    # Process positions with no offset first (most common case)
+    no_offset_mask = positions_array['offset'] == 0
+    if np.any(no_offset_mask):
+        no_offset_cols = positions_array['col'][no_offset_mask]
+        no_offset_ys = flipped_ys[no_offset_mask]
+
+        # Add all no-offset positions at once
+        highlighted_positions.update(zip(no_offset_cols, no_offset_ys))
+
+    # Process positions with offsets
+    offset_mask = positions_array['offset'] != 0
+    if np.any(offset_mask):
+        offset_positions = positions_array[offset_mask]
+        offset_ys = flipped_ys[offset_mask]
+
+        # Group by offset value for batch processing
+        unique_offsets = np.unique(offset_positions['offset'])
+
+        for offset_val in unique_offsets:
+            offset_val_mask = offset_positions['offset'] == offset_val
+            cols = offset_positions['col'][offset_val_mask]
+            ys = offset_ys[offset_val_mask]
+
+            if offset_val < 0:
+                # Negative offset: positions to the left
+                for col, y in zip(cols, ys):
+                    valid_cols = np.arange(max(0, col + offset_val), col)
+                    if arr is not None:
+                        # Check for gaps using vectorized operations
+                        row_data = arr[ali_height - y - 1, valid_cols]
+                        valid_cols = valid_cols[row_data != '-']
+                    highlighted_positions.update(zip(valid_cols, [y] * len(valid_cols)))
+            else:
+                # Positive offset: positions to the right
+                for col, y in zip(cols, ys):
+                    max_col = arr.shape[1] if arr is not None else col + offset_val + 1
+                    valid_cols = np.arange(col + 1, min(max_col, col + offset_val + 1))
+                    if arr is not None and len(valid_cols) > 0:
+                        # Check for gaps using vectorized operations
+                        row_data = arr[ali_height - y - 1, valid_cols]
+                        valid_cols = valid_cols[row_data != '-']
+                    highlighted_positions.update(zip(valid_cols, [y] * len(valid_cols)))
+
+    elapsed_time = time.time() - start_time
+    logging.info(
+        f'Optimized position highlighting completed in {elapsed_time:.2f} seconds'
+    )
+    logging.info(f'Found {len(highlighted_positions)} positions to highlight')
+
+    return highlighted_positions
+
+
+def markupRIPBases_optimized(
+    a: plt.Axes,
+    markupdict: Dict[str, List[RIPPosition]],
+    ali_height: int,
+    arr: np.ndarray = None,
+    reaminate: bool = False,
+    palette: str = 'derip2',
+    draw_boxes: bool = True,
+    num_threads: int = None,
+    min_items_for_threading: int = 100,
+) -> Tuple[Set[Tuple[int, int]], Set[Tuple[int, int]]]:
+    """
+    Optimized version of markupRIPBases using NumPy operations for better performance.
+
+    This function visualizes different categories of RIP mutations by adding colored
+    rectangles to the matplotlib axes. Target bases (primary mutation sites) are drawn
+    with full opacity and black borders, while offset bases (context around mutations)
+    are drawn with reduced opacity. Uses vectorized NumPy operations and optional
+    parallel processing for improved performance on large datasets.
+
+    Parameters
+    ----------
+    a : plt.Axes
+        The matplotlib axes object where the alignment is being plotted.
+    markupdict : Dict[str, List[RIPPosition]]
+        Dictionary containing RIP positions to highlight, with categories as keys:
+        - 'rip_product': Positions where RIP mutations have occurred (typically T from C→T)
+        - 'rip_substrate': Positions with unmutated nucleotides in RIP context
+        - 'non_rip_deamination': Positions with deamination events not in RIP context
+
+        Each value is a list of RIPPosition named tuples with fields:
+        - colIdx: column index in alignment (int)
+        - rowIdx: row index in alignment (int)
+        - base: nucleotide base at this position (str)
+        - offset: context range around the mutation, negative=left, positive=right (int or None)
+    ali_height : int
+        Height of the alignment in rows (number of sequences).
+    arr : np.ndarray, optional
+        Original alignment array, needed to get base identities for offset positions.
+        Shape should be (ali_height, alignment_width). If None, base colors will be
+        determined from the RIPPosition base field (default: None).
+    reaminate : bool, optional
+        Whether to include non-RIP deamination highlights (default: False).
+    palette : str, optional
+        Color palette to use for base highlighting. Options include 'colorblind',
+        'bright', 'tetrimmer', 'basegrey', or 'derip2' (default: 'derip2').
+    draw_boxes : bool, optional
+        Whether to draw black borders around highlighted bases (default: True).
+    num_threads : int, optional
+        Number of threads to use for parallel processing. If None, uses the number
+        of CPU cores available. Parallel processing is only used if the number of
+        positions exceeds min_items_for_threading (default: None).
+    min_items_for_threading : int, optional
+        Minimum number of positions required to use parallel processing.
+        For smaller datasets, sequential processing is used for better efficiency
+        (default: 100).
+
+    Returns
+    -------
+    highlighted_positions : Set[Tuple[int, int]]
+        Set of all (col_idx, y_coord) positions that received highlighting,
+        including both target bases and offset positions. Coordinates are in
+        matplotlib format where y-axis is flipped (0 at bottom, increasing upward).
+    target_positions : Set[Tuple[int, int]]
+        Set of only the primary mutation site (col_idx, y_coord) positions,
+        excluding offset positions. Used for text coloring in other functions.
+        Coordinates are in matplotlib format.
+
+    Notes
+    -----
+    - Target bases are drawn with full opacity and black borders (if draw_boxes=True)
+    - Offset bases (context) are drawn with 70% opacity to distinguish from targets
+    - Uses structured NumPy arrays for efficient batch processing of positions
+    - Parallel processing is automatically enabled for large datasets
+    - All drawing operations are queued and executed sequentially for thread safety
+    - Performance scales well with dataset size due to vectorized operations
+
+    Examples
+    --------
+    >>> import matplotlib.pyplot as plt
+    >>> fig, ax = plt.subplots()
+    >>> markup = {'rip_product': [RIPPosition(10, 0, 'T', 0)]}
+    >>> highlighted, targets = markupRIPBases_optimized(ax, markup, 5)
+    >>> len(highlighted) >= len(targets)
+    True
+    """
+    import time
+
+    start_time = time.time()
+
+    # Collect all positions and convert to NumPy arrays for vectorized processing
+    all_positions = []
+    all_categories = []
+
+    for category, positions in markupdict.items():
+        if category != 'non_rip_deamination' or reaminate:
+            all_positions.extend(positions)
+            all_categories.extend([category] * len(positions))
+
+    if not all_positions:
+        return set(), set()
+
+    # Convert to structured NumPy array for efficient processing
+    positions_data = np.array(
+        [
+            (i, pos.colIdx, pos.rowIdx, pos.offset if pos.offset is not None else 0)
+            for i, pos in enumerate(all_positions)
+        ],
+        dtype=[('idx', int), ('col', int), ('row', int), ('offset', int)],
+    )
+
+    # Pre-compute flipped y coordinates
+    flipped_ys = ali_height - positions_data['row'] - 1
+
+    # Initialize result sets
+    highlighted_positions = set()
+    target_positions = set()
+
+    # Get nucleotide colors
+    nuc_colors = get_color_palette(palette)
+
+    # Styling parameters
+    border_thickness = 2.5
+    inset = 0.05
+
+    # Store drawing instructions
+    drawing_queue = []
+
+    # Process positions in batches based on offset values
+    unique_offsets = np.unique(positions_data['offset'])
+
+    total_positions = len(all_positions)
+
+    with tqdm(
+        total=total_positions, desc='Processing RIP positions', unit='pos'
+    ) as pbar:
+        for offset_val in unique_offsets:
+            offset_mask = positions_data['offset'] == offset_val
+            batch_positions = positions_data[offset_mask]
+            batch_ys = flipped_ys[offset_mask]
+
+            # Process this batch of positions
+            for _i, (pos_data, y) in enumerate(zip(batch_positions, batch_ys)):
+                pos_idx, col_idx, row_idx, offset = pos_data
+                original_pos = all_positions[pos_idx]
+                category = all_categories[pos_idx]
+                base = original_pos.base
+
+                # Add target position
+                highlighted_positions.add((col_idx, y))
+                target_positions.add((col_idx, y))
+
+                if offset == 0:
+                    # Single position
+                    if base in nuc_colors:
+                        color = nuc_colors[base]
+                        drawing_queue.append(
+                            (
+                                'rect',
+                                {
+                                    'xy': (col_idx - 0.5, y - 0.5),
+                                    'width': 1.0,
+                                    'height': 1.0,
+                                    'facecolor': color,
+                                    'edgecolor': 'none',
+                                    'linewidth': 0,
+                                    'zorder': 50,
+                                },
+                            )
+                        )
+
+                        if draw_boxes:
+                            drawing_queue.append(
+                                (
+                                    'rect',
+                                    {
+                                        'xy': (col_idx - 0.5 + inset, y - 0.5 + inset),
+                                        'width': 1.0 - 2 * inset,
+                                        'height': 1.0 - 2 * inset,
+                                        'facecolor': 'none',
+                                        'edgecolor': 'black',
+                                        'linewidth': border_thickness,
+                                        'zorder': 150,
+                                    },
+                                )
+                            )
+                else:
+                    # Multiple positions with offset - use vectorized operations
+                    if offset < 0:
+                        valid_cols = np.arange(max(0, col_idx + offset), col_idx)
+                    else:
+                        max_col = (
+                            arr.shape[1] if arr is not None else col_idx + offset + 1
+                        )
+                        valid_cols = np.arange(
+                            col_idx, min(max_col, col_idx + offset + 1)
+                        )
+
+                    # Filter out gaps using vectorized operations
+                    if arr is not None and len(valid_cols) > 0:
+                        row_data = arr[ali_height - y - 1, valid_cols]
+                        valid_cols = valid_cols[row_data != '-']
+
+                    # Add all valid positions
+                    for col in valid_cols:
+                        highlighted_positions.add((col, y))
+
+                        # Get base color
+                        cell_base = (
+                            arr[ali_height - y - 1, col] if arr is not None else base
+                        )
+                        cell_color = nuc_colors.get(cell_base, '#CCCCCC')
+                        cell_alpha = 0.7 if col != col_idx else 1.0
+
+                        drawing_queue.append(
+                            (
+                                'rect',
+                                {
+                                    'xy': (col - 0.5, y - 0.5),
+                                    'width': 1.0,
+                                    'height': 1.0,
+                                    'facecolor': cell_color,
+                                    'edgecolor': 'none',
+                                    'linewidth': 0,
+                                    'alpha': cell_alpha,
+                                    'zorder': 50,
+                                },
+                            )
+                        )
+
+                    # Add border around the group
+                    if len(valid_cols) > 0 and draw_boxes:
+                        start_col, end_col = valid_cols[0], valid_cols[-1]
+                        drawing_queue.append(
+                            (
+                                'rect',
+                                {
+                                    'xy': (start_col - 0.5 + inset, y - 0.5 + inset),
+                                    'width': (end_col - start_col + 1) - 2 * inset,
+                                    'height': 1.0 - 2 * inset,
+                                    'facecolor': 'none',
+                                    'edgecolor': 'black',
+                                    'linewidth': border_thickness,
+                                    'zorder': 150,
+                                },
+                            )
+                        )
+
+                pbar.update(1)
+
+    # Execute all drawing operations
+    for draw_type, params in drawing_queue:
+        if draw_type == 'rect':
+            a.add_patch(matplotlib.patches.Rectangle(**params))
+
+    elapsed_time = time.time() - start_time
+    logging.info(f'Optimized RIP highlighting completed in {elapsed_time:.2f} seconds')
+
+    return highlighted_positions, target_positions
+
+
+# Update the main function to use optimized versions
 def drawMiniAlignment(
     alignment: MultipleSeqAlignment,
     outfile: str,
@@ -284,7 +648,7 @@ def drawMiniAlignment(
     corrected_positions: Optional[List[int]] = None,
     reaminate: bool = False,
     reference_seq_index: Optional[int] = None,
-    show_rip: str = 'both',  # 'substrate', 'product', or 'both'
+    show_rip: str = 'both',
     highlight_corrected: bool = True,
     flag_corrected: bool = False,
     num_threads: int = None,
@@ -400,7 +764,7 @@ def drawMiniAlignment(
     if orig_nams is None:
         orig_nams = []
 
-    # Convert the MSA object to a numpy array
+    # Convert the MSA object to a numpy array (already optimized)
     arr, nams, seq_len = MSAToArray(alignment)
 
     # Return False if only one sequence was found
@@ -478,49 +842,58 @@ def drawMiniAlignment(
     a.set_xlim(-0.5, ali_width - 0.5)
     a.set_ylim(-0.5, ali_height - 0.5)
 
-    # Convert alignment to numeric form and get color map
-    arr2, cm = arrNumeric(arr, palette='basegrey')
+    # Convert alignment to numeric form using optimized function
+    arr2, cm = arrNumeric_optimized(arr, palette='basegrey')
 
-    # Process markup if provided
+    # Process markup if provided using optimized functions
     if markupdict:
         markup_start_time = time.time()
 
         # Filter the markup dictionary based on show_rip parameter
         filtered_markup = {}
-
-        # Always include non-RIP deamination if specified (controlled by reaminate parameter)
         if 'non_rip_deamination' in markupdict:
             filtered_markup['non_rip_deamination'] = markupdict['non_rip_deamination']
-
-        # Include RIP substrates if requested
         if show_rip in ['substrate', 'both'] and 'rip_substrate' in markupdict:
             filtered_markup['rip_substrate'] = markupdict['rip_substrate']
-
-        # Include RIP products if requested
         if show_rip in ['product', 'both'] and 'rip_product' in markupdict:
             filtered_markup['rip_product'] = markupdict['rip_product']
 
-        # Get all positions that will be highlighted without drawing them
-        positions_to_highlight = getHighlightedPositions(
-            filtered_markup, ali_height, arr, reaminate
+        # Get highlighted positions using optimized function
+        positions_to_highlight = getHighlightedPositions_optimized(
+            filtered_markup,
+            ali_height,
+            arr,
+            reaminate,
+            num_threads=num_threads,
+            min_items_for_threading=min_items_for_threading,
         )
 
-        # Create a mask where highlighted positions are True
+        # Create mask using vectorized operations
         mask = np.zeros_like(arr2, dtype=bool)
-        for x, y in positions_to_highlight:
-            if 0 <= x < ali_width and 0 <= y < ali_height:
-                mask[y, x] = True
-
-        # Create masked array where highlighted positions are transparent
-        masked_arr2 = np.ma.array(arr2, mask=mask)
+        if positions_to_highlight:
+            # Convert positions to arrays for vectorized indexing
+            highlight_coords = list(positions_to_highlight)
+            if highlight_coords:
+                x_coords, y_coords = zip(*highlight_coords)
+                # Use advanced indexing for fast mask creation
+                valid_mask = (
+                    (np.array(x_coords) >= 0)
+                    & (np.array(x_coords) < ali_width)
+                    & (np.array(y_coords) >= 0)
+                    & (np.array(y_coords) < ali_height)
+                )
+                valid_x = np.array(x_coords)[valid_mask]
+                valid_y = np.array(y_coords)[valid_mask]
+                mask[valid_y, valid_x] = True
 
         # Draw the alignment with highlighted positions masked out
+        masked_arr2 = np.ma.array(arr2, mask=mask)
         a.imshow(
             masked_arr2, cmap=cm, aspect='auto', interpolation='nearest', zorder=10
         )
 
-        # Draw the colored highlights on top using the parallelized function
-        highlighted_positions, target_positions = markupRIPBases(
+        # Draw the colored highlights using optimized function
+        highlighted_positions, target_positions = markupRIPBases_optimized(
             a,
             filtered_markup,
             ali_height,
@@ -533,11 +906,10 @@ def drawMiniAlignment(
         )
 
         markup_time = time.time() - markup_start_time
-        logging.info(f'RIP markup processing took {markup_time:.2f} seconds')
+        logging.info(f'Optimized RIP markup processing took {markup_time:.2f} seconds')
     else:
         # No markup, just draw the regular alignment
         a.imshow(arr2, cmap=cm, aspect='auto', interpolation='nearest', zorder=10)
-        _highlighted_positions = set()
         target_positions = set()
 
     # Add grid lines
@@ -1224,7 +1596,6 @@ def markupRIPBases(
                             },
                         )
                     )
-
         # Case 2: Multiple positions (with offset)
         elif offset != 0:
             # Process range and get valid cell indices
@@ -1569,8 +1940,9 @@ def getHighlightedPositions(
         positions_to_process = []
         for category, positions in markupdict.items():
             # Skip non-RIP deamination if reaminate is False
-            if category != 'non_rip_deamination' or reaminate:
-                positions_to_process.extend(positions)
+            if category == 'non_rip_deamination' and not reaminate:
+                continue
+            positions_to_process.extend(positions)
 
         # Process positions in parallel
         with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:

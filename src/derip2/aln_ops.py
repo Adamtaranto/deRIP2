@@ -17,6 +17,7 @@ from operator import itemgetter
 import sys
 from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union
 
+import numpy as np  # Add numpy import
 from Bio import AlignIO, SeqIO
 from Bio.Align import AlignInfo, MultipleSeqAlignment
 from Bio.Seq import Seq
@@ -29,6 +30,178 @@ from derip2.utils.checks import isfile
 RIPPosition = NamedTuple(
     'RIPPosition', [('colIdx', int), ('rowIdx', int), ('base', str), ('offset', int)]
 )
+
+
+def MSAToArray(alignment: MultipleSeqAlignment) -> np.ndarray:
+    """
+    Convert a Biopython MultipleSeqAlignment to a NumPy array for efficient processing.
+
+    This function converts the alignment to a 2D NumPy array where each row represents
+    a sequence and each column represents an alignment position. This allows for much
+    faster column-wise operations compared to the native Biopython alignment access.
+
+    Parameters
+    ----------
+    alignment : Bio.Align.MultipleSeqAlignment
+        The sequence alignment to convert.
+
+    Returns
+    -------
+    np.ndarray
+        2D NumPy array of shape (n_sequences, alignment_length) containing
+        single character strings representing nucleotides and gaps.
+    """
+    # Convert each sequence to a list of characters, then stack into 2D array
+    return np.array([list(str(record.seq)) for record in alignment], dtype='U1')
+
+
+def find_numpy(
+    column: np.ndarray, targets: Union[str, List[str], Set[str]]
+) -> np.ndarray:
+    """
+    Find indices of elements in a NumPy array that match specified characters.
+
+    Parameters
+    ----------
+    column : np.ndarray
+        1D NumPy array of characters to search through.
+    targets : Union[str, List[str], Set[str]]
+        Character or collection of characters to find in the array.
+
+    Returns
+    -------
+    np.ndarray
+        Array of indices where matching characters were found.
+    """
+    if isinstance(targets, str):
+        targets = [targets]
+
+    # Use vectorized operations for much faster searching
+    mask = np.isin(column, targets)
+    return np.where(mask)[0]
+
+
+def hasBoth_numpy(column: np.ndarray, a: str, b: str) -> bool:
+    """
+    Check if a NumPy array contains at least one instance of each of two characters.
+
+    Parameters
+    ----------
+    column : np.ndarray
+        1D NumPy array of characters to search through.
+    a : str
+        First character to find.
+    b : str
+        Second character to find.
+
+    Returns
+    -------
+    bool
+        True if both characters are present, False otherwise.
+    """
+    return np.any(column == a) and np.any(column == b)
+
+
+def nextBase_numpy(
+    arr: np.ndarray, colIdx: int, motif: str
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Find rows where a base is followed by a specific nucleotide using NumPy operations.
+
+    This function identifies all rows in an alignment array where the column at index colIdx
+    contains the first base of a specified dinucleotide motif, and the next non-gap
+    position contains the second base of the motif.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        2D NumPy array representing the alignment.
+    colIdx : int
+        Column index to check for the first base of the motif.
+    motif : str
+        Dinucleotide motif (e.g., 'CA' or 'TG').
+
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray]
+        A tuple containing:
+        - Array of row indices where the specified pattern was found.
+        - Array of corresponding offsets (distance to the next non-gap position).
+    """
+    n_rows, n_cols = arr.shape
+
+    # Find rows where current column matches first base of motif
+    first_base_rows = find_numpy(arr[:, colIdx], motif[0])
+
+    matching_rows = []
+    offsets = []
+
+    # For each row that has the first base
+    for row_idx in first_base_rows:
+        # Look for the next non-gap position
+        for offset in range(1, n_cols - colIdx):
+            next_col = colIdx + offset
+            if next_col >= n_cols:
+                break
+
+            next_base = arr[row_idx, next_col]
+            if next_base != '-':  # First non-gap position
+                if next_base == motif[1]:
+                    matching_rows.append(row_idx)
+                    offsets.append(offset)
+                break
+
+    return np.array(matching_rows, dtype=int), np.array(offsets, dtype=int)
+
+
+def lastBase_numpy(
+    arr: np.ndarray, colIdx: int, motif: str
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Find rows where a base is preceded by a specific nucleotide using NumPy operations.
+
+    This function identifies all rows in an alignment array where the column at index colIdx
+    contains the second base of a specified dinucleotide motif, and the previous non-gap
+    position contains the first base of the motif.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        2D NumPy array representing the alignment.
+    colIdx : int
+        Column index to check for the second base of the motif.
+    motif : str
+        Dinucleotide motif (e.g., 'CA' or 'TG').
+
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray]
+        A tuple containing:
+        - Array of row indices where the specified pattern was found.
+        - Array of corresponding offsets (distance to the previous non-gap position).
+    """
+    # Find rows where current column matches second base of motif
+    second_base_rows = find_numpy(arr[:, colIdx], motif[1])
+
+    matching_rows = []
+    offsets = []
+
+    # For each row that has the second base
+    for row_idx in second_base_rows:
+        # Look for the previous non-gap position
+        for offset in range(1, colIdx + 1):
+            prev_col = colIdx - offset
+            if prev_col < 0:
+                break
+
+            prev_base = arr[row_idx, prev_col]
+            if prev_base != '-':  # First non-gap position going backwards
+                if prev_base == motif[0]:
+                    matching_rows.append(row_idx)
+                    offsets.append(-offset)  # Negative offset for backwards
+                break
+
+    return np.array(matching_rows, dtype=int), np.array(offsets, dtype=int)
 
 
 def checkUniqueID(align: MultipleSeqAlignment) -> None:
@@ -740,7 +913,7 @@ def correctRIP(
     2. Updates the consensus sequence tracker with the ancestral (pre-RIP) base
     3. Optionally masks the corrected positions in the output alignment
 
-    The analysis can be parallelized for large alignments using multithreading.
+    The analysis is optimized using NumPy arrays and can be parallelized for large alignments.
 
     RIP signatures as observed in the + sense strand, with RIP targeting CpA
     motifs on either the +/- strand:
@@ -795,6 +968,12 @@ def correctRIP(
 
     logging.debug('Correcting RIP-like mutations in the consensus sequence...')
 
+    # Convert alignment to NumPy array for efficient processing
+    start_conversion = time.time()
+    arr = MSAToArray(align)
+    conversion_time = time.time() - start_conversion
+    logging.info(f'Converted alignment to NumPy array in {conversion_time:.3f} seconds')
+
     # Create deep copies of input objects to avoid modifying the originals
     tracker = deepcopy(tracker)
     RIPcounts = deepcopy(RIPcounts)
@@ -840,17 +1019,14 @@ def correctRIP(
         else:
             logging.info('Using sequential processing with a single thread')
 
-    # Function to analyze a single column
-    def _analyze_column(colIdx):
+    # Function to analyze a single column using NumPy operations
+    def _analyze_column_numpy(colIdx):
         """
-        Analyze a single alignment column for RIP-like mutations and deamination events.
+        Analyze a single alignment column for RIP-like mutations using NumPy operations.
 
         This function examines a column of the alignment for patterns consistent with
-        Repeat-Induced Point (RIP) mutations, which typically involve C→T or G→A
-        transitions in specific dinucleotide contexts (CpA→TpA on forward strand,
-        TpG→TpA on reverse strand). It identifies both RIP products and substrates,
-        calculates proportions of affected bases, and determines whether the column
-        should be corrected in the consensus sequence.
+        Repeat-Induced Point (RIP) mutations, using vectorized NumPy operations for
+        much better performance than the original Biopython-based approach.
 
         Parameters
         ----------
@@ -860,38 +1036,8 @@ def correctRIP(
         Returns
         -------
         dict
-            Dictionary containing analysis results with the following keys:
-            - 'modC' : bool
-                Whether this column should be corrected to 'C' in the consensus.
-            - 'modG' : bool
-                Whether this column should be corrected to 'G' in the consensus.
-            - 'corrected_positions' : list
-                Column indices that should be corrected in the consensus sequence.
-            - 'markupdict_updates' : dict
-                Dictionary with keys 'rip_product', 'rip_substrate', and
-                'non_rip_deamination', each containing a list of RIPPosition
-                objects to be added to the markup dictionary.
-            - 'ripcounts_updates' : list
-                List of tuples (row_idx, addRev, addFwd, addNonRIP) representing
-                increments to various RIP counters for specific sequences.
-            - 'masking_updates' : list
-                List of tuples (colIdx, targetRows, newbase) for applying
-                masking operations to the alignment if requested.
-
-        Notes
-        -----
-        This function accesses several variables from the outer scope:
-        - align : MultipleSeqAlignment
-            The sequence alignment being analyzed.
-        - max_snp_noise : float
-            Minimum proportion of C/T or G/A bases required to consider a column.
-        - min_rip_like : float
-            Minimum proportion of RIP-like context required for correction.
-        - reaminate : bool
-            Whether to correct deamination events outside of RIP context.
-
-        The function detects both forward strand (C→T) and reverse strand (G→A)
-        RIP mutations and also identifies non-RIP deamination events.
+            Dictionary containing analysis results with the same structure as the
+            original _analyze_column function.
         """
         # Local results to collect before applying to shared structures
         column_results = {
@@ -907,17 +1053,21 @@ def correctRIP(
             'masking_updates': [],  # List of (colIdx, targetRows, newbase) tuples
         }
 
+        # Get the column as a NumPy array
+        column = arr[:, colIdx]
+
         # Count total number of nucleotide bases (excluding gaps)
-        baseCount = len(find(align[:, colIdx], ['A', 'T', 'G', 'C']))
+        nucleotide_mask = np.isin(column, ['A', 'T', 'G', 'C'])
+        baseCount = np.sum(nucleotide_mask)
 
         # Skip columns with no bases
-        if not baseCount:
+        if baseCount == 0:
             return column_results
 
-        # Identify rows containing C or T in this column
-        CTinCol = find(align[:, colIdx], ['C', 'T'])
-        # Identify rows containing G or A in this column
-        GAinCol = find(align[:, colIdx], ['G', 'A'])
+        # Find rows containing C or T in this column using NumPy
+        CTinCol = find_numpy(column, ['C', 'T'])
+        # Find rows containing G or A in this column using NumPy
+        GAinCol = find_numpy(column, ['G', 'A'])
 
         # Calculate proportion of C/T and G/A bases
         CTprop = len(CTinCol) / baseCount
@@ -927,28 +1077,30 @@ def correctRIP(
         # Check if column has sufficient C/T content
         if CTprop >= max_snp_noise:
             # Find rows where C is followed by A (RIP substrate)
-            CArows, _CA_nextbase_offsets = nextBase(align, colIdx, motif='CA')
+            CArows, _CA_nextbase_offsets = nextBase_numpy(arr, colIdx, motif='CA')
             # Record forward strand RIP substrate for CA rows
             for rowCA, offset in zip(CArows, _CA_nextbase_offsets):
                 column_results['markupdict_updates']['rip_substrate'].append(
-                    RIPPosition(colIdx=colIdx, rowIdx=rowCA, base='C', offset=offset)
+                    RIPPosition(
+                        colIdx=colIdx, rowIdx=int(rowCA), base='C', offset=int(offset)
+                    )
                 )
 
             # Check if C/T content is higher than G/A content and both C and T are present
-            if CTprop > GAprop and hasBoth(align[:, colIdx], 'C', 'T'):
+            if CTprop > GAprop and hasBoth_numpy(column, 'C', 'T'):
                 # Find rows where C/T is followed by A (potential RIP context)
-                TArows, _TA_nextbase_offsets = nextBase(
-                    align, colIdx, motif='TA'
+                TArows, _TA_nextbase_offsets = nextBase_numpy(
+                    arr, colIdx, motif='TA'
                 )  # T followed by A (mutated)
-                CArows, _CA_nextbase_offsets = nextBase(
-                    align, colIdx, motif='CA'
+                CArows, _CA_nextbase_offsets = nextBase_numpy(
+                    arr, colIdx, motif='CA'
                 )  # C followed by A (ancestral)
 
                 # Get rows with T in this column
-                TinCol = find(align[:, colIdx], ['T'])
+                TinCol = find_numpy(column, ['T'])
 
                 # If we have both CA and TA context (indicating RIP transition)
-                if CArows and TArows:
+                if len(CArows) > 0 and len(TArows) > 0:
                     # Calculate proportion of C/T positions in a RIP-like context
                     propRIPlike = (len(TArows) + len(CArows)) / len(CTinCol)
 
@@ -956,31 +1108,43 @@ def correctRIP(
                     for rowCA, offset in zip(CArows, _CA_nextbase_offsets):
                         column_results['markupdict_updates']['rip_substrate'].append(
                             RIPPosition(
-                                colIdx=colIdx, rowIdx=rowCA, base='C', offset=offset
+                                colIdx=colIdx,
+                                rowIdx=int(rowCA),
+                                base='C',
+                                offset=int(offset),
                             )
                         )
 
                     # Record forward strand RIP events for TA rows
-                    for rowTA in set(TArows):
+                    for rowTA in np.unique(TArows):
                         column_results['ripcounts_updates'].append(
-                            (rowTA, 0, 1, 0)
+                            (int(rowTA), 0, 1, 0)
                         )  # (rowIdx, addRev, addFwd, addNonRIP)
 
                     for rowTA, offset in zip(TArows, _TA_nextbase_offsets):
                         column_results['markupdict_updates']['rip_product'].append(
                             RIPPosition(
-                                colIdx=colIdx, rowIdx=rowTA, base='T', offset=offset
+                                colIdx=colIdx,
+                                rowIdx=int(rowTA),
+                                base='T',
+                                offset=int(offset),
                             )
                         )
 
                     # Record non-RIP deamination for T's not in TA context
-                    for TnonRIP in {x for x in TinCol if x not in TArows}:
-                        column_results['ripcounts_updates'].append((TnonRIP, 0, 0, 1))
+                    TnonRIP = np.setdiff1d(TinCol, TArows)
+                    for TnonRIP_row in TnonRIP:
+                        column_results['ripcounts_updates'].append(
+                            (int(TnonRIP_row), 0, 0, 1)
+                        )
                         column_results['markupdict_updates'][
                             'non_rip_deamination'
                         ].append(
                             RIPPosition(
-                                colIdx=colIdx, rowIdx=TnonRIP, base='T', offset=0
+                                colIdx=colIdx,
+                                rowIdx=int(TnonRIP_row),
+                                base='T',
+                                offset=0,
                             )
                         )
 
@@ -1001,72 +1165,93 @@ def correctRIP(
                         column_results['corrected_positions'].append(colIdx)
 
                     # Log all T's as non-RIP deamination events
-                    for TnonRIP in TinCol:
-                        column_results['ripcounts_updates'].append((TnonRIP, 0, 0, 1))
+                    for TnonRIP_row in TinCol:
+                        column_results['ripcounts_updates'].append(
+                            (int(TnonRIP_row), 0, 0, 1)
+                        )
                         column_results['markupdict_updates'][
                             'non_rip_deamination'
                         ].append(
                             RIPPosition(
-                                colIdx=colIdx, rowIdx=TnonRIP, base='T', offset=0
+                                colIdx=colIdx,
+                                rowIdx=int(TnonRIP_row),
+                                base='T',
+                                offset=0,
                             )
                         )
 
         # REVERSE STRAND RIP DETECTION (G→A)
         # Check if column has sufficient G/A content
         if GAprop >= max_snp_noise:
-            # Find rows where G is followed by T (RIP substrate)
-            TGrows, _TG_lastbase_offsets = lastBase(align, colIdx, motif='TG')
-            # Record forward strand RIP substrate for TG rows
+            # Find rows where G is preceded by T (RIP substrate)
+            TGrows, _TG_lastbase_offsets = lastBase_numpy(arr, colIdx, motif='TG')
+            # Record reverse strand RIP substrate for TG rows
             for rowTG, offset in zip(TGrows, _TG_lastbase_offsets):
                 column_results['markupdict_updates']['rip_substrate'].append(
-                    RIPPosition(colIdx=colIdx, rowIdx=rowTG, base='G', offset=offset)
+                    RIPPosition(
+                        colIdx=colIdx, rowIdx=int(rowTG), base='G', offset=int(offset)
+                    )
                 )
 
             # Check if G/A content is higher than C/T content and both G and A are present
-            if GAprop > CTprop and hasBoth(align[:, colIdx], 'G', 'A'):
+            if GAprop > CTprop and hasBoth_numpy(column, 'G', 'A'):
                 # Find rows where G/A is preceded by T (potential RIP context)
-                TGrows, _TG_lastbase_offsets = lastBase(
-                    align, colIdx, motif='TG'
+                TGrows, _TG_lastbase_offsets = lastBase_numpy(
+                    arr, colIdx, motif='TG'
                 )  # T followed by G (ancestral)
-                TArows, _TA_lastbase_offsets = lastBase(
-                    align, colIdx, motif='TA'
+                TArows, _TA_lastbase_offsets = lastBase_numpy(
+                    arr, colIdx, motif='TA'
                 )  # T followed by A (mutated)
 
                 # Get rows with A in this column
-                AinCol = find(align[:, colIdx], ['A'])
+                AinCol = find_numpy(column, ['A'])
 
                 # If we have both TG and TA context (indicating RIP transition)
-                if TGrows and TArows:
+                if len(TGrows) > 0 and len(TArows) > 0:
                     # Calculate proportion of G/A positions in a RIP-like context
                     propRIPlike = (len(TGrows) + len(TArows)) / len(GAinCol)
 
-                    # Record forward strand RIP substrate for TG rows
+                    # Record reverse strand RIP substrate for TG rows
                     for rowTG, offset in zip(TGrows, _TG_lastbase_offsets):
                         column_results['markupdict_updates']['rip_substrate'].append(
                             RIPPosition(
-                                colIdx=colIdx, rowIdx=rowTG, base='G', offset=offset
+                                colIdx=colIdx,
+                                rowIdx=int(rowTG),
+                                base='G',
+                                offset=int(offset),
                             )
                         )
 
                     # Record reverse strand RIP events for TA rows
-                    for rowTA in set(TArows):
-                        column_results['ripcounts_updates'].append((rowTA, 1, 0, 0))
+                    for rowTA in np.unique(TArows):
+                        column_results['ripcounts_updates'].append(
+                            (int(rowTA), 1, 0, 0)
+                        )
 
                     for rowTA, offset in zip(TArows, _TA_lastbase_offsets):
                         column_results['markupdict_updates']['rip_product'].append(
                             RIPPosition(
-                                colIdx=colIdx, rowIdx=rowTA, base='A', offset=offset
+                                colIdx=colIdx,
+                                rowIdx=int(rowTA),
+                                base='A',
+                                offset=int(offset),
                             )
                         )
 
                     # Record non-RIP deamination for A's not in TA context
-                    for AnonRIP in {x for x in AinCol if x not in TArows}:
-                        column_results['ripcounts_updates'].append((AnonRIP, 0, 0, 1))
+                    AnonRIP = np.setdiff1d(AinCol, TArows)
+                    for AnonRIP_row in AnonRIP:
+                        column_results['ripcounts_updates'].append(
+                            (int(AnonRIP_row), 0, 0, 1)
+                        )
                         column_results['markupdict_updates'][
                             'non_rip_deamination'
                         ].append(
                             RIPPosition(
-                                colIdx=colIdx, rowIdx=AnonRIP, base='A', offset=0
+                                colIdx=colIdx,
+                                rowIdx=int(AnonRIP_row),
+                                base='A',
+                                offset=0,
                             )
                         )
 
@@ -1087,13 +1272,18 @@ def correctRIP(
                         column_results['corrected_positions'].append(colIdx)
 
                     # Log all A's as non-RIP deamination events
-                    for AnonRIP in AinCol:
-                        column_results['ripcounts_updates'].append((AnonRIP, 0, 0, 1))
+                    for AnonRIP_row in AinCol:
+                        column_results['ripcounts_updates'].append(
+                            (int(AnonRIP_row), 0, 0, 1)
+                        )
                         column_results['markupdict_updates'][
                             'non_rip_deamination'
                         ].append(
                             RIPPosition(
-                                colIdx=colIdx, rowIdx=AnonRIP, base='A', offset=0
+                                colIdx=colIdx,
+                                rowIdx=int(AnonRIP_row),
+                                base='A',
+                                offset=0,
                             )
                         )
 
@@ -1101,25 +1291,29 @@ def correctRIP(
         if column_results['modC']:
             if reaminate:
                 # If reaminating all C→T transitions, mask all T positions in column
-                targetRows = find(align[:, colIdx], ['T'])
+                targetRows = find_numpy(column, ['T'])
             else:
                 # Otherwise only mask 'T' positions in TpA context where C→T occurred
                 targetRows = TArows
 
-            if targetRows:  # Only add if there are rows to update
-                column_results['masking_updates'].append((colIdx, targetRows, 'Y'))
+            if len(targetRows) > 0:  # Only add if there are rows to update
+                column_results['masking_updates'].append(
+                    (colIdx, targetRows.tolist(), 'Y')
+                )
 
         # Mark masking operations for G→A corrections if needed
         if column_results['modG']:
             if reaminate:
                 # If reaminating all G→A transitions, mask all A positions
-                targetRows = find(align[:, colIdx], ['A'])
+                targetRows = find_numpy(column, ['A'])
             else:
                 # Otherwise only mask 'A' positions in TpA context where G→A occurred
                 targetRows = TArows
 
-            if targetRows:  # Only add if there are rows to update
-                column_results['masking_updates'].append((colIdx, targetRows, 'R'))
+            if len(targetRows) > 0:  # Only add if there are rows to update
+                column_results['masking_updates'].append(
+                    (colIdx, targetRows.tolist(), 'R')
+                )
 
         return column_results
 
@@ -1224,8 +1418,8 @@ def correctRIP(
         with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
             # Submit all column analysis jobs
             future_to_col = {
-                executor.submit(_analyze_column, colIdx): colIdx
-                for colIdx in range(align.get_alignment_length())
+                executor.submit(_analyze_column_numpy, colIdx): colIdx
+                for colIdx in range(alignment_length)
             }
 
             # Process results with a progress bar
@@ -1243,14 +1437,14 @@ def correctRIP(
     else:
         # Sequential processing with progress bar
         for colIdx in tqdm(
-            range(align.get_alignment_length()),
+            range(alignment_length),
             desc='Scanning for RIP mutations',
             unit='column',
             ncols=80,
             colour='green',  # Use color to make the bar more visible
             leave=True,  # Keep the progress bar after completion
         ):
-            col_result = _analyze_column(colIdx)
+            col_result = _analyze_column_numpy(colIdx)
             _apply_column_results(col_result)
 
     # Calculate elapsed time
