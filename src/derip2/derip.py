@@ -248,7 +248,8 @@ class DeRIP:
         tracker = ao.fillConserved(self.alignment, tracker, self.max_gaps)
 
         # Detect and correct RIP mutations
-        tracker, rip_counts, masked_alignment, corrected_positions, markupdict = (
+        # Returns: Tuple[Dict[int, NamedTuple], Dict[int, NamedTuple], Bio.Align.MultipleSeqAlignment, List[int], Dict[str, List[RIPPosition]]]
+        tracker, rip_counts, masked_alignment, _corrected_positions, markupdict = (
             ao.correctRIP(
                 self.alignment,
                 tracker,
@@ -264,6 +265,7 @@ class DeRIP:
         self.markupdict = markupdict
 
         # Populate corrected positions dictionary
+        # TODO: Avoid double pass of data to calculate this.
         self._build_corrected_positions(self.alignment, masked_alignment)
 
         # Select reference sequence for filling uncorrected positions
