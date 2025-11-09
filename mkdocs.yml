@@ -5,13 +5,11 @@ repo_name: adamtaranto/deRIP2
 repo_url: https://github.com/adamtaranto/deRIP2
 edit_uri: ""
 use_directory_urls: true
-
 nav:
   - Home: index.md
   - Getting Started: tutorial.ipynb
   - API Docs: api-docs/deRIP_API.md
   - CLI Docs: cli-docs/deRIP_cmd_line.md
-
 theme:
   name: material # material, readthedocs, mkdocs
   features:
@@ -20,7 +18,6 @@ theme:
     # - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
-
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
@@ -31,7 +28,6 @@ markdown_extensions:
   - admonition
   - attr_list
   - md_in_html
-
 plugins:
   - search
   - mkdocs-jupyter:

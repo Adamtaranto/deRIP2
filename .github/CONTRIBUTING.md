@@ -3,6 +3,7 @@
 Thank you for your interest in contributing to deRIP2! This document provides guidelines and instructions for contributing to this project.
 
 ## Table of Contents
+
 - [Code of Conduct](#code-of-conduct)
 - [How to Contribute](#how-to-contribute)
   - [Reporting Bugs](#reporting-bugs)
@@ -57,20 +58,22 @@ To set up your development environment:
    ```bash
    git clone https://github.com/adamtaranto/derip2.git
    cd derip2
-  ```
+   ```
+
+````
 
 3. Create and activate a virtual environment
 
-  ```bash
-  conda env create -f environment.yml
-  conda activate derip2
-  ```
+```bash
+conda env create -f environment.yml
+conda activate derip2
+````
 
 3. Install development dependencies
 
-  ```bash
-  pip install -e ".[dev]"
-  ```
+```bash
+pip install -e ".[dev]"
+```
 
 ## Style Guidelines
 
@@ -84,7 +87,6 @@ Key points:
 - Use descriptive variable names
 - Format code with Black
 - Sort imports with isort
-
 
 ## Testing
 

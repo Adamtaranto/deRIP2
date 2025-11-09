@@ -1,4 +1,3 @@
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PyPI version](https://badge.fury.io/py/derip2.svg)](https://badge.fury.io/py/derip2)
 [![codecov](https://codecov.io/gh/adamtaranto/derip2/branch/main/graph/badge.svg)](https://codecov.io/gh/adamtaranto/derip2)
@@ -20,7 +19,7 @@ independently RIP'd.
 Use deRIP2 to:
 
 - Predict ancestral fungal transposon sequences by correcting for RIP-like mutations
-(CpA --> TpA) and cytosine deamination (C --> T) events.
+  (CpA --> TpA) and cytosine deamination (C --> T) events.
 
 - Mask RIP or deamination events as ambiguous bases to remove RIP signal from phylogenetic analyses.
 
