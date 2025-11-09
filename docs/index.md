@@ -18,7 +18,7 @@ independently RIP'd.
 Use deRIP2 to:
 
 - Predict ancestral fungal transposon sequences by correcting for RIP-like mutations
-(CpA --> TpA) and cytosine deamination (C --> T) events.
+  (CpA --> TpA) and cytosine deamination (C --> T) events.
 
 - Mask RIP or deamination events as ambiguous bases to remove RIP signal from phylogenetic analyses.
 

@@ -18,7 +18,7 @@ import sys
 from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union
 
 from Bio import AlignIO, SeqIO
-from Bio.Align import AlignInfo, MultipleSeqAlignment
+from Bio.Align import MultipleSeqAlignment
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqUtils import gc_fraction
@@ -444,9 +444,10 @@ def fillConserved(
     # Process each column in alignment
     for idx in range(align.get_alignment_length()):
         # Get frequencies for DNA bases + gaps in this column
-        colProps = AlignInfo.SummaryInfo(align)._get_letter_freqs(
-            idx, align, ['A', 'T', 'G', 'C', '-'], []
-        )
+        column = align[:, idx]
+        total = len(column)
+        counts = Counter(column)
+        colProps = {base: counts[base] / total for base in ['A', 'T', 'G', 'C', '-']}
 
         # Case 1: If column is completely invariant, use that base
         # (frequency of 1.0 means all positions have this base)
