@@ -1225,7 +1225,7 @@ def setRefSeq(
     # Case 2: Use RIP counter but select based on GC content
     elif RIPcounter:
         # Select row with highest GC content
-        refIdx = sorted(RIPcounter.values(), key=lambda x: (-x.GC))[0].idx
+        refIdx = sorted(RIPcounter.values(), key=lambda x: -x.GC)[0].idx
         logging.info(
             f'Selecting reference sequence with highest GC content: {refIdx}: {align[refIdx].id}'
         )
@@ -1238,7 +1238,7 @@ def setRefSeq(
             GClist.append((x, gc_fraction(align[x].seq) * 100))
 
         # Select sequence with highest GC content
-        refIdx = sorted(GClist, key=lambda x: (-x[1]))[0][0]
+        refIdx = sorted(GClist, key=lambda x: -x[1])[0][0]
         logging.info(
             f'No RIP data available, selecting reference sequence with highest GC content: {refIdx}: {align[refIdx].id}'
         )
@@ -1320,7 +1320,7 @@ def getDERIP(
         raise ValueError('Not all positions have been filled in the tracker!')
 
     # Join all bases in the tracker, ordering by column index
-    deRIPstr = ''.join([y.base for y in sorted(tracker.values(), key=lambda x: (x[0]))])
+    deRIPstr = ''.join([y.base for y in sorted(tracker.values(), key=lambda x: x[0])])
 
     # Remove gap characters if requested
     if deGAP:
