@@ -1,4 +1,4 @@
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![PyPI version](https://badge.fury.io/py/derip2.svg)](https://badge.fury.io/py/derip2)
 [![codecov](https://codecov.io/gh/adamtaranto/derip2/branch/main/graph/badge.svg)](https://codecov.io/gh/adamtaranto/derip2)
 [![BioConda Install](https://img.shields.io/conda/dn/bioconda/derip2.svg?style=flag&label=BioConda%20install)](https://anaconda.org/bioconda/derip2)
@@ -237,4 +237,4 @@ Submit feedback to the [Issue Tracker](https://github.com/Adamtaranto/deRIP2/iss
 
 ## License
 
-Software provided under MIT license.
+Software provided under GPL-3 license.

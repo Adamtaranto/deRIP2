@@ -7,19 +7,23 @@ name = "derip2"
 description = "Predict ancestral sequence of fungal repeat elements by correcting for RIP-like mutations in multi-sequence DNA alignments."
 readme = "README.md"
 requires-python = ">=3.8"
-license = { text = "MIT" }
-authors = [
-    { name = "Adam Taranto"}
-]
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "Adam Taranto" }]
 
 classifiers = [
     "Programming Language :: Python :: 3",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
-    "License :: OSI Approved :: MIT License",
 ]
 
-dependencies = ["biopython>1.80", "click", "matplotlib", "numpy", "pandas", "tqdm"]
+dependencies = [
+    "biopython>1.80",
+    "click",
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "tqdm",
+]
 
 dynamic = ["version"]
 
@@ -34,17 +38,13 @@ derip2 = "derip2.app:main"
 [tool.hatch.build]
 source = "src"
 
-exclude = [
-    "environment.yml",
-    ".github",
-    ".vscode",
-]
+exclude = ["environment.yml", ".github", ".vscode"]
 
 [tool.hatch.version]
 source = "vcs"
 
 [tool.hatch.version.vcs]
-tag-pattern = "v*"  # Git tags starting with 'v' will be used for versioning
+tag-pattern = "v*"         # Git tags starting with 'v' will be used for versioning
 fallback-version = "0.0.0"
 
 [tool.hatch.build.hooks.vcs]
@@ -52,7 +52,25 @@ version-file = "src/derip2/_version.py"
 
 # Optional dependencies for testing
 [project.optional-dependencies]
-dev = ["hatch", "isort", "mkdocs-jupyter","mkdocs-material", "mkdocs", "mkdocstrings-python", "mkdocstrings", "notebook", "numpydoc-validation", "pre-commit", "pymdown-extensions", "pytest-cov", "pytest", "ruff", "seaborn"]
+dev = [
+    "hatch",
+    "isort",
+    "mkdocs-jupyter",
+    "mkdocs-material",
+    "mkdocs",
+    "mkdocstrings-python",
+    "mkdocstrings",
+    "notebook",
+    "numpydoc-validation",
+    "pre-commit",
+    "pymdown-extensions",
+    "pytest-cov",
+    "pytest",
+    "ruff",
+    "seaborn",
+]
+
+test = ["pytest-cov", "pytest"]
 
 [tool.pytest.ini_options]
 addopts = "-v --cov=derip2 --cov-branch --cov-report=xml --cov-report=term"
@@ -66,18 +84,18 @@ fix = true
 
 [tool.ruff.lint]
 select = [
-    "C",  # mccabe rules
-    "F",  # pyflakes rules
-    "E",  # pycodestyle error rules
-    "W",  # pycodestyle warning rules
-    "B",  # flake8-bugbear rules
-    "I",  # isort rules
+    "C", # mccabe rules
+    "F", # pyflakes rules
+    "E", # pycodestyle error rules
+    "W", # pycodestyle warning rules
+    "B", # flake8-bugbear rules
+    "I", # isort rules
 ]
 ignore = [
-    "C901",  # max-complexity-10
-    "E501",  # line-too-long
-    "I001",  # isort-imports
-    "B905",  # `zip()` without an explicit `strict=` parameter
+    "C901", # max-complexity-10
+    "E501", # line-too-long
+    "I001", # isort-imports
+    "B905", # `zip()` without an explicit `strict=` parameter
 ]
 
 [tool.ruff.format]
@@ -99,12 +117,12 @@ checks = [
     "SA01", # or a see also section
     "SS06", # and don't require the summary to fit on one line
 ]
-exclude = [  # don't report on checks for these
+exclude = [ # don't report on checks for these
     '\.__init__$',
     '\.__repr__$',
     '\.__str__$',
 ]
-override_SS05 = [  # allow docstrings to start with these words
+override_SS05 = [ # allow docstrings to start with these words
     '^Process ',
     '^Assess ',
     '^Access ',
