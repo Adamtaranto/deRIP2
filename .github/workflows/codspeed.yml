@@ -19,11 +19,12 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
-          python-version: "3.12"
+          python-version: "3.13"
       - name: Install dependencies
         run: uv venv && uv pip install '.[test,benchmark]'
       - name: Run benchmarks
         uses: CodSpeedHQ/action@v4
         with:
           token: ${{ secrets.CODSPEED_TOKEN }}
-          run: pytest tests/benchmarks --codspeed -o addopts=""
+          run: uv run pytest tests/benchmarks --codspeed -o addopts=""
+          mode: walltime
