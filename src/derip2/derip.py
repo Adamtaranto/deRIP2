@@ -8,9 +8,11 @@ Repeat-Induced Point (RIP) mutations in fungal DNA alignments.
 import logging
 from os import path
 import sys
+import time
 from typing import List, Optional, Tuple
 
 from Bio.Align import MultipleSeqAlignment
+import numpy as np
 
 import derip2.aln_ops as ao
 
@@ -236,6 +238,14 @@ class DeRIP:
         None
             Updates class attributes with results.
         """
+        # Timing helper for performance debugging; emits DEBUG logs only.
+        _t0 = time.perf_counter()
+
+        def _lap(_stage, _since):
+            _now = time.perf_counter()
+            logging.debug(f'calculate_rip: {_stage} took {_now - _since:.3f}s')
+            return _now
+
         # Initialize tracking structures
         # tracker is a dict of tuples, keys are column indices, values are tuples of (col_idx, corrected_base)
         # used to compose the consensus sequence
@@ -243,9 +253,11 @@ class DeRIP:
         # rip_counts is a dict of rowItem('idx', 'SeqID', 'revRIPcount', 'RIPcount', 'nonRIPcount', 'GC'), keys are row IDs
         # used to track RIP mutations in each sequence
         rip_counts = ao.initRIPCounter(self.alignment)
+        _t = _lap('init trackers', _t0)
 
         # Pre-fill conserved positions
         tracker = ao.fillConserved(self.alignment, tracker, self.max_gaps)
+        _t = _lap('fillConserved', _t)
 
         # Detect and correct RIP mutations
         # Returns: Tuple[Dict[int, NamedTuple], Dict[int, NamedTuple], Bio.Align.MultipleSeqAlignment, List[int], Dict[str, List[RIPPosition]]]
@@ -260,6 +272,7 @@ class DeRIP:
                 mask=True,  # Always mask so we have the masked alignment available
             )
         )
+        _t = _lap('correctRIP', _t)
 
         # Store the markupdict for later use in colored alignment
         self.markupdict = markupdict
@@ -267,6 +280,7 @@ class DeRIP:
         # Populate corrected positions dictionary
         # TODO: Avoid double pass of data to calculate this.
         self._build_corrected_positions(self.alignment, masked_alignment)
+        _t = _lap('build_corrected_positions', _t)
 
         # Select reference sequence for filling uncorrected positions
         if self.fill_index is not None:
@@ -308,6 +322,8 @@ class DeRIP:
         self.colored_masked_alignment = self._create_colored_alignment(
             self.masked_alignment
         )
+        _lap('fill + colorize', _t)
+        logging.debug(f'calculate_rip: total {time.perf_counter() - _t0:.3f}s')
 
         # Log summary
         logging.info(
@@ -334,28 +350,26 @@ class DeRIP:
         """
         self.corrected_positions = {}
 
-        # Compare original and masked alignments
-        for col_idx in range(original.get_alignment_length()):
+        # Decode both alignments to byte arrays and diff them vectorised, rather
+        # than indexing every cell of two Biopython Seq objects.
+        orig = ao.alignment_to_array(original)
+        mask = ao.alignment_to_array(masked)
+        diff = orig != mask
+
+        # Map masked IUPAC code -> corrected ancestral base
+        corrected_for = {'Y': 'C', 'R': 'G'}
+
+        # Only visit columns that contain at least one masked position
+        for col_idx in np.where(diff.any(axis=0))[0].tolist():
             col_dict = {}
-
-            for row_idx in range(len(original)):
-                orig_base = original[row_idx].seq[col_idx]
-                masked_base = masked[row_idx].seq[col_idx]
-
-                # Check if this position was masked (corrected)
-                if orig_base != masked_base:
-                    # Determine the corrected base based on the IUPAC code
-                    corrected_base = None
-                    if masked_base == 'Y':  # C or T (C→T)
-                        corrected_base = 'C'
-                    elif masked_base == 'R':  # G or A (G→A)
-                        corrected_base = 'G'
-
-                    if corrected_base:
-                        col_dict[row_idx] = {
-                            'observed_base': orig_base,
-                            'corrected_base': corrected_base,
-                        }
+            for row_idx in np.where(diff[:, col_idx])[0].tolist():
+                masked_base = mask[row_idx, col_idx].decode('ascii')
+                corrected_base = corrected_for.get(masked_base)
+                if corrected_base:
+                    col_dict[row_idx] = {
+                        'observed_base': orig[row_idx, col_idx].decode('ascii'),
+                        'corrected_base': corrected_base,
+                    }
 
             # Only add column to dict if corrections were made
             if col_dict:
@@ -727,6 +741,7 @@ class DeRIP:
         )
 
         # Call drawMiniAlignment with the alignment object and parameters from this object and user inputs
+        _t_plot = time.perf_counter()
         result = drawMiniAlignment(
             alignment=self.alignment,
             outfile=output_file,
@@ -749,6 +764,9 @@ class DeRIP:
             **kwargs,  # Pass any additional customization options
         )
 
+        logging.debug(
+            f'plot_alignment: drawMiniAlignment took {time.perf_counter() - _t_plot:.3f}s'
+        )
         logging.info(f'Alignment visualization saved to {output_file}')
         return result
 
