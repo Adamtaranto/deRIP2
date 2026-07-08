@@ -1,7 +1,10 @@
-#Sandpit
-pkg-mgt/
-dev/
+# Sandpit
 .ideas/
+.plans/
+
+# Agent configs
+.claude/
+.claudeignore
 
 # Mac stuff
 .DS_Store
