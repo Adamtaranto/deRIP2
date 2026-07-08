@@ -1431,15 +1431,15 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 </clipboard-copy>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="o">%</span><span class="n">matplotlib</span> <span class="n">inline</span>
-<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 
-<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
-<span class="kn">import</span> <span class="nn">seaborn</span> <span class="k">as</span> <span class="nn">sns</span>
-<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
-<span class="kn">from</span> <span class="nn">IPython.display</span> <span class="kn">import</span> <span class="n">Image</span><span class="p">,</span> <span class="n">display</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">seaborn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sns</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">IPython.display</span><span class="w"> </span><span class="kn">import</span> <span class="n">Image</span><span class="p">,</span> <span class="n">display</span>
 
 <span class="c1"># Import the DeRIP class</span>
-<span class="kn">from</span> <span class="nn">derip2.derip</span> <span class="kn">import</span> <span class="n">DeRIP</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">derip2.derip</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeRIP</span>
 
 
 <span class="c1"># Create output directory if it doesn't exist</span>
@@ -2567,8 +2567,8 @@ else:
 </clipboard-copy>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="c1"># load the gzipped file</span>
-<span class="kn">import</span> <span class="nn">os</span>
-<span class="kn">from</span> <span class="nn">derip2.derip</span> <span class="kn">import</span> <span class="n">DeRIP</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">derip2.derip</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeRIP</span>
 
 <span class="c1"># Load the alignment from gzipped file</span>
 <span class="n">sahana</span> <span class="o">=</span> <span class="n">DeRIP</span><span class="p">(</span><span class="n">gzipped_alignment_file</span><span class="p">)</span>
@@ -2638,9 +2638,9 @@ print(
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="c1"># Calc CRI</span>
 <span class="o">%</span><span class="n">matplotlib</span> <span class="n">inline</span>
-<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
-<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
-<span class="kn">import</span> <span class="nn">seaborn</span> <span class="k">as</span> <span class="nn">sns</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">seaborn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sns</span>
 
 <span class="c1"># Calculate CRI values for all sequences</span>
 <span class="n">sahana</span><span class="o">.</span><span class="n">calculate_cri_for_all</span><span class="p">()</span>
@@ -2770,7 +2770,7 @@ print(
 </clipboard-copy>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="c1"># Filter alignment rows that are &lt; 90% of the alignment length (not including gaps)</span>
-<span class="kn">from</span> <span class="nn">Bio.Align</span> <span class="kn">import</span> <span class="n">MultipleSeqAlignment</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">Bio.Align</span><span class="w"> </span><span class="kn">import</span> <span class="n">MultipleSeqAlignment</span>
 
 <span class="c1"># Calculate ungapped lengths for each sequence</span>
 <span class="n">ungapped_lengths</span> <span class="o">=</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">rec</span><span class="o">.</span><span class="n">seq</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">'-'</span><span class="p">,</span> <span class="s1">''</span><span class="p">))</span> <span class="k">for</span> <span class="n">rec</span> <span class="ow">in</span> <span class="n">sahana</span><span class="o">.</span><span class="n">alignment</span><span class="p">]</span>
