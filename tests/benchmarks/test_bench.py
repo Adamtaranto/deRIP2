@@ -14,12 +14,15 @@ not active (plain ``pytest``) the tests are skipped.
 import gzip
 import logging
 import os
-# import tempfile
 
 import pytest
 
 import derip2.aln_ops as ao
 from derip2.derip import DeRIP
+
+# import tempfile
+
+
 
 pytest_codspeed = pytest.importorskip('pytest_codspeed')
 
