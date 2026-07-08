@@ -27,4 +27,4 @@ jobs:
         with:
           token: ${{ secrets.CODSPEED_TOKEN }}
           run: uv run pytest tests/benchmarks --codspeed -o addopts=""
-          mode: walltime
+          mode: simulation
