@@ -8,11 +8,15 @@ Repeat-Induced Point (RIP) mutations in fungal DNA alignments.
 import logging
 from os import path
 import sys
+import time
 from typing import List, Optional, Tuple
 
 from Bio.Align import MultipleSeqAlignment
+import numpy as np
 
 import derip2.aln_ops as ao
+
+logger = logging.getLogger(__name__)
 
 
 class DeRIP:
@@ -149,7 +153,7 @@ class DeRIP:
         if isinstance(alignment_input, MultipleSeqAlignment):
             # Directly use the provided alignment
             self.alignment = alignment_input
-            logging.info(
+            logger.info(
                 f'Using provided MultipleSeqAlignment with {len(self.alignment)} sequences'
             )
 
@@ -166,7 +170,7 @@ class DeRIP:
             # Load alignment using aln_ops function
             try:
                 self.alignment = ao.loadAlign(alignment_input, alnFormat='fasta')
-                logging.info(
+                logger.info(
                     f'Loaded alignment from file with {len(self.alignment)} sequences'
                 )
 
@@ -236,6 +240,14 @@ class DeRIP:
         None
             Updates class attributes with results.
         """
+        # Timing helper for performance debugging; emits DEBUG logs only.
+        _t0 = time.perf_counter()
+
+        def _lap(_stage, _since):
+            _now = time.perf_counter()
+            logger.debug(f'calculate_rip: {_stage} took {_now - _since:.3f}s')
+            return _now
+
         # Initialize tracking structures
         # tracker is a dict of tuples, keys are column indices, values are tuples of (col_idx, corrected_base)
         # used to compose the consensus sequence
@@ -243,9 +255,11 @@ class DeRIP:
         # rip_counts is a dict of rowItem('idx', 'SeqID', 'revRIPcount', 'RIPcount', 'nonRIPcount', 'GC'), keys are row IDs
         # used to track RIP mutations in each sequence
         rip_counts = ao.initRIPCounter(self.alignment)
+        _t = _lap('init trackers', _t0)
 
         # Pre-fill conserved positions
         tracker = ao.fillConserved(self.alignment, tracker, self.max_gaps)
+        _t = _lap('fillConserved', _t)
 
         # Detect and correct RIP mutations
         # Returns: Tuple[Dict[int, NamedTuple], Dict[int, NamedTuple], Bio.Align.MultipleSeqAlignment, List[int], Dict[str, List[RIPPosition]]]
@@ -260,6 +274,7 @@ class DeRIP:
                 mask=True,  # Always mask so we have the masked alignment available
             )
         )
+        _t = _lap('correctRIP', _t)
 
         # Store the markupdict for later use in colored alignment
         self.markupdict = markupdict
@@ -267,6 +282,7 @@ class DeRIP:
         # Populate corrected positions dictionary
         # TODO: Avoid double pass of data to calculate this.
         self._build_corrected_positions(self.alignment, masked_alignment)
+        _t = _lap('build_corrected_positions', _t)
 
         # Select reference sequence for filling uncorrected positions
         if self.fill_index is not None:
@@ -308,9 +324,11 @@ class DeRIP:
         self.colored_masked_alignment = self._create_colored_alignment(
             self.masked_alignment
         )
+        _lap('fill + colorize', _t)
+        logger.debug(f'calculate_rip: total {time.perf_counter() - _t0:.3f}s')
 
         # Log summary
-        logging.info(
+        logger.info(
             f'RIP correction complete. Reference sequence used for filling: {ref_id}'
         )
 
@@ -334,34 +352,32 @@ class DeRIP:
         """
         self.corrected_positions = {}
 
-        # Compare original and masked alignments
-        for col_idx in range(original.get_alignment_length()):
+        # Decode both alignments to byte arrays and diff them vectorised, rather
+        # than indexing every cell of two Biopython Seq objects.
+        orig = ao.alignment_to_array(original)
+        mask = ao.alignment_to_array(masked)
+        diff = orig != mask
+
+        # Map masked IUPAC code -> corrected ancestral base
+        corrected_for = {'Y': 'C', 'R': 'G'}
+
+        # Only visit columns that contain at least one masked position
+        for col_idx in np.where(diff.any(axis=0))[0].tolist():
             col_dict = {}
-
-            for row_idx in range(len(original)):
-                orig_base = original[row_idx].seq[col_idx]
-                masked_base = masked[row_idx].seq[col_idx]
-
-                # Check if this position was masked (corrected)
-                if orig_base != masked_base:
-                    # Determine the corrected base based on the IUPAC code
-                    corrected_base = None
-                    if masked_base == 'Y':  # C or T (C→T)
-                        corrected_base = 'C'
-                    elif masked_base == 'R':  # G or A (G→A)
-                        corrected_base = 'G'
-
-                    if corrected_base:
-                        col_dict[row_idx] = {
-                            'observed_base': orig_base,
-                            'corrected_base': corrected_base,
-                        }
+            for row_idx in np.where(diff[:, col_idx])[0].tolist():
+                masked_base = mask[row_idx, col_idx].decode('ascii')
+                corrected_base = corrected_for.get(masked_base)
+                if corrected_base:
+                    col_dict[row_idx] = {
+                        'observed_base': orig[row_idx, col_idx].decode('ascii'),
+                        'corrected_base': corrected_base,
+                    }
 
             # Only add column to dict if corrections were made
             if col_dict:
                 self.corrected_positions[col_idx] = col_dict
 
-        logging.info(
+        logger.info(
             f'Identified {len(self.corrected_positions)} columns with RIP corrections'
         )
 
@@ -575,7 +591,7 @@ class DeRIP:
             noappend=not append_consensus,
         )
 
-        logging.info(f'Alignment written to {output_file}')
+        logger.info(f'Alignment written to {output_file}')
 
     def write_consensus(self, output_file: str, consensus_id: str = 'deRIPseq') -> None:
         """
@@ -604,7 +620,7 @@ class DeRIP:
         # Write the sequence to file
         ao.writeDERIP(self.consensus_tracker, output_file, ID=consensus_id)
 
-        logging.info(f'Consensus sequence written to {output_file}')
+        logger.info(f'Consensus sequence written to {output_file}')
 
     def get_consensus_string(self) -> str:
         """
@@ -727,6 +743,7 @@ class DeRIP:
         )
 
         # Call drawMiniAlignment with the alignment object and parameters from this object and user inputs
+        _t_plot = time.perf_counter()
         result = drawMiniAlignment(
             alignment=self.alignment,
             outfile=output_file,
@@ -749,7 +766,10 @@ class DeRIP:
             **kwargs,  # Pass any additional customization options
         )
 
-        logging.info(f'Alignment visualization saved to {output_file}')
+        logger.debug(
+            f'plot_alignment: drawMiniAlignment took {time.perf_counter() - _t_plot:.3f}s'
+        )
+        logger.info(f'Alignment visualization saved to {output_file}')
         return result
 
     def calculate_dinucleotide_frequency(self, sequence):
@@ -865,7 +885,7 @@ class DeRIP:
             record.annotations['PI'] = pi
             record.annotations['SI'] = si
 
-        logging.info(f'Calculated CRI values for {len(self.alignment)} sequences')
+        logger.info(f'Calculated CRI values for {len(self.alignment)} sequences')
         return self.alignment
 
     def get_cri_values(self):
@@ -947,7 +967,7 @@ class DeRIP:
         # Replace current alignment if inplace=True
         if inplace:
             self.alignment = sorted_alignment
-            logging.info('Updated alignment in-place with CRI-sorted sequences')
+            logger.info('Updated alignment in-place with CRI-sorted sequences')
 
             # Clear calculated results since alignment changed
             self.masked_alignment = None
@@ -1066,7 +1086,7 @@ class DeRIP:
                 stacklevel=2,
             )
         elif len(filtered_records) < len(self.alignment):
-            logging.info(
+            logger.info(
                 f'CRI filtering removed {len(self.alignment) - len(filtered_records)} sequences '
                 f'({len(filtered_records)}/{len(self.alignment)} sequences remaining)'
             )
@@ -1077,7 +1097,7 @@ class DeRIP:
         # Replace current alignment if inplace=True
         if inplace:
             self.alignment = filtered_alignment
-            logging.info('Updated alignment in-place with CRI-filtered sequences')
+            logger.info('Updated alignment in-place with CRI-filtered sequences')
 
             # Clear calculated results since alignment changed
             self.masked_alignment = None
@@ -1122,7 +1142,6 @@ class DeRIP:
         If n is greater than the number of sequences, no filtering occurs.
         If n is less than 2, no filtering occurs to ensure DeRIP has enough sequences to work with.
         """
-        import logging
 
         from Bio.Align import MultipleSeqAlignment
 
@@ -1134,14 +1153,14 @@ class DeRIP:
 
         # Check if n exceeds alignment length
         if n >= len(self.alignment):
-            logging.info(
+            logger.info(
                 f'Requested to keep {n} sequences but alignment only has {len(self.alignment)}. No filtering performed.'
             )
             return self.alignment
 
         # Check if n is too small
         if n < 2:
-            logging.warning(
+            logger.warning(
                 f'Cannot keep fewer than 2 sequences (requested {n}). DeRIP works best with multiple sequences. No filtering performed.'
             )
             return self.alignment
@@ -1160,17 +1179,17 @@ class DeRIP:
         # Log which sequences were kept
         kept_ids = [record.id for record in kept_records]
         cri_values = [record.annotations['CRI'] for record in kept_records]
-        logging.info(
+        logger.info(
             f'Kept {n} sequences with lowest CRI values: {list(zip(kept_ids, cri_values))}'
         )
-        logging.info(
+        logger.info(
             f'Removed {len(self.alignment) - n} sequences with higher CRI values'
         )
 
         # Replace current alignment if inplace=True
         if inplace:
             self.alignment = kept_alignment
-            logging.info('Updated alignment in-place with low-CRI filtered sequences')
+            logger.info('Updated alignment in-place with low-CRI filtered sequences')
 
             # Clear calculated results since alignment changed
             self.masked_alignment = None
@@ -1303,7 +1322,7 @@ class DeRIP:
                 stacklevel=2,
             )
         elif len(filtered_records) < len(self.alignment):
-            logging.info(
+            logger.info(
                 f'GC filtering removed {len(self.alignment) - len(filtered_records)} sequences '
                 f'({len(filtered_records)}/{len(self.alignment)} sequences remaining)'
             )
@@ -1314,7 +1333,7 @@ class DeRIP:
         # Replace current alignment if inplace=True
         if inplace:
             self.alignment = filtered_alignment
-            logging.info('Updated alignment in-place with GC-filtered sequences')
+            logger.info('Updated alignment in-place with GC-filtered sequences')
 
             # Clear calculated results since alignment changed
             self.masked_alignment = None
@@ -1359,7 +1378,6 @@ class DeRIP:
         If n is greater than the number of sequences, no filtering occurs.
         If n is less than 2, no filtering occurs to ensure DeRIP has enough sequences to work with.
         """
-        import logging
 
         from Bio.Align import MultipleSeqAlignment
 
@@ -1371,14 +1389,14 @@ class DeRIP:
 
         # Check if n exceeds alignment length
         if n >= len(self.alignment):
-            logging.info(
+            logger.info(
                 f'Requested to keep {n} sequences but alignment only has {len(self.alignment)}. No filtering performed.'
             )
             return self.alignment
 
         # Check if n is too small
         if n < 2:
-            logging.warning(
+            logger.warning(
                 f'Cannot keep fewer than 2 sequences (requested {n}). DeRIP works best with multiple sequences. No filtering performed.'
             )
             return self.alignment
@@ -1399,17 +1417,17 @@ class DeRIP:
         # Log which sequences were kept
         kept_ids = [record.id for record in kept_records]
         gc_values = [record.annotations['GC_content'] for record in kept_records]
-        logging.info(
+        logger.info(
             f'Kept {n} sequences with highest GC content: {list(zip(kept_ids, gc_values))}'
         )
-        logging.info(
+        logger.info(
             f'Removed {len(self.alignment) - n} sequences with lower GC content'
         )
 
         # Replace current alignment if inplace=True
         if inplace:
             self.alignment = kept_alignment
-            logging.info('Updated alignment in-place with high-GC filtered sequences')
+            logger.info('Updated alignment in-place with high-GC filtered sequences')
 
             # Clear calculated results since alignment changed
             self.masked_alignment = None

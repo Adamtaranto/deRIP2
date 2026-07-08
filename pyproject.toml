@@ -72,8 +72,13 @@ dev = [
 
 test = ["pytest-cov", "pytest"]
 
+# Optional dependencies for performance benchmarking (CodSpeed)
+benchmark = ["pytest-codspeed"]
+
 [tool.pytest.ini_options]
-addopts = "-v --cov=derip2 --cov-branch --cov-report=xml --cov-report=term"
+# Benchmarks are heavy and only meaningful under CodSpeed; exclude them from the
+# normal test run. Run them explicitly with: pytest tests/benchmarks --codspeed
+addopts = "-v --cov=derip2 --cov-branch --cov-report=xml --cov-report=term --ignore=tests/benchmarks"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 
@@ -121,6 +126,9 @@ exclude = [ # don't report on checks for these
     '\.__init__$',
     '\.__repr__$',
     '\.__str__$',
+    '\._lap$',       # local timing closure in calculate_rip
+    '\._mark$',      # local markup helper in correctRIP
+    '\._set_cell$',  # local overlay-fill helper in markupRIPBases
 ]
 override_SS05 = [ # allow docstrings to start with these words
     '^Process ',

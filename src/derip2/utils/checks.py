@@ -10,6 +10,8 @@ import os
 import sys
 from typing import Optional, Tuple
 
+logger = logging.getLogger(__name__)
+
 
 def dochecks(
     usrOutDir: Optional[str] = None, usrLogfile: Optional[str] = None
@@ -101,7 +103,7 @@ def isfile(path: str) -> str:
     # Check if the file exists
     if not os.path.isfile(path):
         # Log error and terminate execution if not found
-        logging.error(f'Input file not found: {path}')
+        logger.error(f'Input file not found: {path}')
         sys.exit(1)
     # File exists
     else:

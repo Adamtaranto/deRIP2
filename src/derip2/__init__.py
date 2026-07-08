@@ -19,3 +19,11 @@ Examples
 >>> # Process sequences to detect and correct RIP mutations
 >>> result = derip.process_alignment('input.fasta', 'output.fasta')
 """
+
+import logging
+
+# Attach a no-op handler to the package logger so that, when deRIP2 is used as a
+# library and the host application has not configured logging, records are
+# silently dropped instead of triggering the last-resort handler. Applications
+# (including the derip2 CLI via init_logging) can configure this logger to emit.
+logging.getLogger('derip2').addHandler(logging.NullHandler())

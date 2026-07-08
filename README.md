@@ -74,6 +74,21 @@ conda activate derip2-dev
 pip install -e '.[dev]'
 ```
 
+### Running tests and benchmarks
+
+```bash
+# Run the test suite
+pytest
+
+# Run the performance benchmarks (uses the large tests/data/sahana.fasta.gz alignment)
+pip install -e '.[benchmark]'
+pytest tests/benchmarks --codspeed
+```
+
+The core RIP-detection (`calculate_rip`) and plotting (`plot_alignment`) paths are backed by
+vectorised NumPy operations, so large alignments (hundreds of sequences × thousands of columns)
+process in seconds. Benchmarks are tracked with [CodSpeed](https://codspeed.io/) in CI.
+
 ## Example usage
 
 For aligned sequences in 'mintest.fa':

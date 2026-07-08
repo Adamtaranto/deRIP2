@@ -18,6 +18,8 @@ from tqdm import tqdm
 
 matplotlib.use('Agg')  # Use non-interactive backend for server environments
 
+logger = logging.getLogger(__name__)
+
 RIPPosition = NamedTuple(
     'RIPPosition', [('colIdx', int), ('rowIdx', int), ('base', str), ('offset', int)]
 )
@@ -126,7 +128,7 @@ def get_color_palette(palette: str = 'colorblind') -> Dict[str, str]:
 
     # Return the requested palette or default to colorblind if not found
     if palette not in color_palettes:
-        logging.warning(f"Palette '{palette}' not found, using 'colorblind' instead")
+        logger.warning(f"Palette '{palette}' not found, using 'colorblind' instead")
         return color_palettes['colorblind']
 
     return color_palettes[palette]
@@ -165,7 +167,7 @@ def MSAToArray(
         If the alignment is empty or sequences have different lengths.
     """
     # DEBUG: Print function parameters for troubleshooting
-    logging.debug(f'MSAToArray: alignment={alignment}')
+    logger.debug(f'MSAToArray: alignment={alignment}')
 
     # Check if alignment is empty
     if not alignment or len(alignment) == 0:
@@ -240,25 +242,20 @@ def arrNumeric(
     # Get dimensions of the alignment
     ali_height, ali_width = np.shape(arr)
 
-    # Create mapping from nucleotides to numeric values
-    keys = list(color_pattern.keys())
-    nD = {}  # Dictionary mapping nucleotides to integers
+    # Build the mapping and color list for the nucleotides present in the
+    # alignment, preserving the palette's key order.
     colours = []  # List of colors for the colormap
+    arr2 = np.zeros((ali_height, ali_width))
 
-    # Build the mapping and color list for the specific nucleotides in the alignment
+    # One vectorised boolean assignment per present nucleotide replaces the
+    # former per-cell nested Python loop over the whole array.
     i = 0
-    for key in keys:
-        if key in arr:
-            nD[key] = i
+    for key in color_pattern.keys():
+        matches = arr == key
+        if matches.any():
+            arr2[matches] = i
             colours.append(color_pattern[key])
             i += 1
-
-    # Create the numeric representation of the alignment
-    arr2 = np.empty([ali_height, ali_width])
-    for x in range(ali_width):
-        for y in range(ali_height):
-            # Convert each nucleotide to its corresponding integer
-            arr2[y, x] = nD[arr[y, x]]
 
     # Create the colormap for visualization
     cmap = matplotlib.colors.ListedColormap(colours)
@@ -363,7 +360,7 @@ def drawMiniAlignment(
     - Non-RIP deamination events are highlighted in orange
     """
     # DEBUG: Print function parameters for troubleshooting
-    logging.debug(
+    logger.debug(
         f'drawMiniAlignment: outfile={outfile}, dpi={dpi}, title={title}, width={width}, height={height}, orig_nams={orig_nams}, keep_numbers={keep_numbers}, force_numbers={force_numbers}, palette={palette}, markupdict={markupdict}, column_ranges={column_ranges}, show_chars={show_chars}, consensus_seq={consensus_seq}, corrected_positions={corrected_positions}, reaminate={reaminate}, reference_seq_index={reference_seq_index}, show_rip={show_rip}, highlight_corrected={highlight_corrected}'
     )
     # Handle default value for orig_nams
@@ -791,9 +788,8 @@ def markupRIPBases(
     - Coordinates in returned sets are in matplotlib coordinates, where y-axis
       is flipped compared to the alignment array (0 at bottom, increasing upward)
     """
-    # DEBUG: Print function parameters for troubleshooting
-    logging.debug(
-        f'markupRIPBases: markupdict={markupdict}, ali_height={ali_height}, arr={arr}, reaminate={reaminate}, palette={palette}, draw_boxes={draw_boxes}'
+    logger.debug(
+        f'markupRIPBases: ali_height={ali_height}, reaminate={reaminate}, palette={palette}, draw_boxes={draw_boxes}'
     )
 
     highlighted_positions = set()
@@ -801,8 +797,26 @@ def markupRIPBases(
     border_thickness = 2.5  # Border thickness
     inset = 0.05  # Smaller inset for borders to reduce gap with grid lines
 
-    # Define colors for nucleotide bases
+    # Define colors for nucleotide bases and precompute their RGBA tuples once.
     nuc_colors = get_color_palette(palette)
+    rgba_cache = {
+        base: matplotlib.colors.to_rgba(color) for base, color in nuc_colors.items()
+    }
+    default_rgba = matplotlib.colors.to_rgba('#CCCCCC')
+
+    # Colored highlights are composited into a single transparent RGBA overlay
+    # and drawn with one imshow, rather than adding one Rectangle patch per cell
+    # (which does not scale to alignments with tens of thousands of markup cells).
+    ali_width = arr.shape[1] if arr is not None else 0
+    overlay = np.zeros((ali_height, ali_width, 4), dtype=float)
+
+    def _set_cell(x, y, rgba, alpha):
+        """Write an RGBA value (with alpha) into the overlay if in bounds."""
+        if 0 <= x < ali_width and 0 <= y < ali_height:
+            overlay[y, x, 0] = rgba[0]
+            overlay[y, x, 1] = rgba[1]
+            overlay[y, x, 2] = rgba[2]
+            overlay[y, x, 3] = alpha
 
     # Count total positions to process for progress bar
     total_positions = sum(
@@ -840,23 +854,11 @@ def markupRIPBases(
 
             # Case 1: Single base (no offset or offset=0)
             if offset is None or offset == 0:
-                if base in nuc_colors:
-                    color = nuc_colors[base]
+                if base in rgba_cache:
+                    # Composite the base colour into the overlay
+                    _set_cell(col_idx, y, rgba_cache[base], 1.0)
 
-                    # Draw the base with full-size colored rectangle - use EXACT cell dimensions
-                    a.add_patch(
-                        matplotlib.patches.Rectangle(
-                            (col_idx - 0.5, y - 0.5),  # Exact cell boundaries
-                            1.0,  # Full width
-                            1.0,  # Full height
-                            facecolor=color,
-                            edgecolor='none',
-                            linewidth=0,
-                            zorder=50,  # Above base image (10), below grid lines (100)
-                        )
-                    )
-
-                    # Draw black border with smaller inset and thinner line for cleaner appearance
+                    # Draw black border with smaller inset for cleaner appearance
                     if draw_boxes:
                         a.add_patch(
                             matplotlib.patches.Rectangle(
@@ -901,7 +903,7 @@ def markupRIPBases(
                     pbar.update(1)  # Update progress bar even if skipping
                     continue
 
-                # Fill cells with appropriate colors (full-size) - use EXACT cell dimensions
+                # Fill cells with appropriate colors into the overlay
                 for i in valid_indices:
                     # Add to highlighted positions
                     highlighted_positions.add((i, y))
@@ -909,29 +911,14 @@ def markupRIPBases(
 
                     # Get color for this base
                     cell_base = arr[ali_height - y - 1, i] if arr is not None else base
-                    cell_color = nuc_colors.get(cell_base, '#CCCCCC')
+                    cell_rgba = rgba_cache.get(cell_base, default_rgba)
 
-                    # Determine alpha value based on whether this is the target cell or an offset cell
-                    # For cells with offset > 0, make offset cells semi-transparent
+                    # Offset cells (not the target column) are semi-transparent
                     cell_alpha = 1.0
-                    if (
-                        offset > 0 or offset < 0
-                    ) and i != col_idx:  # This is an offset cell
+                    if (offset > 0 or offset < 0) and i != col_idx:
                         cell_alpha = 0.7
 
-                    # Draw full-size colored cell with appropriate transparency
-                    a.add_patch(
-                        matplotlib.patches.Rectangle(
-                            (i - 0.5, y - 0.5),  # Exact cell boundaries
-                            1.0,  # Full width
-                            1.0,  # Full height
-                            facecolor=cell_color,
-                            edgecolor='none',
-                            linewidth=0,
-                            alpha=cell_alpha,  # Apply transparency to offset cells
-                            zorder=50,  # Above base image, below grid
-                        )
-                    )
+                    _set_cell(i, y, cell_rgba, cell_alpha)
 
                 # Draw border with smaller inset
                 if valid_indices and draw_boxes:
@@ -955,6 +942,15 @@ def markupRIPBases(
 
     # Close the progress bar
     pbar.close()
+
+    # Draw all colored highlights in a single raster pass over the base image.
+    if ali_width:
+        a.imshow(
+            overlay,
+            aspect='auto',
+            interpolation='nearest',
+            zorder=50,  # Above base image (10), below grid lines (100)
+        )
 
     return highlighted_positions, target_positions
 
