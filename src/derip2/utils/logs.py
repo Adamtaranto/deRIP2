@@ -194,13 +194,21 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def init_logging(loglevel: str = 'DEBUG', logfile: Optional[str] = None) -> None:
-    """
-    Initialize the logging system with a specified log level and custom formatter.
+# Name of the package-level logger. All deRIP2 modules obtain their logger via
+# ``logging.getLogger(__name__)``, which yields children of this logger.
+LOGGER_NAME = 'derip2'
 
-    This function configures the Python logging system with colored console output
-    and optional file output. It sets the global logging configuration that will
-    be used throughout the application.
+
+def init_logging(
+    loglevel: str = 'DEBUG', logfile: Optional[str] = None
+) -> logging.Logger:
+    """
+    Configure the deRIP2 package logger with a level and custom formatter.
+
+    This configures only the ``derip2`` logger (not the root logger), so third
+    party libraries such as matplotlib are unaffected by the chosen level. It
+    attaches a colored stderr handler and an optional plain file handler, and
+    disables propagation so records are not also emitted by the root logger.
 
     Parameters
     ----------
@@ -214,8 +222,8 @@ def init_logging(loglevel: str = 'DEBUG', logfile: Optional[str] = None) -> None
 
     Returns
     -------
-    None
-        This function configures the global logging system but doesn't return a value.
+    logging.Logger
+        The configured ``derip2`` package logger.
 
     Raises
     ------
@@ -230,23 +238,26 @@ def init_logging(loglevel: str = 'DEBUG', logfile: Optional[str] = None) -> None
     # Define log message format including timestamp, level, module, function, line number
     fmt = '%(asctime)s | %(levelname)s | %(module)s | %(funcName)s | %(lineno)d | %(message)s'
 
+    # Configure the package logger only, leaving the root logger (and therefore
+    # other libraries like matplotlib) untouched.
+    logger = logging.getLogger(LOGGER_NAME)
+    logger.setLevel(numeric_level)
+
+    # Remove any handlers from a previous init to avoid duplicate output, then
+    # stop records from propagating to the root logger.
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+    logger.propagate = False
+
     # Create a StreamHandler to output colored log messages to stderr
     handler_sh = logging.StreamHandler(sys.stderr)
     handler_sh.setFormatter(CustomFormatter(fmt))
+    logger.addHandler(handler_sh)
 
-    # Set up handlers for the root logger
-    handlers = [handler_sh]
-
-    # If a log file was specified, add a file handler
+    # If a log file was specified, add a file handler with a plain formatter
     if logfile is not None:
-        # Create a FileHandler with plain (non-colored) formatter
         handler_fh = logging.FileHandler(logfile)
         handler_fh.setFormatter(logging.Formatter(fmt))
-        handlers.append(handler_fh)
+        logger.addHandler(handler_fh)
 
-    # Configure the root logger with the specified level and handlers
-    logging.basicConfig(
-        format=fmt,  # This format is used for non-custom formatters
-        level=numeric_level,
-        handlers=handlers,
-    )
+    return logger

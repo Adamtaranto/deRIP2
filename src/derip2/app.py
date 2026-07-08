@@ -28,6 +28,8 @@ from derip2.derip import DeRIP
 from derip2.utils.checks import dochecks
 from derip2.utils.logs import colored, init_logging
 
+logger = logging.getLogger(__name__)
+
 
 @click.command(
     context_settings={'help_option_names': ['-h', '--help']},
@@ -236,7 +238,7 @@ def main(
     viz_path = path.join(out_dir, f'{prefix}_visualization.png')
 
     # ---------- Create DeRIP object and process alignment ----------
-    logging.info(f'Processing alignment file: \033[0m{input}')
+    logger.info(f'Processing alignment file: \033[0m{input}')
 
     # Create DeRIP object with command line parameters
     derip_obj = DeRIP(
@@ -250,43 +252,49 @@ def main(
     )
 
     # Report alignment summary
-    logging.info(f'Loaded alignment with {len(derip_obj.alignment)} sequences')
+    logger.info(f'Loaded alignment with {len(derip_obj.alignment)} sequences')
     ao.alignSummary(derip_obj.alignment)
 
     # Calculate RIP mutations and generate consensus
-    logging.info('Processing alignment for RIP mutations...')
+    logger.info('Processing alignment for RIP mutations...')
     derip_obj.calculate_rip(label=prefix)
 
     # Access corrected positions
-    logging.info(
+    logger.info(
         f'\nDeRIP2 found {len(derip_obj.corrected_positions)} columns to be repaired.\n'
     )
 
     # Print RIP summary
-    logging.info(f'RIP summary by row:\n\033[0m{derip_obj.rip_summary()}\n')
+    logger.info(f'RIP summary by row:\n\033[0m{derip_obj.rip_summary()}\n')
 
     # Print colourized alignment + consensus
-    logging.info(f'Corrected alignment:\n\033[0m{derip_obj}\n')
-
+    # If alignment dims are less than 100 columns x 50 rows
+    if (
+        len(derip_obj.alignment) < 50
+        and derip_obj.alignment.get_alignment_length() < 100
+    ):
+        logger.info(f'Corrected alignment:\n\033[0m{derip_obj}\n')
+    else:
+        logger.debug(f'Corrected alignment:\n\033[0m{derip_obj}\n')
     # ---------- Output Results ----------
     # Report deRIP'd sequence to stdout
-    logging.info(f'Final RIP corrected sequence: \033[0m{derip_obj.colored_consensus}')
+    logger.info(f'Final RIP corrected sequence: \033[0m{derip_obj.colored_consensus}')
 
     # Write deRIP'd sequence to FASTA file
-    logging.info(f"Writing deRIP'd sequence to file: \033[0m{out_path_fasta}")
+    logger.info(f"Writing deRIP'd sequence to file: \033[0m{out_path_fasta}")
     derip_obj.write_consensus(out_path_fasta, consensus_id=prefix)
 
     # Write alignment file with deRIP'd sequence
-    logging.info('Preparing output alignment.')
+    logger.info('Preparing output alignment.')
 
     # Log if deRIP'd sequence will be appended to alignment
     if not no_append:
-        logging.info(
+        logger.info(
             f'Appending corrected sequence to alignment with ID: \033[0m{prefix}'
         )
 
     # Write the alignment to file
-    logging.info(f'Writing alignment to path: \033[0m{out_path_aln}')
+    logger.info(f'Writing alignment to path: \033[0m{out_path_aln}')
     derip_obj.write_alignment(
         output_file=out_path_aln,
         append_consensus=not no_append,
@@ -297,7 +305,7 @@ def main(
 
     # Create visualization highlighting RIP/deamination events if requested
     if plot:
-        logging.info(
+        logger.info(
             f'Creating alignment visualization with RIP markup at: \033[0m{viz_path}'
         )
 
@@ -321,9 +329,9 @@ def main(
         )
 
         if viz_result:
-            logging.info(f'RIP visualization created at: \033[0m{viz_path}')
+            logger.info(f'RIP visualization created at: \033[0m{viz_path}')
         else:
-            logging.warning('Failed to create RIP visualization')
+            logger.warning('Failed to create RIP visualization')
 
 
 if __name__ == '__main__':

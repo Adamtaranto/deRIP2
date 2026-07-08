@@ -26,6 +26,8 @@ from tqdm import tqdm
 
 from derip2.utils.checks import isfile
 
+logger = logging.getLogger(__name__)
+
 RIPPosition = NamedTuple(
     'RIPPosition', [('colIdx', int), ('rowIdx', int), ('base', str), ('offset', int)]
 )
@@ -163,8 +165,8 @@ def checkUniqueID(align: MultipleSeqAlignment) -> None:
 
     # If duplicates were found, log warning and exit
     if duplicates:
-        logging.error('Sequence IDs not unique. Quiting.')
-        logging.info(f'Non-unique IDs: {duplicates}')
+        logger.error('Sequence IDs not unique. Quiting.')
+        logger.info(f'Non-unique IDs: {duplicates}')
         sys.exit(1)
 
 
@@ -194,7 +196,7 @@ def checkLen(align: MultipleSeqAlignment) -> None:
     # Check if alignment has fewer than 2 sequences
     if align.__len__() < 2:
         # Log error and terminate execution if requirement not met
-        logging.error('Alignment contains < 2 sequences. Quiting.')
+        logger.error('Alignment contains < 2 sequences. Quiting.')
         sys.exit(1)
     # If alignment has 2 or more sequences, function returns implicitly
 
@@ -238,7 +240,7 @@ def loadAlign(file: str, alnFormat: str = 'fasta') -> 'AlignIO.MultipleSeqAlignm
     is_gzipped = path.lower().endswith(('.gz', '.gzip'))
 
     # Log loading information with compression status
-    logging.info(
+    logger.info(
         f'Loading{"" if not is_gzipped else " gzipped"} alignment from file: {file}'
     )
 
@@ -277,23 +279,23 @@ def alignSummary(align: 'AlignIO.MultipleSeqAlignment') -> None:
     None
         This function only logs information and doesn't return a value.
     """
-    logging.debug('Generating alignment summary...')
-    aln_summary_msg = []
+    logger.debug('Generating alignment summary...')
 
     # Log the dimensions of the alignment
-    aln_summary_msg.append(
-        f'\nAlignment has {align.__len__()} rows and {align.get_alignment_length()} columns.'
+    logger.info(
+        f'Alignment has {align.__len__()} rows and {align.get_alignment_length()} columns.'
     )
 
     # Create a header for the row index to sequence ID mapping table
-    aln_summary_msg.append('Row\tID')
+    aln_records_msg = []
+    aln_records_msg.append('Row\tID')
 
     # Log each sequence's index and ID as a table row
     for x in range(align.__len__()):
-        aln_summary_msg.append(f'{x}:\t{align[x].id}')
+        aln_records_msg.append(f'{x}:\t{align[x].id}')
 
     # Join all messages into a single string and log it
-    logging.info('\n'.join(aln_summary_msg))
+    logger.debug('\n'.join(aln_records_msg))
 
 
 def checkrow(align: 'AlignIO.MultipleSeqAlignment', idx: Optional[int] = None) -> None:
@@ -324,7 +326,7 @@ def checkrow(align: 'AlignIO.MultipleSeqAlignment', idx: Optional[int] = None) -
     # Check if index is provided and is outside the range of the alignment
     if idx not in range(align.__len__()):
         # Log warning and terminate execution if index is invalid
-        logging.warning(f'Row index {idx} is outside range. Quitting.')
+        logger.warning(f'Row index {idx} is outside range. Quitting.')
         sys.exit(1)
     # If index is valid, function returns implicitly
 
@@ -350,7 +352,7 @@ def initTracker(align: 'AlignIO.MultipleSeqAlignment') -> dict:
         - idx: int, the column index
         - base: str or None, the nucleotide base (initially None).
     """
-    logging.debug('Initializing consensus sequence tracker...')
+    logger.debug('Initializing consensus sequence tracker...')
 
     # Create empty dictionary to track consensus sequence
     tracker = {}
@@ -390,7 +392,7 @@ def initRIPCounter(align: 'AlignIO.MultipleSeqAlignment') -> Dict[int, NamedTupl
         - GC: float, GC content percentage of the sequence.
     """
 
-    logging.debug('Initializing RIP mutation counter...')
+    logger.debug('Initializing RIP mutation counter...')
 
     # Create empty dictionary to track RIP mutations for each sequence
     RIPcounts = {}
@@ -445,7 +447,7 @@ def updateTracker(
     # If position already has a value and force=True, overwrite it
     if tracker[idx].base and force:
         # Log that we're overwriting an existing base
-        logging.info(
+        logger.info(
             f"Overwriting base at position {idx}: '{tracker[idx].base}' → '{newChar}'"
         )
 
@@ -535,7 +537,7 @@ def fillConserved(
     Dict[int, NamedTuple]
         Updated tracker dictionary with bases filled in for conserved positions.
     """
-    logging.debug('Filling conserved positions in the consensus sequence...')
+    logger.debug('Filling conserved positions in the consensus sequence...')
     # Create deep copy of tracker to avoid modifying the original
     tracker = deepcopy(tracker)
 
@@ -882,7 +884,7 @@ def correctRIP(
           'rip_substrate': Positions containing unmutated nucleotides in RIP context
           'non_rip_deamination': Positions with C→T or G→A outside of RIP context
     """
-    logging.debug('Correcting RIP-like mutations in the consensus sequence...')
+    logger.debug('Correcting RIP-like mutations in the consensus sequence...')
     # Work on copies of the small tracking dicts so callers' inputs are unchanged.
     tracker = deepcopy(tracker)
     RIPcounts = deepcopy(RIPcounts)
@@ -1204,7 +1206,7 @@ def summarizeRIP(RIPcounts: Dict[int, NamedTuple]) -> str:
     str
         A formatted string containing the RIP summary table.
     """
-    logging.debug('Summarizing RIP mutation counts...')
+    logger.debug('Summarizing RIP mutation counts...')
 
     from io import StringIO
 
@@ -1264,7 +1266,7 @@ def setRefSeq(
     int
         Row index of the best reference sequence.
     """
-    logging.debug('Selecting reference sequence for filling remaining positions...')
+    logger.debug('Selecting reference sequence for filling remaining positions...')
 
     # Ignore RIP sorting if getMaxGC is set
     if getMaxGC:
@@ -1277,7 +1279,7 @@ def setRefSeq(
         refIdx = sorted(
             RIPcounter.values(), key=lambda x: (x.RIPcount + x.revRIPcount, -x.GC)
         )[0].idx
-        logging.info(
+        logger.info(
             f'Selecting reference sequence with fewest RIP mutations: {refIdx}: {align[refIdx].id}'
         )
 
@@ -1285,7 +1287,7 @@ def setRefSeq(
     elif RIPcounter:
         # Select row with highest GC content
         refIdx = sorted(RIPcounter.values(), key=lambda x: -x.GC)[0].idx
-        logging.info(
+        logger.info(
             f'Selecting reference sequence with highest GC content: {refIdx}: {align[refIdx].id}'
         )
 
@@ -1298,7 +1300,7 @@ def setRefSeq(
 
         # Select sequence with highest GC content
         refIdx = sorted(GClist, key=lambda x: -x[1])[0][0]
-        logging.info(
+        logger.info(
             f'No RIP data available, selecting reference sequence with highest GC content: {refIdx}: {align[refIdx].id}'
         )
     return refIdx
@@ -1330,22 +1332,27 @@ def fillRemainder(
         Updated tracker dictionary with all positions filled.
     """
     # Log which sequence is being used as reference
-    logging.info(
+    logger.info(
         'Filling uncorrected positions from: Row index %s: %s'
         % (str(fromSeqID), str(align[fromSeqID].id))
     )
 
-    # Create a deep copy to avoid modifying the original tracker
-    tracker = deepcopy(tracker)
+    # A shallow copy is sufficient to avoid modifying the caller's dict: the
+    # values are immutable namedtuples and each update below rebinds a key to a
+    # newly built tuple (via ._replace), never mutating the shared originals.
+    # This avoids a costly deepcopy of one namedtuple per column.
+    tracker = dict(tracker)
 
     # Materialise the reference sequence as a string once rather than indexing
     # the Biopython Seq one character at a time.
     refSeq = str(align[fromSeqID].seq)
 
-    # Go through each position in the alignment
-    for x in range(len(refSeq)):
-        # Update the tracker (force=False means only positions with None will be updated)
-        tracker = updateTracker(x, refSeq[x], tracker, force=False)
+    # Fill only the positions still unset, inlining the update to skip the
+    # per-column updateTracker call overhead. Tracker keys are 0..cols-1 and
+    # len(refSeq) == cols, so refSeq[x] is always valid.
+    for x, item in tracker.items():
+        if item.base is None:
+            tracker[x] = item._replace(base=refSeq[x])
 
     return tracker
 
@@ -1373,7 +1380,7 @@ def getDERIP(
     Bio.SeqRecord.SeqRecord
         SeqRecord object containing the deRIPed consensus sequence.
     """
-    logging.debug('Generating deRIPed sequence...')
+    logger.debug('Generating deRIPed sequence...')
 
     # Check that all positions have been filled
     if None in [x.base for x in tracker.values()]:
@@ -1502,7 +1509,7 @@ def writeAlign(
         This function writes to a file but doesn't return a value.
     """
     # Generate the deRIPed sequence as a SeqRecord object (preserving gaps)
-    logging.debug('Generating deRIPed sequence...')
+    logger.debug('Generating deRIPed sequence...')
     deRIPseq = getDERIP(tracker, ID=ID, deGAP=False)
 
     # Create a working copy if we're going to append to it

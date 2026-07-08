@@ -18,6 +18,8 @@ from tqdm import tqdm
 
 matplotlib.use('Agg')  # Use non-interactive backend for server environments
 
+logger = logging.getLogger(__name__)
+
 RIPPosition = NamedTuple(
     'RIPPosition', [('colIdx', int), ('rowIdx', int), ('base', str), ('offset', int)]
 )
@@ -126,7 +128,7 @@ def get_color_palette(palette: str = 'colorblind') -> Dict[str, str]:
 
     # Return the requested palette or default to colorblind if not found
     if palette not in color_palettes:
-        logging.warning(f"Palette '{palette}' not found, using 'colorblind' instead")
+        logger.warning(f"Palette '{palette}' not found, using 'colorblind' instead")
         return color_palettes['colorblind']
 
     return color_palettes[palette]
@@ -165,7 +167,7 @@ def MSAToArray(
         If the alignment is empty or sequences have different lengths.
     """
     # DEBUG: Print function parameters for troubleshooting
-    logging.debug(f'MSAToArray: alignment={alignment}')
+    logger.debug(f'MSAToArray: alignment={alignment}')
 
     # Check if alignment is empty
     if not alignment or len(alignment) == 0:
@@ -358,7 +360,7 @@ def drawMiniAlignment(
     - Non-RIP deamination events are highlighted in orange
     """
     # DEBUG: Print function parameters for troubleshooting
-    logging.debug(
+    logger.debug(
         f'drawMiniAlignment: outfile={outfile}, dpi={dpi}, title={title}, width={width}, height={height}, orig_nams={orig_nams}, keep_numbers={keep_numbers}, force_numbers={force_numbers}, palette={palette}, markupdict={markupdict}, column_ranges={column_ranges}, show_chars={show_chars}, consensus_seq={consensus_seq}, corrected_positions={corrected_positions}, reaminate={reaminate}, reference_seq_index={reference_seq_index}, show_rip={show_rip}, highlight_corrected={highlight_corrected}'
     )
     # Handle default value for orig_nams
@@ -786,7 +788,7 @@ def markupRIPBases(
     - Coordinates in returned sets are in matplotlib coordinates, where y-axis
       is flipped compared to the alignment array (0 at bottom, increasing upward)
     """
-    logging.debug(
+    logger.debug(
         f'markupRIPBases: ali_height={ali_height}, reaminate={reaminate}, palette={palette}, draw_boxes={draw_boxes}'
     )
 
