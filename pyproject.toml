@@ -63,7 +63,7 @@ dev = [
     "notebook",
     "numpydoc-validation",
     "pre-commit",
-    "pymdown-extensions",
+    "pymdown-extensions>=10.21.2,<11",
     "pytest-cov",
     "pytest",
     "ruff",
