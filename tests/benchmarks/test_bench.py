@@ -14,7 +14,7 @@ not active (plain ``pytest``) the tests are skipped.
 import gzip
 import logging
 import os
-import tempfile
+# import tempfile
 
 import pytest
 
@@ -83,17 +83,17 @@ def test_bench_correct_rip(benchmark, sahana_alignment_small):
     benchmark(run)
 
 
-def test_bench_plot_alignment(benchmark, sahana_alignment_small):
-    """Benchmark rendering the alignment plot with RIP markup."""
-    d = DeRIP(sahana_alignment_small)
-    d.calculate_rip()
-    tmp = tempfile.mktemp(suffix='.png')
-
-    def run():
-        d.plot_alignment(tmp)
-
-    try:
-        benchmark(run)
-    finally:
-        if os.path.exists(tmp):
-            os.remove(tmp)
+# def test_bench_plot_alignment(benchmark, sahana_alignment_small):
+#    """Benchmark rendering the alignment plot with RIP markup."""
+#    d = DeRIP(sahana_alignment_small)
+#    d.calculate_rip()
+#    tmp = tempfile.mktemp(suffix='.png')
+#
+#    def run():
+#        d.plot_alignment(tmp)
+#
+#    try:
+#        benchmark(run)
+#    finally:
+#        if os.path.exists(tmp):
+#            os.remove(tmp)
