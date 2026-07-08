@@ -23,7 +23,6 @@ from derip2.derip import DeRIP
 # import tempfile
 
 
-
 pytest_codspeed = pytest.importorskip('pytest_codspeed')
 
 # Keep logging quiet so it does not distort timings
