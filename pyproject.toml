@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "derip2"
 description = "Predict ancestral sequence of fungal repeat elements by correcting for RIP-like mutations in multi-sequence DNA alignments."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = { text = "GPL-3.0-or-later" }
 authors = [{ name = "Adam Taranto" }]
 
@@ -126,9 +126,9 @@ exclude = [ # don't report on checks for these
     '\.__init__$',
     '\.__repr__$',
     '\.__str__$',
-    '\._lap$',       # local timing closure in calculate_rip
-    '\._mark$',      # local markup helper in correctRIP
-    '\._set_cell$',  # local overlay-fill helper in markupRIPBases
+    '\._lap$',      # local timing closure in calculate_rip
+    '\._mark$',     # local markup helper in correctRIP
+    '\._set_cell$', # local overlay-fill helper in markupRIPBases
 ]
 override_SS05 = [ # allow docstrings to start with these words
     '^Process ',
