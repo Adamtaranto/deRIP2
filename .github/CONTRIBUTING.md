@@ -56,23 +56,28 @@ To set up your development environment:
 1. Clone your fork of the repository
 
    ```bash
-   git clone https://github.com/adamtaranto/derip2.git
+   git clone https://github.com/[YOUR_USER_NAME]/derip2.git
    cd derip2
    ```
 
-````
 
-3. Create and activate a virtual environment
+2. Create and activate a virtual environment
 
 ```bash
 conda env create -f environment.yml
 conda activate derip2
-````
+```
 
 3. Install development dependencies
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev,test,docs]"
+```
+
+4. Install pre-commit hooks to enforce style
+
+```bash
+pre-commit install
 ```
 
 ## Style Guidelines
@@ -92,23 +97,32 @@ Key points:
 
 Before submitting a pull request:
 
-1. Ensure all tests pass
+1. For new functionality, add appropriate tests
+
+2. Ensure test coverage remains high
+
+3. Ensure all tests pass
 
 ```bash
 pytest tests/
+pytest tests/benchmarks --codspeed
+pre-commit run --all-files
 ```
 
-2. For new functionality, add appropriate tests
-3. Ensure test coverage remains high
+4. Test mkdocs site builds
+
+```bash
+mkdocs build
+mkdocs serve
+```
 
 ## Pull Request Process
 
 1. Update documentation if needed
 2. Update the README.md if needed
-3. Update the CHANGELOG.md with a description of your changes
-4. Ensure all tests pass and code quality checks succeed
-5. Submit your pull request with a clear description of the changes
-6. Address any feedback from maintainers
+3. Ensure all tests pass and code quality checks succeed
+4. Submit your pull request with a clear description of the changes
+5. Address any feedback from maintainers
 
 ## Questions and Contact
 

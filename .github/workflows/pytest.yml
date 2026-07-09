@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"] # Test with Python 3.9 to the latest available version
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"] # Test with Python 3.9 to the latest available version
     steps:
       # Checkout the latest commit associated with the PR
       - uses: actions/checkout@v7

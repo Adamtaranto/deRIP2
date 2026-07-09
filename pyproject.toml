@@ -52,28 +52,21 @@ version-file = "src/derip2/_version.py"
 
 # Optional dependencies for testing
 [project.optional-dependencies]
-dev = [
-    "hatch",
-    "isort",
+
+docs = [
     "mkdocs-jupyter",
     "mkdocs-material",
     "mkdocs",
     "mkdocstrings-python",
     "mkdocstrings",
     "notebook",
-    "numpydoc-validation",
-    "pre-commit",
     "pymdown-extensions>=10.21.2,<11",
-    "pytest-cov",
-    "pytest",
-    "ruff",
     "seaborn",
 ]
 
-test = ["pytest-cov", "pytest"]
+dev = ["hatch", "isort", "numpydoc-validation", "pre-commit", "ruff"]
 
-# Optional dependencies for performance benchmarking (CodSpeed)
-benchmark = ["pytest-codspeed"]
+test = ["pytest", "pytest-codspeed", "pytest-cov"]
 
 [tool.pytest.ini_options]
 # Benchmarks are heavy and only meaningful under CodSpeed; exclude them from the
