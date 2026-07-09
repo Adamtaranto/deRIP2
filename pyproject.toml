@@ -16,7 +16,14 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
 
-dependencies = ["biopython>1.80", "click", "matplotlib", "numpy", "tqdm"]
+dependencies = [
+    "biopython>1.80",
+    "click",
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "tqdm",
+]
 
 dynamic = ["version"]
 
@@ -47,7 +54,6 @@ version-file = "src/derip2/_version.py"
 [project.optional-dependencies]
 
 docs = [
-    "pandas",
     "mkdocs-jupyter",
     "mkdocs-material",
     "mkdocs",
