@@ -1,41 +1,59 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Report incorrect behaviour, a crash, or a wrong result
 title: ""
-labels: ""
+labels: bug
 assignees: ""
 ---
 
 **Describe the bug**
-A clear and concise description of what the bug is.
+A clear and concise description of what goes wrong.
 
 **To Reproduce**
-Steps to reproduce the behavior:
 
-1. When I run this command `derip2 <args>`
-2. I get the following error:
+1. The command or code you ran:
+
+```bash
+derip2 -i alignment.fa -d out -p sample
+```
+
+2. What happened — the full error message and traceback, or the incorrect output:
 
 ```code
-YOUR ERROR MESSAGE HERE
+YOUR ERROR MESSAGE OR OUTPUT HERE
 ```
 
 **Expected behavior**
-A clear and concise description of what you expected to happen.
+What you expected to happen instead.
+
+**Input data**
+A bug in deRIP2 usually depends on the alignment. Please attach a **minimal**
+alignment that reproduces it — often just a few sequences and a few columns. If
+the data cannot be shared, describe its shape instead:
+
+- Number of sequences and alignment length:
+- Proportion of gaps, roughly:
+- Any non-ACGT characters (IUPAC codes, `N`, lowercase)?
+
+**Parameters used**
+The non-default settings matter. If you used any of `--max-snp-noise`,
+`--min-rip-like`, `--reaminate`, `--max-gaps`, `--fill-index`, `--fill-max-gc`,
+or the strand-bias options, list them here.
+
+**Is the result wrong, or does it crash?**
+If deRIP2 produced a result you believe is biologically incorrect, say which
+column or position is wrong and what you expected the corrected base to be. This
+is the most useful thing you can tell us.
 
 **Screenshots**
-If applicable, add screenshots to help explain your problem.
+If the bug is in a figure or in the alignment visualisation, attach the image.
 
-**Environment (please complete the following information):**
+**Environment**
 
-- DeRIP2 version: [output of `derip2 --version`]
+- deRIP2 version: [output of `derip2 --version`]
 - Python version: [output of `python --version`]
-
-**System information**
-
-- Platform: [output of `uname -a` or `systeminfo`]
-- OS: [e.g. MacOS, Windows, Ubuntu]
-- Version [e.g. Sequoia 15.1.1, Windows 10, Ubuntu 20.04]
-- Processor: [e.g. Intel i7, AMD Ryzen 5]
+- Installed via: [pip / conda / from source]
+- OS: [e.g. macOS 15.1, Ubuntu 24.04, Windows 11]
 
 **Additional context**
-Add any other context about the problem here.
+Anything else that might be relevant.
