@@ -17,7 +17,7 @@ Thank you for your interest in contributing to deRIP2! This document provides gu
 
 ## Code of Conduct
 
-Our project is committed to providing a welcoming and inclusive experience for everyone. We expect all participants to adhere to our Code of Conduct in all project spaces.
+This project is committed to providing a welcoming and inclusive experience for everyone. We expect all participants to be respectful and constructive in all project spaces — issues, pull requests and discussions. Unacceptable behaviour can be reported to the maintainer.
 
 ## How to Contribute
 
@@ -45,9 +45,13 @@ We welcome feature suggestions! To suggest a feature:
 
 1. Fork the repository
 2. Create a new branch for your feature or bugfix
-3. Make your changes
-4. Run tests to ensure they pass
-5. Submit a pull request
+3. Set up your environment and install the pre-commit hooks (see below)
+4. Make your changes, with tests
+5. Run `pytest tests/` and `pre-commit run --all-files`
+6. Submit a pull request
+
+For anything larger than a bugfix, open an issue first so the approach can be
+discussed before you invest the time.
 
 ## Development Setup
 
@@ -82,47 +86,101 @@ pre-commit install
 
 ## Style Guidelines
 
-We follow PEP 8 style guidelines and use NumPy-style docstrings.
+We follow PEP 8 and use NumPy-style docstrings. Formatting and linting are both
+handled by [ruff](https://docs.astral.sh/ruff/), configured in `pyproject.toml`
+and run automatically by pre-commit. You should not need to run a formatter by
+hand, but you can:
+
+```bash
+ruff format .   # format
+ruff check .    # lint, with --fix applied automatically by pre-commit
+```
 
 Key points:
 
 - Maximum line length of 88 characters
+- Single quotes for strings (`ruff format` enforces this)
 - Use type hints
-- Document functions and classes with NumPy-style docstrings
 - Use descriptive variable names
-- Format code with Black
-- Sort imports with isort
+
+### Docstrings
+
+Every public module, class and function needs a NumPy-style docstring, and this
+is **enforced by a pre-commit hook** (`numpydoc-validation`) that will block your
+commit. A docstring needs a summary line starting with an infinitive verb
+("Compute…", not "Computes…"), plus `Parameters`, `Returns` and `Raises`
+sections where they apply. Functions returning nothing still need a `Returns`
+section with a description:
+
+```python
+def mask_columns(alignment, columns):
+    """
+    Overwrite the given columns with IUPAC ambiguity codes.
+
+    Parameters
+    ----------
+    alignment : Bio.Align.MultipleSeqAlignment
+        Alignment to modify in place.
+    columns : list of int
+        Ascending column indices to mask.
+
+    Returns
+    -------
+    None
+        Nothing is returned; the alignment is modified in place.
+    """
+```
+
+Short local closures can be exempted by adding them to the `exclude` list under
+`[tool.numpydoc_validation]` in `pyproject.toml`. Do this sparingly, and only
+for functions that are genuinely local to their enclosing scope.
 
 ## Testing
 
-Before submitting a pull request:
+deRIP2 is tested against Python 3.9 through 3.14. Before submitting a pull
+request:
 
-1. For new functionality, add appropriate tests
+1. For new functionality, add tests. A good test fails without your change.
 
-2. Ensure test coverage remains high
+2. Ensure test coverage remains high.
 
-3. Ensure all tests pass
+3. Ensure all tests and hooks pass:
 
-```bash
-pytest tests/
-pytest tests/benchmarks --codspeed
-pre-commit run --all-files
-```
+   ```bash
+   pytest tests/
+   pre-commit run --all-files
+   ```
 
-4. Test mkdocs site builds
+4. If you changed a hot path (alignment scanning, column classification), check
+   the benchmarks:
 
-```bash
-mkdocs build
-mkdocs serve
-```
+   ```bash
+   pytest tests/benchmarks --codspeed
+   ```
+
+5. If you changed the docs, check the site builds:
+
+   ```bash
+   mkdocs build
+   mkdocs serve
+   ```
+
+### A note on correctness
+
+deRIP2 makes biological calls: it decides that a given `TA` dinucleotide is a
+RIP product, and rewrites sequence accordingly. A change to how columns are
+classified, counted or corrected is a change to the scientific output, not just
+to the code. Such changes need tests that pin the *reasoning*, not only the
+result — see `tests/test_strand_bias.py`, which fuzzes the vectorised classifier
+against a transcription of the original per-column scan.
 
 ## Pull Request Process
 
-1. Update documentation if needed
-2. Update the README.md if needed
-3. Ensure all tests pass and code quality checks succeed
-4. Submit your pull request with a clear description of the changes
-5. Address any feedback from maintainers
+1. Update documentation (`docs/`, `README.md`) if behaviour or the CLI changed
+2. Ensure all tests pass and code quality checks succeed
+3. Fill out the pull request template, especially the **Why** section — explain
+   the reasoning a reviewer cannot recover from the diff
+4. Address any feedback from maintainers
 
 ## Questions and Contact
 
