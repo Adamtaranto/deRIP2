@@ -130,6 +130,86 @@ logger = logging.getLogger(__name__)
     show_default=True,
     help='Specify the type of RIP events to be displayed in the alignment visualization.',
 )
+# Strand bias options
+@click.option(
+    '--plot-strand-bias',
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help='Create a diverging stacked-bar chart of per-column RIP strand bias.',
+)
+@click.option(
+    '--strand-bias-scale',
+    type=click.Choice(['column', 'alignment', 'counts']),
+    default='column',
+    show_default=True,
+    help=(
+        'Bar height normalisation: each column to its own depth, to the number '
+        'of sequences (so gappy columns are short), or raw counts.'
+    ),
+)
+@click.option(
+    '--strand-bias-xaxis',
+    type=click.Choice(['none', 'logo', 'derip']),
+    default='none',
+    show_default=True,
+    help="Draw a sequence logo or the deRIP'd consensus along the zero line.",
+)
+@click.option(
+    '--strand-bias-columns',
+    type=click.Choice(['rip', 'substrate', 'all']),
+    default='all',
+    show_default=True,
+    help=(
+        'Which positions are lettered along the zero line: RIP-like columns and '
+        'their dinucleotide partners, untouched substrate columns and their '
+        'partners, or every position. Every column is drawn as a bar regardless. '
+        'Only has an effect with --strand-bias-xaxis logo or derip.'
+    ),
+)
+@click.option(
+    '--strand-bias-stack',
+    type=click.Choice(['signal', 'product', 'all']),
+    default='signal',
+    show_default=True,
+    help=(
+        'Which bases each bar is made of: the RIP product and its unmutated '
+        'substrate, the product alone, or every base with the remainder drawn '
+        'translucent. Bars are never rescaled, so the missing height shows what '
+        'was excluded.'
+    ),
+)
+@click.option(
+    '--rsi-ambiguous',
+    type=click.Choice(['split', 'exclude', 'weight', 'both']),
+    default='split',
+    show_default=True,
+    help=(
+        'How to attribute a TA dinucleotide that could have arisen from RIP on '
+        'either strand when calculating RSI.'
+    ),
+)
+@click.option(
+    '--sort-by-rsi',
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help='Sort the output alignment from most forward- to most reverse-strand RIP.',
+)
+@click.option(
+    '--stats-out',
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help='Write the per-sequence statistics table to prefix_stats.tsv.',
+)
+@click.option(
+    '--html-report',
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help='Write a self-contained HTML report to prefix_report.html.',
+)
 # Logging options
 @click.option(
     '--loglevel',
@@ -153,6 +233,15 @@ def main(
     prefix,
     plot,
     plot_rip_type,
+    plot_strand_bias,
+    strand_bias_scale,
+    strand_bias_xaxis,
+    strand_bias_columns,
+    strand_bias_stack,
+    rsi_ambiguous,
+    sort_by_rsi,
+    stats_out,
+    html_report,
     loglevel,
     logfile,
 ):
@@ -208,6 +297,32 @@ def main(
     plot_rip_type : str
         Specify the type of RIP events to be displayed in the alignment visualization.
         One of: 'both', 'product', or 'substrate'. Default: 'both'.
+    plot_strand_bias : bool
+        If True, create a diverging stacked-bar chart of per-column RIP strand
+        bias. Default: False.
+    strand_bias_scale : str
+        Bar height normalisation for the strand bias figure. One of: 'column',
+        'alignment', or 'counts'. Default: 'column'.
+    strand_bias_xaxis : str
+        Decoration drawn along the zero line of the strand bias figure. One of:
+        'none', 'logo', or 'derip'. Default: 'none'.
+    strand_bias_columns : str
+        Which positions are lettered along the zero line. One of: 'rip',
+        'substrate', or 'all'. Every column is drawn as a bar regardless.
+        Default: 'all'.
+    strand_bias_stack : str
+        Which bases each bar is made of. One of: 'signal', 'product', or 'all'.
+        Default: 'signal'.
+    rsi_ambiguous : str
+        Policy for attributing TA products that either strand could explain. One
+        of: 'split', 'exclude', 'weight', or 'both'. Default: 'split'.
+    sort_by_rsi : bool
+        If True, sort alignment rows from most forward-biased to most
+        reverse-biased. Default: False.
+    stats_out : bool
+        If True, write the per-sequence statistics table as TSV. Default: False.
+    html_report : bool
+        If True, write a self-contained HTML strand bias report. Default: False.
     loglevel : str
         Set logging level. One of: 'DEBUG', 'INFO', 'WARNING', 'ERROR', or 'CRITICAL'.
         Default: 'INFO'.
@@ -236,6 +351,9 @@ def main(
         out_path_aln = path.join(out_dir, f'{prefix}_masked_alignment.fasta')
     # Path for visualization - only used if plot is True
     viz_path = path.join(out_dir, f'{prefix}_visualization.png')
+    strand_bias_path = path.join(out_dir, f'{prefix}_strand_bias.svg')
+    stats_path = path.join(out_dir, f'{prefix}_stats.tsv')
+    report_path = path.join(out_dir, f'{prefix}_report.html')
 
     # ---------- Create DeRIP object and process alignment ----------
     logger.info(f'Processing alignment file: \033[0m{input}')
@@ -264,8 +382,34 @@ def main(
         f'\nDeRIP2 found {len(derip_obj.corrected_positions)} columns to be repaired.\n'
     )
 
+    # Reordering rows changes what fill_index refers to, so re-run the analysis
+    # against the new row order rather than reusing stale results.
+    if sort_by_rsi:
+        if fill_index is not None:
+            logger.warning(
+                '--fill-index refers to a row position, which --sort-by-rsi '
+                'changes. The index is applied to the sorted alignment.'
+            )
+        logger.info('Sorting alignment by RIP strandedness imbalance')
+        derip_obj.sort_by_rsi(inplace=True)
+        derip_obj.fill_index = fill_index
+        derip_obj.calculate_rip(label=prefix)
+
     # Print RIP summary
     logger.info(f'RIP summary by row:\n\033[0m{derip_obj.rip_summary()}\n')
+
+    # Print the full per-sequence statistics table (CRI, PI, SI, GC, RSI)
+    logger.info(
+        f'Per-sequence statistics:\n\033[0m'
+        f'{derip_obj.stats_summary(ambiguous=rsi_ambiguous)}\n'
+    )
+
+    pooled = derip_obj.rsi_result.pooled()
+    logger.info(
+        f'Pooled RIP strandedness imbalance: \033[0mRSI={pooled["RSI"]:+.3f} '
+        f'(p_fwd={pooled["p_fwd"]:.3f}, p_rev={pooled["p_rev"]:.3f}, '
+        f'p={pooled["pvalue"]:.3g}, {pooled["n_ambiguous"]} ambiguous TpA)'
+    )
 
     # Print colourized alignment + consensus
     # If alignment dims are less than 100 columns x 50 rows
@@ -332,6 +476,38 @@ def main(
             logger.info(f'RIP visualization created at: \033[0m{viz_path}')
         else:
             logger.warning('Failed to create RIP visualization')
+
+    # ---------- Strand bias outputs ----------
+    strand_bias_opts = {
+        'scale': strand_bias_scale,
+        'xaxis': strand_bias_xaxis,
+        'columns': strand_bias_columns,
+        'stack': strand_bias_stack,
+    }
+
+    if plot_strand_bias:
+        logger.info(f'Creating strand bias figure at: \033[0m{strand_bias_path}')
+        try:
+            derip_obj.plot_strand_bias(
+                output_file=strand_bias_path,
+                title=f'RIP strand bias: {prefix}',
+                **strand_bias_opts,
+            )
+        except ValueError as error:
+            logger.warning(f'Could not draw strand bias figure: {error}')
+
+    if stats_out:
+        logger.info(f'Writing statistics table to: \033[0m{stats_path}')
+        derip_obj.write_stats(stats_path, ambiguous=rsi_ambiguous)
+
+    if html_report:
+        logger.info(f'Writing HTML report to: \033[0m{report_path}')
+        derip_obj.write_html_report(
+            report_path,
+            title=f'deRIP2 strand bias: {prefix}',
+            ambiguous=rsi_ambiguous,
+            **strand_bias_opts,
+        )
 
 
 if __name__ == '__main__':

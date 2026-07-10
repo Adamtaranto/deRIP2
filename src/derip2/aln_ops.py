@@ -9,6 +9,7 @@ consensus sequences, and outputting corrected sequences in various formats.
 
 from collections import Counter, namedtuple
 from copy import deepcopy
+from dataclasses import dataclass
 
 # import defaultdict
 from io import StringIO
@@ -819,6 +820,696 @@ def replaceBase(
     return align
 
 
+@dataclass(frozen=True)
+class ColumnClassification:
+    """
+    Per-cell and per-column classification of RIP context across an alignment.
+
+    This is the single source of truth for "which cells are RIP substrate,
+    product, or non-RIP deamination, and on which strand". Both the consensus
+    correction (:func:`apply_classification`) and the strand-bias statistics
+    consume it, so the two can never disagree.
+
+    RIP deaminates the C of a CpA dinucleotide. Read on the forward strand a
+    reverse-strand CpA appears as TpG, so RIP on either strand yields a forward
+    strand TpA::
+
+        Target strand:    ++  --
+        Wild type:     5' CA--TG 3'
+        RIP mutated:   5' TA--TA 3'
+
+    Dinucleotides are defined per row over the nearest *non-gap* neighbour, so
+    a ``C-A`` spanning a gap column is still a CpA substrate.
+
+    Attributes
+    ----------
+    arr : numpy.ndarray
+        ``(n_rows, n_cols)`` byte array of the alignment, dtype ``'S1'``.
+    next_idx, prev_idx : numpy.ndarray
+        ``(n_rows, n_cols)`` int arrays giving the column index of the closest
+        non-gap base to the right / left of each cell (``-1`` if none).
+    ca, ta, tg, ta2 : numpy.ndarray
+        ``(n_rows, n_cols)`` boolean masks of the four dinucleotide contexts:
+        ``ca`` = C followed by A (forward substrate), ``ta`` = T followed by A
+        (forward product candidate), ``tg`` = G preceded by T (reverse
+        substrate), ``ta2`` = A preceded by T (reverse product candidate).
+    ct_ok, ga_ok : numpy.ndarray
+        ``(n_cols,)`` boolean. Column has enough C/T (or G/A) content to be
+        assessed, i.e. proportion of non-gap bases >= ``max_snp_noise``.
+    fwd_block, rev_block : numpy.ndarray
+        ``(n_cols,)`` boolean. Column is a candidate for forward (reverse)
+        correction: gate passed, strand is the majority, and both the substrate
+        and product bases occur somewhere in the column.
+    fwd_col, rev_col : numpy.ndarray
+        ``(n_cols,)`` boolean. Column shows *both* an unmutated substrate
+        dinucleotide and a product dinucleotide, so a product observed here can
+        be attributed to RIP. These are the "RIP columns" used by the
+        strand-bias statistics.
+    modC, modG : numpy.ndarray
+        ``(n_cols,)`` boolean. Column's consensus base is corrected to the
+        ancestral C (G).
+    base_counts : numpy.ndarray
+        ``(n_cols, 5)`` int64 counts of ``A, C, G, T, -`` per column.
+    reaminate : bool
+        Whether non-RIP-context deaminations are also corrected.
+
+    Notes
+    -----
+    ``fwd_col`` requires at least one surviving ``CA`` somewhere in the column.
+    A column in which *every* row has been converted to ``TA`` therefore cannot
+    be recognised as a RIP column: with no ancestral C left in any sequence,
+    the alignment carries no evidence that the column was ever CpA. RIP is only
+    visible where at least one sibling sequence escaped it.
+    """
+
+    arr: np.ndarray
+    next_idx: np.ndarray
+    prev_idx: np.ndarray
+    ca: np.ndarray
+    ta: np.ndarray
+    tg: np.ndarray
+    ta2: np.ndarray
+    ct_ok: np.ndarray
+    ga_ok: np.ndarray
+    fwd_block: np.ndarray
+    rev_block: np.ndarray
+    fwd_col: np.ndarray
+    rev_col: np.ndarray
+    modC: np.ndarray
+    modG: np.ndarray
+    base_counts: np.ndarray
+    reaminate: bool
+
+    # -- per-column base counts -------------------------------------------------
+    @property
+    def nA(self) -> np.ndarray:
+        """
+        Per-column count of A bases.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_cols,)`` int array.
+        """
+        return self.base_counts[:, 0]
+
+    @property
+    def nC(self) -> np.ndarray:
+        """
+        Per-column count of C bases.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_cols,)`` int array.
+        """
+        return self.base_counts[:, 1]
+
+    @property
+    def nG(self) -> np.ndarray:
+        """
+        Per-column count of G bases.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_cols,)`` int array.
+        """
+        return self.base_counts[:, 2]
+
+    @property
+    def nT(self) -> np.ndarray:
+        """
+        Per-column count of T bases.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_cols,)`` int array.
+        """
+        return self.base_counts[:, 3]
+
+    @property
+    def n_gap(self) -> np.ndarray:
+        """
+        Per-column count of gap characters.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_cols,)`` int array.
+        """
+        return self.base_counts[:, 4]
+
+    @property
+    def base_count(self) -> np.ndarray:
+        """
+        Per-column count of unambiguous ACGT bases.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_cols,)`` int array. IUPAC ambiguity codes are excluded.
+        """
+        return self.base_counts[:, :4].sum(axis=1)
+
+    # -- derived cell masks -----------------------------------------------------
+    @property
+    def sub_fwd(self) -> np.ndarray:
+        """
+        Forward RIP substrate cells: C in CpA context, in assessable columns.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean mask.
+        """
+        return self.ca & self.ct_ok
+
+    @property
+    def sub_rev(self) -> np.ndarray:
+        """
+        Reverse RIP substrate cells: G in TpG context, in assessable columns.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean mask.
+        """
+        return self.tg & self.ga_ok
+
+    @property
+    def prod_fwd(self) -> np.ndarray:
+        """
+        Forward RIP product cells: T in TpA context, in forward RIP columns.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean mask.
+        """
+        return self.ta & self.fwd_col
+
+    @property
+    def prod_rev(self) -> np.ndarray:
+        """
+        Reverse RIP product cells: A in TpA context, in reverse RIP columns.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean mask.
+        """
+        return self.ta2 & self.rev_col
+
+    @property
+    def nonrip_fwd(self) -> np.ndarray:
+        """
+        T cells in a forward candidate column that are not RIP products.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean mask.
+        """
+        return self.fwd_block & (self.arr == b'T') & ~(self.fwd_col & self.ta)
+
+    @property
+    def nonrip_rev(self) -> np.ndarray:
+        """
+        A cells in a reverse candidate column that are not RIP products.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean mask.
+        """
+        return self.rev_block & (self.arr == b'A') & ~(self.rev_col & self.ta2)
+
+    @property
+    def mask_Y(self) -> np.ndarray:
+        """
+        Mask of cells overwritten with the IUPAC code Y (C/T) in the masked alignment.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean mask.
+        """
+        targets = (self.arr == b'T') if self.reaminate else self.ta
+        return self.modC & targets
+
+    @property
+    def mask_R(self) -> np.ndarray:
+        """
+        Mask of cells overwritten with the IUPAC code R (A/G) in the masked alignment.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean mask.
+        """
+        targets = (self.arr == b'A') if self.reaminate else self.ta2
+        return self.modG & targets
+
+    # -- per-row tallies --------------------------------------------------------
+    @property
+    def add_fwd(self) -> np.ndarray:
+        """
+        Per-row count of forward-strand RIP events.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows,)`` int array.
+        """
+        return self.prod_fwd.sum(axis=1)
+
+    @property
+    def add_rev(self) -> np.ndarray:
+        """
+        Per-row count of reverse-strand RIP events.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows,)`` int array.
+        """
+        return self.prod_rev.sum(axis=1)
+
+    @property
+    def add_nonrip(self) -> np.ndarray:
+        """
+        Per-row count of non-RIP deamination events.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows,)`` int array.
+        """
+        return self.nonrip_fwd.sum(axis=1) + self.nonrip_rev.sum(axis=1)
+
+    @property
+    def corrected_positions(self) -> List[int]:
+        """
+        Column indices whose consensus base was corrected.
+
+        Returns
+        -------
+        list of int
+            Ascending column indices.
+        """
+        return np.where(self.modC | self.modG)[0].tolist()
+
+
+def _default_block_size(
+    n_rows: int, n_cols: int, budget_bytes: int = 64 * 1024 * 1024
+) -> int:
+    """
+    Choose a column-block width that keeps transient allocations under a budget.
+
+    The dominant transient cost per column is the pair of integer index planes
+    used to gather neighbouring bases, plus a handful of byte-wide planes.
+
+    Parameters
+    ----------
+    n_rows : int
+        Number of sequences in the alignment.
+    n_cols : int
+        Number of alignment columns.
+    budget_bytes : int, optional
+        Approximate ceiling on transient allocation (default: 64 MiB).
+
+    Returns
+    -------
+    int
+        Block width in columns, at least 1 and at most ``n_cols``.
+    """
+    per_col = max(1, n_rows * 24)
+    return max(1, min(n_cols, budget_bytes // per_col))
+
+
+def classify_columns(
+    arr: np.ndarray,
+    next_idx: np.ndarray,
+    prev_idx: np.ndarray,
+    max_snp_noise: float = 0.5,
+    min_rip_like: float = 0.1,
+    reaminate: bool = False,
+    block_size: Optional[int] = None,
+    progress: bool = True,
+) -> ColumnClassification:
+    """
+    Classify every cell and column of an alignment by RIP context.
+
+    This is a vectorised reformulation of the per-column scan that
+    :func:`correctRIP` used to perform, and reproduces its decisions exactly.
+    Forward-strand RIP (C→T in CpA context) and reverse-strand RIP (G→A in TpG
+    context) are detected independently.
+
+    A column is assessed on the forward strand when its C+T bases make up at
+    least ``max_snp_noise`` of the non-gap bases, and is a *correction*
+    candidate only when C/T is the strict majority over G/A. Because every
+    non-gap base falls in exactly one of the C/T and G/A pairs, the two
+    proportions sum to one, so the strict inequality makes forward and reverse
+    correction mutually exclusive. A column can never be corrected on both
+    strands, and the Y/R masks can never collide.
+
+    Parameters
+    ----------
+    arr : numpy.ndarray
+        ``(n_rows, n_cols)`` byte array of the alignment, dtype ``'S1'``, as
+        produced by :func:`alignment_to_array`.
+    next_idx, prev_idx : numpy.ndarray
+        Non-gap neighbour indices from :func:`_nongap_neighbors`.
+    max_snp_noise : float, optional
+        Minimum proportion of a column's non-gap bases that must be C/T (or
+        G/A) for that strand to be assessed (default: 0.5).
+    min_rip_like : float, optional
+        Minimum proportion of a column's C/T (or G/A) bases that must sit in
+        RIP dinucleotide context before the column is corrected (default: 0.1).
+    reaminate : bool, optional
+        If True, correct C→T and G→A transitions outside RIP context too
+        (default: False).
+    block_size : int, optional
+        Number of columns processed per block. Blocking bounds peak memory and
+        is bit-identical to processing the whole array at once, because every
+        reduction is within a single column and neighbour gathers index the
+        full array. Defaults to a width chosen from a 64 MiB budget.
+    progress : bool, optional
+        Show a progress bar when more than one block is processed
+        (default: True).
+
+    Returns
+    -------
+    ColumnClassification
+        Cell masks, column flags, and per-column base counts.
+
+    Notes
+    -----
+    Cell classification (substrate / product / non-RIP) and the per-row tallies
+    depend only on ``max_snp_noise``; ``min_rip_like`` and ``reaminate`` affect
+    only whether a column's consensus base is corrected and masked.
+    """
+    n_rows, n_cols = arr.shape
+
+    bA, bT, bG, bC = b'A', b'T', b'G', b'C'
+
+    # Per-column base composition. Only unambiguous ACGT count toward baseCount,
+    # so IUPAC ambiguity codes are excluded from the strand proportions.
+    base_counts = np.empty((n_cols, 5), dtype=np.int64)
+    for k, b in enumerate((bA, bC, bG, bT, b'-')):
+        base_counts[:, k] = (arr == b).sum(axis=0)
+
+    ca = np.zeros(arr.shape, dtype=bool)
+    ta = np.zeros(arr.shape, dtype=bool)
+    tg = np.zeros(arr.shape, dtype=bool)
+    ta2 = np.zeros(arr.shape, dtype=bool)
+
+    if n_cols:
+        if block_size is None:
+            block_size = _default_block_size(n_rows, n_cols)
+        block_size = max(1, int(block_size))
+
+        rows = np.arange(n_rows)[:, None]
+        has_next = next_idx >= 0
+        has_prev = prev_idx >= 0
+
+        starts = range(0, n_cols, block_size)
+        blocks = tqdm(
+            starts,
+            desc='Scanning for RIP mutations',
+            unit='block',
+            ncols=80,
+            disable=not progress or n_cols <= block_size,
+        )
+        for c0 in blocks:
+            sl = slice(c0, min(c0 + block_size, n_cols))
+            blk = arr[:, sl]
+            hn, hp = has_next[:, sl], has_prev[:, sl]
+
+            # Gather the nearest non-gap neighbour of every cell in the block.
+            # The stored indices are absolute and may point outside the block,
+            # so both gathers read the full array.
+            nb = arr[rows, np.where(hn, next_idx[:, sl], 0)]
+            pb = arr[rows, np.where(hp, prev_idx[:, sl], 0)]
+
+            ca[:, sl] = (blk == bC) & hn & (nb == bA)
+            ta[:, sl] = (blk == bT) & hn & (nb == bA)
+            tg[:, sl] = (blk == bG) & hp & (pb == bT)
+            ta2[:, sl] = (blk == bA) & hp & (pb == bT)
+
+    # Column-level strand proportions.
+    base_count = base_counts[:, :4].sum(axis=1)
+    has_bases = base_count > 0
+    ct_count = base_counts[:, 1] + base_counts[:, 3]  # C + T
+    ga_count = base_counts[:, 0] + base_counts[:, 2]  # A + G
+
+    ct_prop = np.divide(ct_count, base_count, out=np.zeros(n_cols), where=has_bases)
+    ga_prop = np.divide(ga_count, base_count, out=np.zeros(n_cols), where=has_bases)
+
+    ct_ok = (ct_prop >= max_snp_noise) & has_bases
+    ga_ok = (ga_prop >= max_snp_noise) & has_bases
+
+    n_ca, n_ta = ca.sum(axis=0), ta.sum(axis=0)
+    n_tg, n_ta2 = tg.sum(axis=0), ta2.sum(axis=0)
+
+    # A correction candidate needs the gate, strict strand majority, and both
+    # the ancestral and derived base present somewhere in the column.
+    fwd_block = (
+        ct_ok & (ct_prop > ga_prop) & (base_counts[:, 1] > 0) & (base_counts[:, 3] > 0)
+    )
+    rev_block = (
+        ga_ok & (ga_prop > ct_prop) & (base_counts[:, 2] > 0) & (base_counts[:, 0] > 0)
+    )
+
+    # A RIP column additionally shows an unmutated substrate dinucleotide
+    # alongside a product dinucleotide.
+    fwd_col = fwd_block & (n_ca > 0) & (n_ta > 0)
+    rev_col = rev_block & (n_tg > 0) & (n_ta2 > 0)
+
+    prip_f = np.divide(n_ta + n_ca, ct_count, out=np.zeros(n_cols), where=ct_count > 0)
+    prip_r = np.divide(n_ta2 + n_tg, ga_count, out=np.zeros(n_cols), where=ga_count > 0)
+
+    # Correct when the column is RIP-like enough, or unconditionally under
+    # reaminate. Columns with C/T variation but no RIP context are corrected
+    # only under reaminate.
+    modC = fwd_block & (
+        (fwd_col & ((prip_f >= min_rip_like) | reaminate)) | (~fwd_col & reaminate)
+    )
+    modG = rev_block & (
+        (rev_col & ((prip_r >= min_rip_like) | reaminate)) | (~rev_col & reaminate)
+    )
+
+    return ColumnClassification(
+        arr=arr,
+        next_idx=next_idx,
+        prev_idx=prev_idx,
+        ca=ca,
+        ta=ta,
+        tg=tg,
+        ta2=ta2,
+        ct_ok=ct_ok,
+        ga_ok=ga_ok,
+        fwd_block=fwd_block,
+        rev_block=rev_block,
+        fwd_col=fwd_col,
+        rev_col=rev_col,
+        modC=modC,
+        modG=modG,
+        base_counts=base_counts,
+        reaminate=reaminate,
+    )
+
+
+def classify_alignment(
+    align: 'AlignIO.MultipleSeqAlignment',
+    max_snp_noise: float = 0.5,
+    min_rip_like: float = 0.1,
+    reaminate: bool = False,
+    block_size: Optional[int] = None,
+    progress: bool = True,
+) -> ColumnClassification:
+    """
+    Convenience wrapper: decode an alignment and classify its RIP context.
+
+    Parameters
+    ----------
+    align : Bio.Align.MultipleSeqAlignment
+        The alignment to classify.
+    max_snp_noise : float, optional
+        See :func:`classify_columns` (default: 0.5).
+    min_rip_like : float, optional
+        See :func:`classify_columns` (default: 0.1).
+    reaminate : bool, optional
+        See :func:`classify_columns` (default: False).
+    block_size : int, optional
+        See :func:`classify_columns`.
+    progress : bool, optional
+        See :func:`classify_columns` (default: True).
+
+    Returns
+    -------
+    ColumnClassification
+        Classification of the alignment.
+    """
+    arr = alignment_to_array(align)
+    next_idx, prev_idx = _nongap_neighbors(arr)
+    return classify_columns(
+        arr,
+        next_idx,
+        prev_idx,
+        max_snp_noise=max_snp_noise,
+        min_rip_like=min_rip_like,
+        reaminate=reaminate,
+        block_size=block_size,
+        progress=progress,
+    )
+
+
+def _build_markupdict(cls: ColumnClassification) -> Dict[str, List[RIPPosition]]:
+    """
+    Convert a classification into the per-category position lists used for markup.
+
+    Parameters
+    ----------
+    cls : ColumnClassification
+        Classification produced by :func:`classify_columns`.
+
+    Returns
+    -------
+    Dict[str, List[RIPPosition]]
+        Keys ``'rip_product'``, ``'rip_substrate'``, ``'non_rip_deamination'``.
+        Positions are ordered by column then row; ordering within a category is
+        not otherwise significant.
+
+    Notes
+    -----
+    No deduplication is required. Within each category the forward and reverse
+    entries carry different bases (C/G for substrate, T/A for product and
+    non-RIP), and a cell holds one base, so forward and reverse contributions
+    are always disjoint.
+    """
+    n_rows = cls.arr.shape[0]
+
+    def _cells(mask, partner_idx):
+        """Cell coordinates in column-major order, with dinucleotide offsets."""
+        # Transposing makes np.where emit indices ordered by column then row,
+        # which is the order the markup lists are expected in.
+        cols, rows = np.where(mask.T)
+        if partner_idx is None:
+            offs = np.zeros(cols.size, dtype=np.int64)
+        else:
+            offs = partner_idx[rows, cols] - cols
+        return cols, rows, offs
+
+    def _merge(fwd, rev, fwd_base, rev_base):
+        f_cols, f_rows, f_offs = fwd
+        r_cols, r_rows, r_offs = rev
+        cols = np.concatenate((f_cols, r_cols))
+        rows = np.concatenate((f_rows, r_rows))
+        offs = np.concatenate((f_offs, r_offs))
+        bases = [fwd_base] * f_cols.size + [rev_base] * r_cols.size
+
+        # Stable sort on a single composite key: (col, row) is unique per cell.
+        order = np.argsort(cols * n_rows + rows, kind='stable')
+        return [
+            RIPPosition(int(cols[i]), int(rows[i]), bases[i], int(offs[i]))
+            for i in order.tolist()
+        ]
+
+    # Forward strand: dinucleotide partner lies to the right (positive offset).
+    # Reverse strand: partner lies to the left (negative offset).
+    return {
+        'rip_substrate': _merge(
+            _cells(cls.sub_fwd, cls.next_idx),
+            _cells(cls.sub_rev, cls.prev_idx),
+            'C',
+            'G',
+        ),
+        'rip_product': _merge(
+            _cells(cls.prod_fwd, cls.next_idx),
+            _cells(cls.prod_rev, cls.prev_idx),
+            'T',
+            'A',
+        ),
+        'non_rip_deamination': _merge(
+            _cells(cls.nonrip_fwd, None),
+            _cells(cls.nonrip_rev, None),
+            'T',
+            'A',
+        ),
+    }
+
+
+def apply_classification(
+    align: 'AlignIO.MultipleSeqAlignment',
+    tracker: Dict[int, NamedTuple],
+    RIPcounts: Dict[int, NamedTuple],
+    cls: ColumnClassification,
+) -> Tuple[
+    Dict[int, NamedTuple],
+    Dict[int, NamedTuple],
+    'AlignIO.MultipleSeqAlignment',
+    List[int],
+    Dict[str, List[RIPPosition]],
+]:
+    """
+    Apply a column classification to the consensus tracker, counters and mask.
+
+    Parameters
+    ----------
+    align : Bio.Align.MultipleSeqAlignment
+        The alignment the classification was computed from; supplies record
+        metadata for the rebuilt masked alignment.
+    tracker : Dict[int, NamedTuple]
+        Consensus tracker keyed by column index. Not mutated.
+    RIPcounts : Dict[int, NamedTuple]
+        Per-sequence RIP counters keyed by row index. Not mutated.
+    cls : ColumnClassification
+        Classification produced by :func:`classify_columns`.
+
+    Returns
+    -------
+    Tuple
+        ``(tracker, RIPcounts, maskedAlign, corrected_positions, markupdict)``.
+    """
+    tracker = deepcopy(tracker)
+    RIPcounts = deepcopy(RIPcounts)
+
+    # Masked output starts as the original characters; corrected cells are
+    # overwritten in place with IUPAC codes.
+    maskedArr = cls.arr.copy()
+    maskedArr[cls.mask_Y] = b'Y'
+    maskedArr[cls.mask_R] = b'R'
+
+    for col in np.where(cls.modC)[0].tolist():
+        tracker = updateTracker(col, 'C', tracker, force=False)
+    for col in np.where(cls.modG)[0].tolist():
+        tracker = updateTracker(col, 'G', tracker, force=False)
+
+    add_fwd, add_rev, add_nonrip = cls.add_fwd, cls.add_rev, cls.add_nonrip
+    nz_rows = np.where((add_fwd != 0) | (add_rev != 0) | (add_nonrip != 0))[0]
+    for r in nz_rows.tolist():
+        RIPcounts = updateRIPCount(
+            r,
+            RIPcounts,
+            addRev=int(add_rev[r]),
+            addFwd=int(add_fwd[r]),
+            addNonRIP=int(add_nonrip[r]),
+        )
+
+    maskedAlign = _array_to_alignment(maskedArr, align)
+
+    return (
+        tracker,
+        RIPcounts,
+        maskedAlign,
+        cls.corrected_positions,
+        _build_markupdict(cls),
+    )
+
+
 def correctRIP(
     align: 'AlignIO.MultipleSeqAlignment',
     tracker: Dict[int, NamedTuple],
@@ -885,241 +1576,14 @@ def correctRIP(
           'non_rip_deamination': Positions with C→T or G→A outside of RIP context
     """
     logger.debug('Correcting RIP-like mutations in the consensus sequence...')
-    # Work on copies of the small tracking dicts so callers' inputs are unchanged.
-    tracker = deepcopy(tracker)
-    RIPcounts = deepcopy(RIPcounts)
 
-    # Decode the alignment once into a 2D byte array; every per-column and
-    # dinucleotide-context query below is vectorised over this array instead of
-    # repeatedly slicing the Biopython alignment or scanning Seq objects.
-    arr = alignment_to_array(align)
-    n_rows, n_cols = arr.shape
-
-    # Masked output starts as a copy of the original characters; RIP-corrected
-    # cells are overwritten in place with IUPAC codes (Y / R). This replaces the
-    # previous deepcopy(align) + per-cell replaceBase() row rebuilds.
-    maskedArr = arr.copy()
-
-    # For every cell, the column index of the next / previous non-gap base.
-    # This replaces the per-row tail/head scanning of nextBase()/lastBase().
-    next_idx, prev_idx = _nongap_neighbors(arr)
-    row_ids = np.arange(n_rows)
-
-    # Byte constants for vectorised comparisons.
-    bA, bT, bG, bC = b'A', b'T', b'G', b'C'
-    bY, bR = b'Y', b'R'
-
-    # Store colIdx for each position that was corrected in the tracker.
-    corrected_positions = []
-
-    # Accumulate per-row RIP tallies and apply them once at the end (the sums are
-    # order-independent, so batching preserves the final counts).
-    add_fwd = np.zeros(n_rows, dtype=np.int64)
-    add_rev = np.zeros(n_rows, dtype=np.int64)
-    add_nonrip = np.zeros(n_rows, dtype=np.int64)
-
-    # markupdict : Dict[str, List[RIPPosition]]
-    #    Categories are 'rip_product', 'rip_substrate', and 'non_rip_deamination'.
-    #    Each position is a RIPPosition namedtuple (colIdx, rowIdx, base, offset).
-    # Sets give O(1) dedup (was an O(n^2) list membership scan in updateMarkupDict).
-    markup_sets = {
-        'rip_product': set(),
-        'rip_substrate': set(),
-        'non_rip_deamination': set(),
-    }
-
-    def _mark(category, col, base, rows, offsets):
-        """Add markup positions for a set of rows into the dedup set."""
-        cat = markup_sets[category]
-        for r, off in zip(rows.tolist(), offsets):
-            cat.add((int(col), int(r), base, int(off)))
-
-    # Process each column in the alignment with progress bar
-    for colIdx in tqdm(
-        range(n_cols),
-        desc='Scanning for RIP mutations',
-        unit='column',
-        ncols=80,
-    ):
-        col = arr[:, colIdx]
-
-        is_C = col == bC
-        is_T = col == bT
-        is_G = col == bG
-        is_A = col == bA
-
-        # Count total number of nucleotide bases (excluding gaps)
-        baseCount = int(is_C.sum() + is_T.sum() + is_G.sum() + is_A.sum())
-
-        # Skip columns with no bases
-        if not baseCount:
-            continue
-
-        # Track if we revert T→C or A→G in this column
-        modC = False
-        modG = False
-        fwd_TArows = None
-        rev_TArows = None
-
-        # Proportion of C/T and G/A bases in the column
-        CT_count = int(is_C.sum() + is_T.sum())
-        GA_count = int(is_G.sum() + is_A.sum())
-        CTprop = CT_count / baseCount
-        GAprop = GA_count / baseCount
-
-        # Next / previous non-gap base for each row at this column.
-        nxt = next_idx[:, colIdx]
-        prv = prev_idx[:, colIdx]
-        has_next = nxt >= 0
-        has_prev = prv >= 0
-        next_base = arr[row_ids, np.where(has_next, nxt, 0)]
-        prev_base = arr[row_ids, np.where(has_prev, prv, 0)]
-
-        # FORWARD STRAND RIP DETECTION (C→T)
-        if CTprop >= max_snp_noise:
-            # Rows where C is followed by A (RIP substrate), even if column is all C.
-            ca_rows = np.where(is_C & has_next & (next_base == bA))[0]
-            ca_off = nxt[ca_rows] - colIdx
-            _mark('rip_substrate', colIdx, 'C', ca_rows, ca_off)
-
-            # C/T content higher than G/A content and both C and T present.
-            if CTprop > GAprop and is_C.any() and is_T.any():
-                ta_rows = np.where(is_T & has_next & (next_base == bA))[0]  # mutated
-                ta_off = nxt[ta_rows] - colIdx
-                fwd_TArows = ta_rows
-                TinCol = np.where(is_T)[0]
-
-                # If we have both CA and TA context (indicating RIP transition)
-                if ca_rows.size and ta_rows.size:
-                    propRIPlike = (ta_rows.size + ca_rows.size) / CT_count
-
-                    # RIP substrate for CA rows (dedup handles the repeat)
-                    _mark('rip_substrate', colIdx, 'C', ca_rows, ca_off)
-                    # RIP events for TA rows
-                    add_fwd[ta_rows] += 1
-                    _mark('rip_product', colIdx, 'T', ta_rows, ta_off)
-                    # Non-RIP deamination for T's not in TA context
-                    nonrip_T = np.setdiff1d(TinCol, ta_rows, assume_unique=True)
-                    add_nonrip[nonrip_T] += 1
-                    _mark(
-                        'non_rip_deamination',
-                        colIdx,
-                        'T',
-                        nonrip_T,
-                        [0] * nonrip_T.size,
-                    )
-
-                    # If sufficient mutations are in RIP context, correct to ancestral C
-                    if propRIPlike >= min_rip_like:
-                        tracker = updateTracker(colIdx, 'C', tracker, force=False)
-                        modC = True
-                        corrected_positions.append(colIdx)
-                    elif reaminate:
-                        tracker = updateTracker(colIdx, 'C', tracker, force=False)
-                        modC = True
-                        corrected_positions.append(colIdx)
-
-                # C and T present but not in RIP context
-                else:
-                    if reaminate:
-                        tracker = updateTracker(colIdx, 'C', tracker, force=False)
-                        modC = True
-                        corrected_positions.append(colIdx)
-
-                    # Log all T's as non-RIP deamination events
-                    add_nonrip[TinCol] += 1
-                    _mark('non_rip_deamination', colIdx, 'T', TinCol, [0] * TinCol.size)
-
-        # REVERSE STRAND RIP DETECTION (G→A)
-        if GAprop >= max_snp_noise:
-            # Rows where G is preceded by T (RIP substrate), even if column is all G.
-            tg_rows = np.where(is_G & has_prev & (prev_base == bT))[0]
-            tg_off = prv[tg_rows] - colIdx
-            _mark('rip_substrate', colIdx, 'G', tg_rows, tg_off)
-
-            # G/A content higher than C/T content and both G and A present.
-            if GAprop > CTprop and is_G.any() and is_A.any():
-                tg_rows = np.where(is_G & has_prev & (prev_base == bT))[0]  # ancestral
-                tg_off = prv[tg_rows] - colIdx
-                ta2_rows = np.where(is_A & has_prev & (prev_base == bT))[0]  # mutated
-                ta2_off = prv[ta2_rows] - colIdx
-                rev_TArows = ta2_rows
-                AinCol = np.where(is_A)[0]
-
-                # If we have both TG and TA context (indicating RIP transition)
-                if tg_rows.size and ta2_rows.size:
-                    propRIPlike = (tg_rows.size + ta2_rows.size) / GA_count
-
-                    _mark('rip_substrate', colIdx, 'G', tg_rows, tg_off)
-                    add_rev[ta2_rows] += 1
-                    _mark('rip_product', colIdx, 'A', ta2_rows, ta2_off)
-                    nonrip_A = np.setdiff1d(AinCol, ta2_rows, assume_unique=True)
-                    add_nonrip[nonrip_A] += 1
-                    _mark(
-                        'non_rip_deamination',
-                        colIdx,
-                        'A',
-                        nonrip_A,
-                        [0] * nonrip_A.size,
-                    )
-
-                    if propRIPlike >= min_rip_like:
-                        tracker = updateTracker(colIdx, 'G', tracker, force=False)
-                        modG = True
-                        corrected_positions.append(colIdx)
-                    elif reaminate:
-                        tracker = updateTracker(colIdx, 'G', tracker, force=False)
-                        modG = True
-                        corrected_positions.append(colIdx)
-
-                # G and A present but not in RIP context
-                else:
-                    if reaminate:
-                        tracker = updateTracker(colIdx, 'G', tracker, force=False)
-                        modG = True
-                        corrected_positions.append(colIdx)
-
-                    add_nonrip[AinCol] += 1
-                    _mark('non_rip_deamination', colIdx, 'A', AinCol, [0] * AinCol.size)
-
-        # Apply masking for C→T corrections
-        if modC:
-            if reaminate:
-                targetRows = np.where(is_T)[0]
-            else:
-                targetRows = fwd_TArows
-            maskedArr[targetRows, colIdx] = bY
-
-        # Apply masking for G→A corrections
-        if modG:
-            if reaminate:
-                targetRows = np.where(is_A)[0]
-            else:
-                targetRows = rev_TArows
-            maskedArr[targetRows, colIdx] = bR
-
-    # Apply accumulated per-row RIP tallies to the counter.
-    nz_rows = np.where((add_fwd != 0) | (add_rev != 0) | (add_nonrip != 0))[0]
-    for r in nz_rows.tolist():
-        RIPcounts = updateRIPCount(
-            r,
-            RIPcounts,
-            addRev=int(add_rev[r]),
-            addFwd=int(add_fwd[r]),
-            addNonRIP=int(add_nonrip[r]),
-        )
-
-    # Rebuild the masked alignment object from the byte array.
-    maskedAlign = _array_to_alignment(maskedArr, align)
-
-    # Convert the markup dedup sets into ordered RIPPosition lists (sorted for
-    # deterministic output; ordering within a category is not significant).
-    markupdict = {
-        cat: [RIPPosition(*t) for t in sorted(positions)]
-        for cat, positions in markup_sets.items()
-    }
-
-    return (tracker, RIPcounts, maskedAlign, corrected_positions, markupdict)
+    cls = classify_alignment(
+        align,
+        max_snp_noise=max_snp_noise,
+        min_rip_like=min_rip_like,
+        reaminate=reaminate,
+    )
+    return apply_classification(align, tracker, RIPcounts, cls)
 
 
 def updateMarkupDict(

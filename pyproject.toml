@@ -119,9 +119,12 @@ exclude = [ # don't report on checks for these
     '\.__init__$',
     '\.__repr__$',
     '\.__str__$',
-    '\._lap$',      # local timing closure in calculate_rip
-    '\._mark$',     # local markup helper in correctRIP
-    '\._set_cell$', # local overlay-fill helper in markupRIPBases
+    '\._lap$',       # local timing closure in calculate_rip
+    '\._mark$',      # local markup helper in correctRIP
+    '\._set_cell$',  # local overlay-fill helper in markupRIPBases
+    '\._cells$',     # local coordinate gather in build_markupdict
+    '\._merge$',     # local strand-merge helper in build_markupdict
+    '\._sort_key$',  # local sort key in sort_by_rsi
 ]
 override_SS05 = [ # allow docstrings to start with these words
     '^Process ',
