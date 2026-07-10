@@ -126,6 +126,8 @@ class DeRIP:
         self.colored_alignment = None
         self.colored_masked_alignment = None
         self.markupdict = None
+        self.column_classes = None
+        self.rsi_result = None
 
         # Load the alignment
         self._load_alignment(alignment_input)
@@ -261,20 +263,24 @@ class DeRIP:
         tracker = ao.fillConserved(self.alignment, tracker, self.max_gaps)
         _t = _lap('fillConserved', _t)
 
-        # Detect and correct RIP mutations
-        # Returns: Tuple[Dict[int, NamedTuple], Dict[int, NamedTuple], Bio.Align.MultipleSeqAlignment, List[int], Dict[str, List[RIPPosition]]]
+        # Classify every cell and column by RIP context. The classification is
+        # cached because the strand-bias statistics and figures consume the same
+        # structure, so they can never disagree with the correction.
+        self.column_classes = ao.classify_alignment(
+            self.alignment,
+            max_snp_noise=self.max_snp_noise,
+            min_rip_like=self.min_rip_like,
+            reaminate=self.reaminate,
+        )
+        _t = _lap('classify_columns', _t)
+
+        # Apply the classification to the consensus tracker, counters and mask.
         tracker, rip_counts, masked_alignment, _corrected_positions, markupdict = (
-            ao.correctRIP(
-                self.alignment,
-                tracker,
-                rip_counts,
-                max_snp_noise=self.max_snp_noise,
-                min_rip_like=self.min_rip_like,
-                reaminate=self.reaminate,
-                mask=True,  # Always mask so we have the masked alignment available
+            ao.apply_classification(
+                self.alignment, tracker, rip_counts, self.column_classes
             )
         )
-        _t = _lap('correctRIP', _t)
+        _t = _lap('apply_classification', _t)
 
         # Store the markupdict for later use in colored alignment
         self.markupdict = markupdict
@@ -331,6 +337,54 @@ class DeRIP:
         logger.info(
             f'RIP correction complete. Reference sequence used for filling: {ref_id}'
         )
+
+    def _invalidate_results(self) -> None:
+        """
+        Discard everything derived from the alignment.
+
+        Called whenever the alignment itself is replaced in place, since every
+        cached result is keyed to the old row order or row membership.
+        :meth:`calculate_rip` must be run again before the results are usable.
+
+        Returns
+        -------
+        None
+            The cached results are cleared in place.
+        """
+        self.masked_alignment = None
+        self.consensus = None
+        self.gapped_consensus = None
+        self.consensus_tracker = None
+        self.rip_counts = None
+        self.corrected_positions = {}
+        self.colored_consensus = None
+        self.colored_alignment = None
+        self.colored_masked_alignment = None
+        self.markupdict = None
+        self.column_classes = None
+        self.rsi_result = None
+
+    def _require_rip(self, action: str) -> None:
+        """
+        Raise if :meth:`calculate_rip` has not been run.
+
+        Parameters
+        ----------
+        action : str
+            Description of what the caller was trying to do, used in the message.
+
+        Returns
+        -------
+        None
+            Nothing is returned; the check either passes or raises.
+
+        Raises
+        ------
+        ValueError
+            If the column classification has not been computed.
+        """
+        if self.column_classes is None:
+            raise ValueError(f'Must call calculate_rip before {action}')
 
     def _build_corrected_positions(
         self, original: MultipleSeqAlignment, masked: MultipleSeqAlignment
@@ -772,6 +826,336 @@ class DeRIP:
         logger.info(f'Alignment visualization saved to {output_file}')
         return result
 
+    def calculate_rsi(self, ambiguous: str = 'split', substrate_scope: str = 'all'):
+        """
+        Calculate the RIP Strandedness Imbalance (RSI) for every sequence.
+
+        RSI is ``p_fwd - p_rev``, the difference between the proportion of
+        forward-strand substrate (CpA) and reverse-strand substrate (TpG) that
+        RIP has converted to TpA. It lies in ``[-1, 1]``: positive means RIP
+        acted mainly on the forward strand, negative mainly on the reverse.
+
+        Because a single round of meiotic RIP acts on one strand of a duplex,
+        a strongly imbalanced sequence is the signature of one round of RIP,
+        while a balanced one has either escaped RIP or been RIP'd repeatedly on
+        both strands. ``p_fwd`` and ``p_rev`` separate those two cases.
+
+        Parameters
+        ----------
+        ambiguous : {'split', 'exclude', 'weight', 'both'}, optional
+            How to attribute TpA dinucleotides that could have arisen from RIP
+            on either strand (default: ``'split'``, half to each).
+        substrate_scope : {'all', 'assessable', 'rip_like_columns'}, optional
+            Which unmutated substrate dinucleotides enter the denominators
+            (default: ``'all'``).
+
+        Returns
+        -------
+        derip2.stats.strand_bias.RSIResult
+            Per-sequence RSI, its components, ambiguity counts and significance.
+
+        Raises
+        ------
+        ValueError
+            If :meth:`calculate_rip` has not been called first.
+
+        See Also
+        --------
+        derip2.stats.strand_bias.compute_rsi : The underlying calculation.
+
+        Examples
+        --------
+        >>> d = DeRIP('alignment.fa')            # doctest: +SKIP
+        >>> d.calculate_rip()                    # doctest: +SKIP
+        >>> d.calculate_rsi().rsi                # doctest: +SKIP
+        array([ 0.9, -0.8,  0.0])
+        """
+        from derip2.stats import compute_rsi
+
+        self._require_rip('calculating RSI')
+        self.rsi_result = compute_rsi(
+            self.column_classes,
+            ambiguous=ambiguous,
+            substrate_scope=substrate_scope,
+        )
+
+        # Annotate the records, mirroring calculate_cri_for_all.
+        for i, record in enumerate(self.alignment):
+            if not hasattr(record, 'annotations'):
+                record.annotations = {}
+            record.annotations['RSI'] = float(self.rsi_result.rsi[i])
+            record.annotations['p_fwd'] = float(self.rsi_result.p_fwd[i])
+            record.annotations['p_rev'] = float(self.rsi_result.p_rev[i])
+
+        logger.info(f'Calculated RSI for {len(self.alignment)} sequences')
+        return self.rsi_result
+
+    def get_rsi_values(self, **kwargs):
+        """
+        Return per-sequence RSI values, calculating them if needed.
+
+        Parameters
+        ----------
+        **kwargs
+            Passed to :meth:`calculate_rsi` when RSI has not yet been computed.
+
+        Returns
+        -------
+        list of dict
+            One record per sequence, in alignment order.
+        """
+        if self.rsi_result is None:
+            self.calculate_rsi(**kwargs)
+        return self.rsi_result.as_records([r.id for r in self.alignment])
+
+    def sort_by_rsi(self, descending: bool = True, inplace: bool = False):
+        """
+        Sort the alignment by RIP strandedness imbalance.
+
+        Parameters
+        ----------
+        descending : bool, optional
+            If True (default), sequences with the most forward-strand RIP come
+            first and those with the most reverse-strand RIP last.
+        inplace : bool, optional
+            If True, replace the current alignment and discard all computed
+            results, which must then be recalculated (default: False).
+
+        Returns
+        -------
+        Bio.Align.MultipleSeqAlignment
+            The sorted alignment.
+
+        Notes
+        -----
+        Sequences whose RSI is undefined (NaN, because one strand carries no
+        substrate and no product) sort to the end regardless of direction. They
+        carry no evidence, so placing them at either extreme would misrepresent
+        them.
+        """
+        import math
+
+        from Bio.Align import MultipleSeqAlignment
+
+        self.get_rsi_values()
+
+        def _sort_key(record):
+            rsi = record.annotations['RSI']
+            # NaN sorts last in both directions.
+            if math.isnan(rsi):
+                return (1, 0.0)
+            return (0, -rsi if descending else rsi)
+
+        sorted_alignment = MultipleSeqAlignment(sorted(self.alignment, key=_sort_key))
+
+        if inplace:
+            self.alignment = sorted_alignment
+            logger.info('Updated alignment in-place with RSI-sorted sequences')
+            self._invalidate_results()
+
+        return sorted_alignment
+
+    def summarize_stats(self, ambiguous: str = 'split'):
+        """
+        Build a per-sequence table of every RIP statistic deRIP2 computes.
+
+        Combines the RIP event counts from the alignment scan, the classical
+        composite RIP index (CRI) and its components, GC content, and the
+        strandedness imbalance (RSI) with its components and significance.
+
+        Parameters
+        ----------
+        ambiguous : {'split', 'exclude', 'weight', 'both'}, optional
+            Ambiguity policy for RSI (default: ``'split'``). RSI is recomputed
+            whenever this differs from the cached result's policy.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per sequence, in alignment order.
+
+        Raises
+        ------
+        ValueError
+            If :meth:`calculate_rip` has not been called first.
+        """
+        import pandas as pd
+
+        self._require_rip('summarizing stats')
+
+        if self.rsi_result is None or self.rsi_result.ambiguous != ambiguous:
+            self.calculate_rsi(ambiguous=ambiguous)
+        cri_values = self.get_cri_values()
+        rsi_records = self.rsi_result.as_records([r.id for r in self.alignment])
+
+        rows = []
+        for i, record in enumerate(self.alignment):
+            counts = self.rip_counts[i]
+            rsi = rsi_records[i]
+            rows.append(
+                {
+                    'index': i,
+                    'ID': record.id,
+                    'GC': counts.GC,
+                    'CRI': cri_values[i]['CRI'],
+                    'PI': cri_values[i]['PI'],
+                    'SI': cri_values[i]['SI'],
+                    'RSI': rsi['RSI'],
+                    'p_fwd': rsi['p_fwd'],
+                    'p_rev': rsi['p_rev'],
+                    'fwd_product': rsi['fwd_product'],
+                    'fwd_substrate': rsi['fwd_substrate'],
+                    'rev_product': rsi['rev_product'],
+                    'rev_substrate': rsi['rev_substrate'],
+                    'n_ambiguous': rsi['n_ambiguous'],
+                    'RIP_fwd': counts.RIPcount,
+                    'RIP_rev': counts.revRIPcount,
+                    'non_RIP': counts.nonRIPcount,
+                    'pvalue': rsi['pvalue'],
+                }
+            )
+
+        return pd.DataFrame(rows)
+
+    def stats_summary(self, ambiguous: str = 'split') -> str:
+        """
+        Format :meth:`summarize_stats` as a table for terminal output.
+
+        Parameters
+        ----------
+        ambiguous : str, optional
+            Ambiguity policy (default: ``'split'``).
+
+        Returns
+        -------
+        str
+            The stats table, ready to print.
+        """
+        from io import StringIO
+
+        df = self.summarize_stats(ambiguous=ambiguous).copy()
+        for col in ('GC', 'CRI', 'PI', 'SI', 'RSI', 'p_fwd', 'p_rev'):
+            df[col] = df[col].map('{:.3f}'.format)
+        for col in ('fwd_product', 'fwd_substrate', 'rev_product', 'rev_substrate'):
+            df[col] = df[col].map('{:.1f}'.format)
+        df['pvalue'] = df['pvalue'].map('{:.3g}'.format)
+
+        buffer = StringIO()
+        df.to_string(buffer, index=False)
+        return buffer.getvalue()
+
+    def write_stats(self, output_file: str, ambiguous: str = 'split') -> str:
+        """
+        Write the per-sequence statistics table to a TSV file.
+
+        Parameters
+        ----------
+        output_file : str
+            Destination path.
+        ambiguous : str, optional
+            Ambiguity policy (default: ``'split'``).
+
+        Returns
+        -------
+        str
+            The path written.
+        """
+        df = self.summarize_stats(ambiguous=ambiguous)
+        df.to_csv(output_file, sep='\t', index=False, float_format='%.6g')
+        logger.info(f'Statistics table written to {output_file}')
+        return output_file
+
+    def plot_strand_bias(
+        self,
+        output_file: Optional[str] = None,
+        mode: str = 'rip',
+        **kwargs,
+    ):
+        """
+        Draw a diverging stacked-bar chart of per-column RIP strand bias.
+
+        Bars are drawn above the axis where the deamination is observed on the
+        forward strand and below it where it is observed on the reverse strand.
+
+        Parameters
+        ----------
+        output_file : str, optional
+            Path to write the figure to. Use ``.svg`` or ``.pdf`` for
+            publication output.
+        mode : {'rip', 'non_rip', 'all_deamination'}, optional
+            Which deamination events to display (default: ``'rip'``).
+        **kwargs
+            Additional options forwarded to
+            :func:`derip2.plotting.strandbias.plot_strand_bias`, such as
+            ``scale``, ``stack``, ``xaxis``, ``color_by``, ``emphasis`` and
+            ``column_range``. ``columns`` selects which positions are lettered
+            when ``xaxis`` is ``'logo'`` or ``'derip'``; every column is drawn
+            as a bar regardless.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            The figure.
+
+        Raises
+        ------
+        ValueError
+            If :meth:`calculate_rip` has not been called first.
+        """
+        from derip2.plotting.strandbias import plot_strand_bias
+
+        self._require_rip('plotting strand bias')
+
+        if kwargs.get('xaxis') == 'derip' and 'consensus_seq' not in kwargs:
+            kwargs['consensus_seq'] = str(self.gapped_consensus.seq)
+
+        return plot_strand_bias(
+            self.column_classes, outfile=output_file, mode=mode, **kwargs
+        )
+
+    def write_html_report(
+        self,
+        output_file: str,
+        title: Optional[str] = None,
+        ambiguous: str = 'split',
+        **kwargs,
+    ) -> str:
+        """
+        Write a self-contained HTML report of the strand-bias analysis.
+
+        The report embeds three strand-bias figures (RIP-like mutations,
+        non-RIP deamination, and all deamination) as inline SVG, alongside the
+        per-sequence statistics table. It has no external assets, so it can be
+        emailed or archived as a single file.
+
+        Parameters
+        ----------
+        output_file : str
+            Destination path for the HTML file.
+        title : str, optional
+            Report heading.
+        ambiguous : str, optional
+            Ambiguity policy for RSI (default: ``'split'``).
+        **kwargs
+            Forwarded to each figure, e.g. ``scale``, ``xaxis``, ``columns``.
+
+        Returns
+        -------
+        str
+            The path written.
+
+        Raises
+        ------
+        ValueError
+            If :meth:`calculate_rip` has not been called first.
+        """
+        from derip2.report import write_html_report
+
+        self._require_rip('writing an HTML report')
+        return write_html_report(
+            self, output_file, title=title, ambiguous=ambiguous, **kwargs
+        )
+
     def calculate_dinucleotide_frequency(self, sequence):
         """
         Calculate the frequency of specific dinucleotides in a sequence.
@@ -970,16 +1354,7 @@ class DeRIP:
             logger.info('Updated alignment in-place with CRI-sorted sequences')
 
             # Clear calculated results since alignment changed
-            self.masked_alignment = None
-            self.consensus = None
-            self.gapped_consensus = None
-            self.consensus_tracker = None
-            self.rip_counts = None
-            self.corrected_positions = {}
-            self.colored_consensus = None
-            self.colored_alignment = None
-            self.colored_masked_alignment = None
-            self.markupdict = None
+            self._invalidate_results()
 
         return sorted_alignment
 
@@ -1100,16 +1475,7 @@ class DeRIP:
             logger.info('Updated alignment in-place with CRI-filtered sequences')
 
             # Clear calculated results since alignment changed
-            self.masked_alignment = None
-            self.consensus = None
-            self.gapped_consensus = None
-            self.consensus_tracker = None
-            self.rip_counts = None
-            self.corrected_positions = {}
-            self.colored_consensus = None
-            self.colored_alignment = None
-            self.colored_masked_alignment = None
-            self.markupdict = None
+            self._invalidate_results()
 
         return filtered_alignment
 
@@ -1192,16 +1558,7 @@ class DeRIP:
             logger.info('Updated alignment in-place with low-CRI filtered sequences')
 
             # Clear calculated results since alignment changed
-            self.masked_alignment = None
-            self.consensus = None
-            self.gapped_consensus = None
-            self.consensus_tracker = None
-            self.rip_counts = None
-            self.corrected_positions = {}
-            self.colored_consensus = None
-            self.colored_alignment = None
-            self.colored_masked_alignment = None
-            self.markupdict = None
+            self._invalidate_results()
 
         return kept_alignment
 
@@ -1336,16 +1693,7 @@ class DeRIP:
             logger.info('Updated alignment in-place with GC-filtered sequences')
 
             # Clear calculated results since alignment changed
-            self.masked_alignment = None
-            self.consensus = None
-            self.gapped_consensus = None
-            self.consensus_tracker = None
-            self.rip_counts = None
-            self.corrected_positions = {}
-            self.colored_consensus = None
-            self.colored_alignment = None
-            self.colored_masked_alignment = None
-            self.markupdict = None
+            self._invalidate_results()
 
         return filtered_alignment
 
@@ -1430,15 +1778,6 @@ class DeRIP:
             logger.info('Updated alignment in-place with high-GC filtered sequences')
 
             # Clear calculated results since alignment changed
-            self.masked_alignment = None
-            self.consensus = None
-            self.gapped_consensus = None
-            self.consensus_tracker = None
-            self.rip_counts = None
-            self.corrected_positions = {}
-            self.colored_consensus = None
-            self.colored_alignment = None
-            self.colored_masked_alignment = None
-            self.markupdict = None
+            self._invalidate_results()
 
         return kept_alignment

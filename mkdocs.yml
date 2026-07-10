@@ -8,6 +8,7 @@ use_directory_urls: true
 nav:
   - Home: index.md
   - Getting Started: tutorial.ipynb
+  - RIP Strand Bias: tutorials/rip-strand-bias.md
   - API Docs: api-docs/deRIP_API.md
   - CLI Docs: cli-docs/deRIP_cmd_line.md
 theme:

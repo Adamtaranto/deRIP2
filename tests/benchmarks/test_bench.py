@@ -85,17 +85,83 @@ def test_bench_correct_rip(benchmark, sahana_alignment_small):
     benchmark(run)
 
 
-# def test_bench_plot_alignment(benchmark, sahana_alignment_small):
-#    """Benchmark rendering the alignment plot with RIP markup."""
-#    d = DeRIP(sahana_alignment_small)
-#    d.calculate_rip()
-#    tmp = tempfile.mktemp(suffix='.png')
-#
-#    def run():
-#        d.plot_alignment(tmp)
-#
-#    try:
-#        benchmark(run)
-#    finally:
-#        if os.path.exists(tmp):
-#            os.remove(tmp)
+def test_bench_classify_columns(benchmark, sahana_alignment_small):
+    """
+    Benchmark the vectorised RIP column classifier in isolation.
+
+    This is the whole-matrix boolean pass that replaced correctRIP's per-column
+    Python loop. It should be a small fraction of correctRIP's total, which is
+    dominated by materialising the markup position lists.
+    """
+    arr = ao.alignment_to_array(sahana_alignment_small)
+    next_idx, prev_idx = ao._nongap_neighbors(arr)
+
+    def run():
+        return ao.classify_columns(
+            arr,
+            next_idx,
+            prev_idx,
+            max_snp_noise=0.5,
+            min_rip_like=0.1,
+            reaminate=False,
+            progress=False,
+        )
+
+    benchmark(run)
+
+
+def test_bench_classify_columns_blocked(benchmark, sahana_alignment_small):
+    """Benchmark classification under column blocking, which bounds peak memory."""
+    arr = ao.alignment_to_array(sahana_alignment_small)
+    next_idx, prev_idx = ao._nongap_neighbors(arr)
+
+    def run():
+        return ao.classify_columns(
+            arr, next_idx, prev_idx, block_size=64, progress=False
+        )
+
+    benchmark(run)
+
+
+def test_bench_build_markupdict(benchmark, sahana_alignment_small):
+    """Benchmark converting the classification into markup position lists."""
+    cls = ao.classify_alignment(sahana_alignment_small, progress=False)
+    benchmark(lambda: ao._build_markupdict(cls))
+
+
+def test_bench_compute_rsi(benchmark, sahana_alignment_small):
+    """Benchmark the per-sequence RIP strandedness imbalance."""
+    from derip2.stats import compute_rsi
+
+    cls = ao.classify_alignment(sahana_alignment_small, progress=False)
+    benchmark(lambda: compute_rsi(cls, ambiguous='split'))
+
+
+def test_bench_compute_rsi_weighted(benchmark, sahana_alignment_small):
+    """The 'weight' policy builds an extra (n_rows, n_cols) float plane."""
+    from derip2.stats import compute_rsi
+
+    cls = ao.classify_alignment(sahana_alignment_small, progress=False)
+    benchmark(lambda: compute_rsi(cls, ambiguous='weight'))
+
+
+def test_bench_plot_strand_bias(benchmark, sahana_alignment_small):
+    """Benchmark rendering the strand-bias figure to an in-memory SVG."""
+    import io
+
+    import matplotlib
+
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    from derip2.plotting.strandbias import plot_strand_bias
+
+    cls = ao.classify_alignment(sahana_alignment_small, progress=False)
+
+    def run():
+        fig = plot_strand_bias(cls, columns='rip', max_columns=10_000)
+        buffer = io.BytesIO()
+        fig.savefig(buffer, format='svg')
+        plt.close(fig)
+
+    benchmark(run)
