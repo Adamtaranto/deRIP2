@@ -115,6 +115,7 @@
       "ref": "C"
     }
   ],
+  "method": "baseline",
   "n_indel_or_ambiguous": 3,
   "n_unassignable_context": 0,
   "sample_names": [

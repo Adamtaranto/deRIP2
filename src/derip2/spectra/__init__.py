@@ -12,6 +12,11 @@ The spectrum computation itself lives in :mod:`derip2.stats.mutation_spectra`,
 alongside the other per-alignment statistics.
 """
 
+# Only the light, dependency-free helpers are re-exported at the package level.
+# The phylogenetic submodules (``tree_asr``, ``call_mutations``, ``qc``) pull in
+# ete4/pandas and import back into ``derip2.stats.mutation_spectra``; importing
+# them here would create a circular import, so callers import them directly, e.g.
+# ``from derip2.spectra.tree_asr import reconstruct``.
 from derip2.spectra.channels import (
     SBS96_CHANNELS,
     SBS192_CHANNELS,

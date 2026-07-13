@@ -49,6 +49,91 @@ for _i, _b in enumerate((b'A', b'C', b'G', b'T')):
 _CODE_TO_BASE = np.array([b'A', b'C', b'G', b'T'], dtype='S1')
 
 
+def _build_channel_tables() -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Precompute the SBS-96 and SBS-192 channel index for every base-code 4-tuple.
+
+    The tables are indexed ``[five, ref, alt, three]`` by base code (0..3), so an
+    event stream expressed as code arrays resolves to channel rows in a single
+    vectorised gather. Cells where ``ref == alt`` (not a substitution) hold ``-1``.
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        ``(idx96, idx192)``, each a ``(4, 4, 4, 4)`` int64 array.
+    """
+    idx96 = np.full((4, 4, 4, 4), -1, dtype=np.int64)
+    idx192 = np.full((4, 4, 4, 4), -1, dtype=np.int64)
+    for fc in range(4):
+        five = _CODE_TO_BASE[fc].decode('ascii')
+        for rc in range(4):
+            ref = _CODE_TO_BASE[rc].decode('ascii')
+            for ac in range(4):
+                if ac == rc:
+                    continue
+                alt = _CODE_TO_BASE[ac].decode('ascii')
+                for tc in range(4):
+                    three = _CODE_TO_BASE[tc].decode('ascii')
+                    idx96[fc, rc, ac, tc] = SBS96_INDEX[
+                        sbs96_channel(five, ref, alt, three)
+                    ]
+                    idx192[fc, rc, ac, tc] = SBS192_INDEX[
+                        sbs192_channel(five, ref, alt, three)
+                    ]
+    return idx96, idx192
+
+
+# Shared channel-index lookup tables, used by every spectrum-assembly path.
+IDX96_TABLE, IDX192_TABLE = _build_channel_tables()
+
+
+def assemble_matrices(
+    five_c: np.ndarray,
+    ref_c: np.ndarray,
+    alt_c: np.ndarray,
+    three_c: np.ndarray,
+    sample_c: np.ndarray,
+    n_samples: int,
+    weights: Optional[np.ndarray] = None,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Accumulate an event stream into SBS-96 and SBS-192 count matrices.
+
+    This is the single assembly core shared by the tree-free baseline and the
+    phylogenetic branch-traversal path. Each event is a tuple of base codes
+    (``five``, ``ref``, ``alt``, ``three``) plus the sample it belongs to; the
+    precomputed :data:`IDX96_TABLE` / :data:`IDX192_TABLE` map it to its two
+    channel rows.
+
+    Parameters
+    ----------
+    five_c, ref_c, alt_c, three_c : numpy.ndarray
+        ``(n_events,)`` int arrays of base codes (0..3) for the 5' flank,
+        reference, derived and 3' flank of each event.
+    sample_c : numpy.ndarray
+        ``(n_events,)`` int array indexing the sample columns.
+    n_samples : int
+        Number of sample columns in the output matrices.
+    weights : numpy.ndarray, optional
+        ``(n_events,)`` float weights (e.g. posterior products). Default ``None``
+        counts every event as 1.
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        ``(sbs96, sbs192)`` of shapes ``(96, n_samples)`` and ``(192, n_samples)``.
+    """
+    sbs96 = np.zeros((96, n_samples), dtype=np.float64)
+    sbs192 = np.zeros((192, n_samples), dtype=np.float64)
+    if five_c.size:
+        ch96 = IDX96_TABLE[five_c, ref_c, alt_c, three_c]
+        ch192 = IDX192_TABLE[five_c, ref_c, alt_c, three_c]
+        w = 1.0 if weights is None else weights
+        np.add.at(sbs96, (ch96, sample_c), w)
+        np.add.at(sbs192, (ch192, sample_c), w)
+    return sbs96, sbs192
+
+
 @dataclass(frozen=True)
 class SpectraResult:
     """
@@ -82,14 +167,21 @@ class SpectraResult:
         column with a value >= 2 was hit independently more than once (baseline
         proxy for recurrence).
     ancestor_ref : numpy.ndarray
-        ``(n_cols,)`` ``'S1'`` array of the ancestral base per column (gap where
-        the ancestor is gapped or ambiguous).
+        ``(n_cols,)`` ``'S1'`` array of the reference base per column. For the
+        baseline this is the single ancestor; for the phylogenetic path it is the
+        reconstructed root sequence.
     n_indel_or_ambiguous : int
         Number of tip/ancestor differences skipped because one side was a gap or
         a non-ACGT base (not a callable substitution).
     n_unassignable_context : int
         Number of substitutions dropped because a full trinucleotide context
         could not be resolved (terminal columns).
+    method : str
+        ``'baseline'`` for the single-reference spectra or ``'phylogenetic'`` for
+        the branch-traversal spectra.
+    event_parent_names, event_child_names : list of str or None
+        For the phylogenetic path, the parent and child node names of every
+        event's edge (``None`` for the baseline).
     """
 
     sbs96: np.ndarray
@@ -106,6 +198,9 @@ class SpectraResult:
     ancestor_ref: np.ndarray
     n_indel_or_ambiguous: int
     n_unassignable_context: int
+    method: str = 'baseline'
+    event_parent_names: Optional[List[str]] = None
+    event_child_names: Optional[List[str]] = None
 
     @property
     def sbs96_channels(self) -> List[str]:
@@ -138,9 +233,11 @@ class SpectraResult:
         Returns
         -------
         list of dict
-            One dictionary per event with keys ``sample``, ``row``, ``col``,
-            ``ref``, ``alt``, ``five_prime``, ``three_prime``, ``sbs96`` and
-            ``sbs192`` (the two channel labels), in discovery order.
+            One dictionary per event, in discovery order, with keys ``sample``,
+            ``row``, ``col``, ``ref``, ``alt``, ``five_prime``, ``three_prime``,
+            ``sbs96`` and ``sbs192`` (the two channel labels). Phylogenetic
+            results additionally carry ``parent`` and ``child`` node names, and
+            their ``row`` is the child-node ordinal rather than an alignment row.
         """
         records: List[Dict] = []
         for i in range(self.event_rows.size):
@@ -148,19 +245,21 @@ class SpectraResult:
             three = self.event_three[i].decode('ascii')
             ref = self.event_ref[i].decode('ascii')
             alt = self.event_alt[i].decode('ascii')
-            records.append(
-                {
-                    'sample': self.sample_names[int(self.event_sample[i])],
-                    'row': int(self.event_rows[i]),
-                    'col': int(self.event_cols[i]),
-                    'ref': ref,
-                    'alt': alt,
-                    'five_prime': five,
-                    'three_prime': three,
-                    'sbs96': sbs96_channel(five, ref, alt, three),
-                    'sbs192': sbs192_channel(five, ref, alt, three),
-                }
-            )
+            record = {
+                'sample': self.sample_names[int(self.event_sample[i])],
+                'row': int(self.event_rows[i]),
+                'col': int(self.event_cols[i]),
+                'ref': ref,
+                'alt': alt,
+                'five_prime': five,
+                'three_prime': three,
+                'sbs96': sbs96_channel(five, ref, alt, three),
+                'sbs192': sbs192_channel(five, ref, alt, three),
+            }
+            if self.event_child_names is not None:
+                record['parent'] = self.event_parent_names[i]
+                record['child'] = self.event_child_names[i]
+            records.append(record)
         return records
 
     def homoplasy_table(self, min_hits: int = 2) -> List[Dict]:
@@ -210,6 +309,7 @@ class SpectraResult:
             sample names, the >= 2 homoplasy table and the two skip counts.
         """
         return {
+            'method': self.method,
             'sample_names': list(self.sample_names),
             'sbs96': self.sbs96.tolist(),
             'sbs192': self.sbs192.tolist(),
@@ -354,12 +454,12 @@ def compute_spectra(
     substitution = both_valid & is_diff
     n_indel_or_ambiguous = int((is_diff & ~both_valid).sum())
 
-    # Per-column channel lookups: for a column with a resolvable context and a
-    # valid ancestral base, map each possible derived base to its SBS-96/192 row.
-    idx96 = np.full((n_cols, 4), -1, dtype=np.int64)
-    idx192 = np.full((n_cols, 4), -1, dtype=np.int64)
-    five_per_col = np.full(n_cols, b'', dtype='S1')
-    three_per_col = np.full(n_cols, b'', dtype='S1')
+    # Per-column context: resolve the 5'/3' flank codes once per column using the
+    # nearest non-gap ancestral bases. Columns with a valid ancestral base but no
+    # resolvable context are flagged so their substitutions can be reported as
+    # unassignable rather than silently dropped.
+    five_code_per_col = np.full(n_cols, -1, dtype=np.int64)
+    three_code_per_col = np.full(n_cols, -1, dtype=np.int64)
     context_ok = np.zeros(n_cols, dtype=bool)
     for col in range(n_cols):
         if anc_code[col] < 0:
@@ -368,16 +468,9 @@ def compute_spectra(
         if ctx is None:
             continue
         five, three = ctx
-        five_per_col[col] = five.encode('ascii')
-        three_per_col[col] = three.encode('ascii')
+        five_code_per_col[col] = _CODE_LUT[ord(five)]
+        three_code_per_col[col] = _CODE_LUT[ord(three)]
         context_ok[col] = True
-        ref = anc_bytes[col].decode('ascii')
-        for alt_code in range(4):
-            alt = _CODE_TO_BASE[alt_code].decode('ascii')
-            if alt == ref:
-                continue
-            idx96[col, alt_code] = SBS96_INDEX[sbs96_channel(five, ref, alt, three)]
-            idx192[col, alt_code] = SBS192_INDEX[sbs192_channel(five, ref, alt, three)]
 
     # Substitutions in columns whose context could not be resolved are counted
     # but excluded from the matrices.
@@ -386,16 +479,15 @@ def compute_spectra(
     countable = substitution & context_ok.reshape(1, n_cols)
 
     rows, cols = np.nonzero(countable)
-    alt_codes = obs_code[rows, cols]
+    alt_codes = obs_code[rows, cols].astype(np.int64)
+    ref_codes = anc_code[cols].astype(np.int64)
+    five_codes = five_code_per_col[cols]
+    three_codes = three_code_per_col[cols]
     ev_sample = row_to_sample[rows]
 
-    sbs96 = np.zeros((96, n_samples), dtype=np.float64)
-    sbs192 = np.zeros((192, n_samples), dtype=np.float64)
-    if rows.size:
-        ch96 = idx96[cols, alt_codes]
-        ch192 = idx192[cols, alt_codes]
-        np.add.at(sbs96, (ch96, ev_sample), 1.0)
-        np.add.at(sbs192, (ch192, ev_sample), 1.0)
+    sbs96, sbs192 = assemble_matrices(
+        five_codes, ref_codes, alt_codes, three_codes, ev_sample, n_samples
+    )
 
     # Homoplasy proxy: count, per column, how many sequences independently carry
     # each derived base as a substitution (over all countable substitutions).
@@ -405,8 +497,8 @@ def compute_spectra(
 
     event_ref = anc_bytes[cols]
     event_alt = _CODE_TO_BASE[alt_codes]
-    event_five = five_per_col[cols]
-    event_three = three_per_col[cols]
+    event_five = _CODE_TO_BASE[five_codes]
+    event_three = _CODE_TO_BASE[three_codes]
 
     logger.debug(
         'compute_spectra: %d events across %d samples '

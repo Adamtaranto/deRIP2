@@ -59,6 +59,9 @@ def _write_events_tsv(result, out_path: str) -> None:
         'sbs96',
         'sbs192',
     ]
+    # Phylogenetic events additionally carry the edge's parent/child node names.
+    if result.event_child_names is not None:
+        fields += ['parent', 'child']
     with open(out_path, 'w', newline='', encoding='utf-8') as handle:
         writer = csv.DictWriter(handle, fieldnames=fields, delimiter='\t')
         writer.writeheader()
@@ -91,10 +94,198 @@ def _write_homoplasy_tsv(result, out_path: str, min_hits: int = 2) -> None:
         writer.writerows(rows)
 
 
+def _run_phylo(
+    derip_obj,
+    out_dir,
+    prefix,
+    *,
+    tree,
+    iqtree_model,
+    threads,
+    rooting,
+    outgroup,
+    partition_by,
+    min_prob,
+    root_sensitivity,
+):
+    """
+    Run the phylogenetic path: QC, IQ-TREE reconstruction and branch traversal.
+
+    Parameters
+    ----------
+    derip_obj : derip2.derip.DeRIP
+        The alignment wrapper, already RIP-processed.
+    out_dir : str
+        Output directory for QC files and the run manifest.
+    prefix : str
+        Output file prefix.
+    tree : str or None
+        Fixed Newick tree, or None to infer one.
+    iqtree_model : str
+        IQ-TREE substitution model.
+    threads : str
+        Value for IQ-TREE ``-T`` (e.g. ``'AUTO'`` or an integer string).
+    rooting : {'midpoint', 'outgroup', 'none'}
+        Rooting strategy.
+    outgroup : str or None
+        Comma-separated outgroup tip name(s).
+    partition_by : {'none', 'clade'}
+        Sample partitioning; ``'clade'`` splits by root subtree.
+    min_prob : float
+        Minimum parent x child posterior for an event to be kept.
+    root_sensitivity : bool
+        Whether to report the direction-flip fraction under midpoint rooting.
+
+    Returns
+    -------
+    derip2.stats.mutation_spectra.SpectraResult
+        The phylogenetic spectra.
+    """
+    import json
+
+    from derip2.spectra import qc
+    from derip2.spectra.call_mutations import compute_spectra_from_tree
+    from derip2.spectra.tree_asr import (
+        assign_clades,
+        build_reconstruction,
+        orientation_flip_fraction,
+        reconstruct,
+    )
+
+    if partition_by == 'row':
+        raise click.UsageError(
+            "--partition-by row is only valid for --method baseline; use 'clade'"
+        )
+
+    # QC profile.
+    profile = qc.profile_alignment(derip_obj.alignment)
+    qc.write_qc_report(
+        derip_obj.alignment, profile, path.join(out_dir, f'{prefix}_qc_report.txt')
+    )
+    qc.write_column_profile(
+        profile, path.join(out_dir, f'{prefix}_column_gap_profile.tsv')
+    )
+
+    outgroup_names = (
+        [name.strip() for name in outgroup.split(',')] if outgroup else None
+    )
+    if outgroup_names and len(outgroup_names) == 1:
+        outgroup_names = outgroup_names[0]
+
+    work_prefix = path.join(out_dir, f'{prefix}_iqtree')
+    logger.info('Running IQ-TREE ancestral reconstruction...')
+    rec = reconstruct(
+        derip_obj.alignment,
+        work_prefix,
+        model=iqtree_model,
+        threads=threads,
+        rooting=rooting,
+        outgroup=outgroup_names,
+        tree=tree,
+    )
+
+    samples_by_child = assign_clades(rec) if partition_by == 'clade' else None
+    result = compute_spectra_from_tree(
+        rec, samples_by_child=samples_by_child, min_prob=min_prob
+    )
+
+    manifest = dict(rec.manifest)
+    manifest['min_prob'] = min_prob
+    manifest['partition_by'] = partition_by
+
+    # Root-sensitivity: how many edges flip direction under midpoint rooting.
+    if root_sensitivity and rooting != 'midpoint':
+        outputs_prefix = work_prefix
+        mid = build_reconstruction(
+            f'{outputs_prefix}.treefile',
+            f'{outputs_prefix}.state',
+            derip_obj.alignment,
+            rooting='midpoint',
+        )
+        flip = orientation_flip_fraction(rec.edges, mid.edges)
+        manifest['midpoint_direction_flip_fraction'] = flip
+        logger.info('Root sensitivity: %.1f%% of edges flip under midpoint', flip * 100)
+
+    manifest_path = path.join(out_dir, f'{prefix}_run_manifest.json')
+    with open(manifest_path, 'w', encoding='utf-8') as handle:
+        json.dump(manifest, handle, indent=2, sort_keys=True, default=str)
+    logger.info(f'Wrote run manifest to: \033[0m{manifest_path}')
+
+    return result
+
+
+def _write_outputs(result, out_dir, prefix, *, sbs, min_hits, percentage, no_plots):
+    """
+    Write matrices, tables and figures for a computed spectra result.
+
+    Method-agnostic: works for both the baseline and phylogenetic results.
+
+    Parameters
+    ----------
+    result : derip2.stats.mutation_spectra.SpectraResult
+        The computed spectra.
+    out_dir : str
+        Output directory.
+    prefix : str
+        Output file prefix.
+    sbs : {'96', '192', 'both'}
+        Which matrices/plots to produce.
+    min_hits : int
+        Minimum independent hits for the homoplasy report/plot.
+    percentage : bool
+        Plot spectra as percentages.
+    no_plots : bool
+        Skip figures if True.
+
+    Returns
+    -------
+    None
+        Files are written as a side effect.
+    """
+    from derip2.plotting import spectra as spectra_plots
+    from derip2.spectra import write_sbs_matrix
+
+    kinds = ['96', '192'] if sbs == 'both' else [sbs]
+
+    for kind in kinds:
+        matrix_path = path.join(out_dir, f'{prefix}.SBS{kind}.txt')
+        logger.info(f'Writing SBS-{kind} matrix to: \033[0m{matrix_path}')
+        write_sbs_matrix(result, matrix_path, kind=kind)
+
+    events_path = path.join(out_dir, f'{prefix}_events.tsv')
+    homoplasy_path = path.join(out_dir, f'{prefix}_homoplasy.tsv')
+    logger.info(f'Writing event table to: \033[0m{events_path}')
+    _write_events_tsv(result, events_path)
+    logger.info(f'Writing homoplasy report to: \033[0m{homoplasy_path}')
+    _write_homoplasy_tsv(result, homoplasy_path, min_hits=min_hits)
+
+    if no_plots:
+        return
+    for kind in kinds:
+        fig_path = path.join(out_dir, f'{prefix}_SBS{kind}.png')
+        logger.info(f'Plotting SBS-{kind} spectrum to: \033[0m{fig_path}')
+        plotter = (
+            spectra_plots.plot_sbs96 if kind == '96' else spectra_plots.plot_sbs192
+        )
+        plotter(result, fig_path, title=f'{prefix} SBS-{kind}', percentage=percentage)
+    if '192' in kinds:
+        asym_path = path.join(out_dir, f'{prefix}_strand_asymmetry.png')
+        logger.info(f'Plotting strand asymmetry to: \033[0m{asym_path}')
+        spectra_plots.plot_strand_asymmetry(
+            result, asym_path, title=f'{prefix} strand asymmetry'
+        )
+    hom_fig = path.join(out_dir, f'{prefix}_homoplasy.png')
+    logger.info(f'Plotting homoplasy to: \033[0m{hom_fig}')
+    spectra_plots.plot_homoplasy(
+        result, hom_fig, min_hits=min_hits, title=f'{prefix} recurrent sites'
+    )
+
+
 @click.command(
     context_settings={'help_option_names': ['-h', '--help']},
     help='Build SBS-96 and SBS-192 trinucleotide mutation spectra from a DNA '
-    "alignment by calling substitutions against the deRIP'd ancestral consensus.",
+    "alignment by calling substitutions against the deRIP'd ancestral consensus, "
+    'or via IQ-TREE ancestral reconstruction (--method phylo).',
 )
 @click.version_option(version=__version__, prog_name='derip2-spectra')
 # Input / output
@@ -137,10 +328,11 @@ def _write_homoplasy_tsv(result, out_path: str, min_hits: int = 2) -> None:
 )
 @click.option(
     '--partition-by',
-    type=click.Choice(['none', 'row']),
+    type=click.Choice(['none', 'row', 'clade']),
     default='none',
     show_default=True,
-    help='Split spectra into one pooled sample or one sample per sequence.',
+    help='Split spectra into one pooled sample, one per sequence (baseline) or '
+    'one per root clade (phylo).',
 )
 @click.option(
     '--percentage',
@@ -162,6 +354,63 @@ def _write_homoplasy_tsv(result, out_path: str, min_hits: int = 2) -> None:
     default=False,
     show_default=True,
     help='Write matrices and tables only; skip figures.',
+)
+# Phylogenetic path (IQ-TREE ancestral reconstruction)
+@click.option(
+    '--method',
+    type=click.Choice(['baseline', 'phylo']),
+    default='baseline',
+    show_default=True,
+    help='Spectrum method: tree-free single-reference baseline, or phylogenetic '
+    'branch-by-branch calling via IQ-TREE ancestral reconstruction.',
+)
+@click.option(
+    '--tree',
+    type=str,
+    default=None,
+    help='Fixed Newick tree for the phylo path; IQ-TREE reconstructs ancestral '
+    'states on this topology instead of inferring a new tree.',
+)
+@click.option(
+    '--iqtree-model',
+    default='MFP',
+    show_default=True,
+    help='Substitution model passed to IQ-TREE (-m) for the phylo path.',
+)
+@click.option(
+    '--threads',
+    default='AUTO',
+    show_default=True,
+    help='IQ-TREE thread count (-T). AUTO benchmarks the best value; pass an '
+    'integer to skip the benchmark (faster on small alignments).',
+)
+@click.option(
+    '--rooting',
+    type=click.Choice(['midpoint', 'outgroup', 'none']),
+    default='midpoint',
+    show_default=True,
+    help='How to root the tree for the phylo path (sets substitution direction).',
+)
+@click.option(
+    '--outgroup',
+    default=None,
+    help='Outgroup tip name(s) for --rooting outgroup; comma-separate a clade.',
+)
+@click.option(
+    '--min-prob',
+    type=float,
+    default=0.0,
+    show_default=True,
+    help='Drop phylo events whose parent x child ancestral posterior is below '
+    'this threshold.',
+)
+@click.option(
+    '--root-sensitivity',
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help='Also report the fraction of edges whose direction flips under midpoint '
+    'rooting (phylo path).',
 )
 # deRIP parameters used to build the ancestor
 @click.option(
@@ -229,6 +478,14 @@ def main(
     percentage,
     min_hits,
     no_plots,
+    method,
+    tree,
+    iqtree_model,
+    threads,
+    rooting,
+    outgroup,
+    min_prob,
+    root_sensitivity,
     max_gaps,
     reaminate,
     max_snp_noise,
@@ -266,6 +523,23 @@ def main(
         Minimum independent hits for a site in the homoplasy report.
     no_plots : bool
         If True, skip figure generation.
+    method : {'baseline', 'phylo'}
+        Spectrum method: tree-free single-reference baseline, or phylogenetic
+        branch-by-branch calling via IQ-TREE ancestral reconstruction.
+    tree : str or None
+        Fixed Newick tree for the phylo path, or None to infer one.
+    iqtree_model : str
+        Substitution model passed to IQ-TREE for the phylo path.
+    threads : str
+        IQ-TREE thread count (-T); ``'AUTO'`` or an integer string.
+    rooting : {'midpoint', 'outgroup', 'none'}
+        How to root the tree for the phylo path.
+    outgroup : str or None
+        Comma-separated outgroup tip name(s) for outgroup rooting.
+    min_prob : float
+        Drop phylo events below this parent x child posterior probability.
+    root_sensitivity : bool
+        Report the fraction of edges whose direction flips under midpoint rooting.
     max_gaps : float
         Maximum gap proportion in a column before it is gapped in the consensus.
     reaminate : bool
@@ -313,57 +587,43 @@ def main(
         ancestor_seq = str(ancestor_aln[0].seq)
         logger.info(f'Using supplied ancestor: \033[0m{ancestor}')
 
-    result = derip_obj.calculate_spectra(
-        partition_by=partition_by, ancestor=ancestor_seq
-    )
+    # ---------- Compute the spectra by the chosen method ----------
+    if method == 'baseline':
+        if partition_by == 'clade':
+            raise click.UsageError('--partition-by clade requires --method phylo')
+        result = derip_obj.calculate_spectra(
+            partition_by=partition_by, ancestor=ancestor_seq
+        )
+    else:
+        result = _run_phylo(
+            derip_obj,
+            out_dir,
+            prefix,
+            tree=tree,
+            iqtree_model=iqtree_model,
+            threads=threads,
+            rooting=rooting,
+            outgroup=outgroup,
+            partition_by=partition_by,
+            min_prob=min_prob,
+            root_sensitivity=root_sensitivity,
+        )
+
     logger.info(
         f'Called {result.event_rows.size} substitution events '
         f'({result.n_indel_or_ambiguous} indel/ambiguous skipped, '
         f'{result.n_unassignable_context} without full context)'
     )
 
-    kinds = ['96', '192'] if sbs == 'both' else [sbs]
-
-    # Matrices.
-    for kind in kinds:
-        matrix_path = path.join(out_dir, f'{prefix}.SBS{kind}.txt')
-        logger.info(f'Writing SBS-{kind} matrix to: \033[0m{matrix_path}')
-        derip_obj.write_spectra_matrix(matrix_path, kind=kind)
-
-    # Event and homoplasy tables.
-    events_path = path.join(out_dir, f'{prefix}_events.tsv')
-    homoplasy_path = path.join(out_dir, f'{prefix}_homoplasy.tsv')
-    logger.info(f'Writing event table to: \033[0m{events_path}')
-    _write_events_tsv(result, events_path)
-    logger.info(f'Writing homoplasy report to: \033[0m{homoplasy_path}')
-    _write_homoplasy_tsv(result, homoplasy_path, min_hits=min_hits)
-
-    # Figures.
-    if not no_plots:
-        for kind in kinds:
-            fig_path = path.join(out_dir, f'{prefix}_SBS{kind}.png')
-            logger.info(f'Plotting SBS-{kind} spectrum to: \033[0m{fig_path}')
-            derip_obj.plot_spectra(
-                fig_path,
-                kind=kind,
-                title=f'{prefix} SBS-{kind}',
-                percentage=percentage,
-            )
-        if '192' in kinds:
-            asym_path = path.join(out_dir, f'{prefix}_strand_asymmetry.png')
-            logger.info(f'Plotting strand asymmetry to: \033[0m{asym_path}')
-            derip_obj.plot_spectra(
-                asym_path, kind='strand', title=f'{prefix} strand asymmetry'
-            )
-        hom_fig = path.join(out_dir, f'{prefix}_homoplasy.png')
-        logger.info(f'Plotting homoplasy to: \033[0m{hom_fig}')
-        derip_obj.plot_spectra(
-            hom_fig,
-            kind='homoplasy',
-            min_hits=min_hits,
-            title=f'{prefix} recurrent sites',
-        )
-
+    _write_outputs(
+        result,
+        out_dir,
+        prefix,
+        sbs=sbs,
+        min_hits=min_hits,
+        percentage=percentage,
+        no_plots=no_plots,
+    )
     logger.info('Mutation spectrum analysis complete.')
 
 
