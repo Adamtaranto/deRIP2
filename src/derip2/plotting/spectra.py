@@ -507,6 +507,7 @@ def plot_strand_asymmetry(
     outfile: Optional[str] = None,
     *,
     sample: int = 0,
+    min_count: int = 10,
     title: Optional[str] = None,
     dpi: int = 300,
 ):
@@ -521,6 +522,10 @@ def plot_strand_asymmetry(
         Output path; when ``None`` the figure is returned unsaved.
     sample : int, optional
         Sample column to plot (default: 0).
+    min_count : int, optional
+        A class is only tested (and starred) when **both** strands carry at least
+        this many events (default: 10). A strand with near-zero counts gives an
+        unstable binomial test, so such classes are drawn but not flagged.
     title : str or None, optional
         Figure title.
     dpi : int, optional
@@ -560,15 +565,20 @@ def plot_strand_asymmetry(
             [r['class'] for r in rows], fontsize=ANNOTATION_SIZE, color=INK_SECONDARY
         )
         ax.set_ylabel('Substitutions', fontsize=AXIS_LABEL_SIZE, color=INK_PRIMARY)
-        # Star classes whose coding/template split departs from 50:50 (binomial).
-        ymax = ax.get_ylim()[1]
+        # Star classes whose coding/template split departs from 50:50 (binomial),
+        # but only when both strands carry enough events for a stable test. The
+        # asterisk is offset a few points above the taller bar so it hugs the bar
+        # instead of floating over empty space when the class is small.
         any_star = False
         for xi, r in zip(x, rows):
-            if r['pvalue'] < 0.05:
+            testable = min(r['coding'], r['template']) >= min_count
+            if testable and r['pvalue'] < 0.05:
                 any_star = True
+                # Sit the asterisk's baseline on the taller bar's top so it hugs
+                # the bar (near the axis for small classes) rather than floating.
                 ax.text(
                     xi,
-                    max(r['coding'], r['template']) + ymax * 0.02,
+                    max(r['coding'], r['template']),
                     '*',
                     ha='center',
                     va='bottom',
@@ -581,7 +591,8 @@ def plot_strand_asymmetry(
             ax.text(
                 0.0,
                 -0.22,
-                '* binomial p < 0.05 vs an even 50:50 strand split',
+                f'* binomial p < 0.05 vs 50:50 (only classes with '
+                f'>= {min_count} events on both strands are tested)',
                 transform=ax.transAxes,
                 fontsize=ANNOTATION_SIZE,
                 color=INK_SECONDARY,
@@ -672,14 +683,19 @@ def plot_homoplasy(
                 )
                 for c in present
             ]
+            # Place the legend below the axes as a single horizontal row so it
+            # never overlaps the densely-packed data points.
             ax.legend(
                 handles=handles,
                 fontsize=LEGEND_SIZE,
                 frameon=False,
-                loc='upper right',
-                ncol=min(3, len(present)),
+                loc='upper center',
+                bbox_to_anchor=(0.5, -0.32),
+                ncol=len(present),
                 title='Substitution class',
                 title_fontsize=LEGEND_SIZE,
+                columnspacing=1.2,
+                handletextpad=0.4,
             )
         else:
             ax.text(

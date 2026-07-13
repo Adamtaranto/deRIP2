@@ -52,6 +52,53 @@ each tip and cannot tell "one ancestral event inherited by twenty tips" from
 "twenty independent events". The baseline therefore *over-counts* homoplasic sites
 and reports recurrence only as a *multi-hit-column* proxy.
 
+#### Worked example: the baseline ancestor
+
+By default you do not have to build the ancestor yourself — `derip2-spectra`
+reconstructs it internally by running deRIP2's correction, then compares every
+sequence to it:
+
+```bash
+derip2-spectra -i family.fasta --method baseline -d out -p family
+```
+
+The ancestor it uses is deRIP2's **gapped deRIP consensus**: for every column,
+deRIP2 finds the un-RIP'd ancestral base (a `C` where RIP produced `T`, a `G`
+where it produced `A`) by looking across all copies for one that escaped RIP, and
+falls back to the majority base elsewhere. This is exactly the sequence the plain
+`derip2` command writes to `family.fasta`, so the two are consistent.
+
+If you want to see or reuse that ancestor, run `derip2` first and pass it back
+with `--ancestor`:
+
+```bash
+# 1. Reconstruct the deRIP'd ancestral consensus (writes out/family.fasta)
+derip2 -i family.fasta -d out -p family
+
+# 2. Call the spectrum against that explicit ancestor
+derip2-spectra -i family.fasta --method baseline \
+    --ancestor out/family.fasta -d out -p family_spectrum
+```
+
+`--ancestor` accepts any FASTA whose single sequence is the **same length as the
+alignment** (one base per column, gaps allowed). Use it when you have an
+independent progenitor — a known germline element, a manually curated ancestor,
+or a consensus built under different deRIP settings (e.g. `derip2 --reaminate` to
+treat *all* cytosine deamination as ancestral, not just RIP-context events). The
+deRIP parameters on `derip2-spectra` itself (`--max-gaps`, `--reaminate`,
+`--min-rip-like`, …) tune the *internal* ancestor when you do not supply one.
+
+```python
+# The same thing from Python
+from derip2.derip import DeRIP
+
+d = DeRIP('family.fasta')
+d.calculate_rip()
+ancestor = str(d.gapped_consensus.seq)   # the deRIP'd ancestor, one base per column
+result = d.calculate_spectra()           # baseline spectra against that ancestor
+result.sbs96                             # (96, n_samples) count matrix
+```
+
 ### Phylogenetic (`--method phylo`)
 
 The rigorous path reconstructs ancestral sequences at every internal node of a tree
@@ -271,6 +318,89 @@ The phylo path writes `*_run_manifest.json` recording the IQ-TREE version, the
 model, the rooting method and the root node, node/edge counts, and — with
 `--root-sensitivity` — the fraction of edges whose direction flips under midpoint
 rooting. Directionality depends on the root, so record it.
+
+## Comparing spectra statistically
+
+Once you have spectra for two or more groups — or two matrices from separate runs
+— you will want to ask whether they actually *differ*. deRIP2 provides two
+complementary measures in `derip2.stats` (no SciPy required):
+
+- **Cosine similarity** — a scale-free *effect size* in `[0, 1]`. It compares the
+  *shape* of two profiles and ignores their totals, so it answers "do these look
+  alike?". 1.0 is identical.
+- **Chi-squared test of homogeneity** — a *significance test* of whether the
+  channel counts could have come from one shared distribution ("is the difference
+  more than sampling noise?"). Its per-channel **standardised residuals** show
+  *which* channels drive any difference, and **Cramér's V** is its effect size.
+
+!!! warning "Read the p-value with the effect size"
+    Spectra often carry hundreds of thousands of events, and at that sample size a
+    chi-squared test flags even biologically trivial differences as "significant".
+    **Always read the p-value next to the cosine similarity and Cramér's V.** A
+    tiny p with cosine ≈ 1 and Cramér's V ≈ 0 means "different, but only in a way
+    that does not matter"; a small p *with* low cosine and larger Cramér's V is a
+    real shift in the spectrum.
+
+### Compare groups by label
+
+Run with `--groups` (or `--partition-by`), then compare the sample columns of the
+matrix it writes:
+
+```python
+from derip2.spectra import read_sbs_matrix
+from derip2.stats import compare_spectra, pairwise_compare
+
+channels, samples, matrix = read_sbs_matrix('out/family.SBS96.txt')
+
+# One pair, with the channels that differ most
+a = matrix[:, samples.index('setA')]
+b = matrix[:, samples.index('setB')]
+res = compare_spectra(a, b, channels)
+print(res['cosine_similarity'], res['pvalue'], res['cramers_v'])
+for c in res['top_channels'][:5]:
+    print(c['channel'], c['a'], c['b'], round(c['residual'], 2))
+
+# Every pair at once (Bonferroni-corrected), most-different first
+for row in pairwise_compare(matrix, samples):
+    print(row['a'], row['b'], round(row['cosine_similarity'], 4),
+          f"p_adj={row['pvalue_adjusted']:.3g}")
+```
+
+For two random scaffold-based halves of the Sahana family the result is:
+
+```text
+cosine_similarity = 0.9999   pvalue = 0.136   cramers_v = 0.018
+```
+
+Cosine ≈ 1, a non-significant p and Cramér's V ≈ 0 — exactly what you expect when
+both groups are shaped by the *same* RIP process. A methylation-competent versus
+methylation-deficient pair, by contrast, would show a lower cosine, a small p and
+`C[C>T]G`/`CHG`-context channels topping the residual list.
+
+### Compare two precalculated matrices
+
+Comparing SigProfiler-format matrices from separate runs (or external tools) is
+the same call — read each file and pass one column from each. Both must be the
+same context (both SBS-96 or both SBS-192):
+
+```python
+from derip2.spectra import read_sbs_matrix
+from derip2.stats import compare_spectra
+
+ch_a, _, mat_a = read_sbs_matrix('speciesA.SBS96.txt')
+ch_b, _, mat_b = read_sbs_matrix('speciesB.SBS96.txt')
+assert ch_a == ch_b   # deRIP2 writes channels in canonical order, so they align
+
+res = compare_spectra(mat_a[:, 0], mat_b[:, 0], ch_a)
+print(res['cosine_similarity'], res['pvalue'], res['cramers_v'])
+```
+
+!!! tip "For a robustness check"
+    The chi-squared test assumes each event is independent. Recurrent RIP breaks
+    that assumption mildly, so treat borderline p-values as a screen. When a call
+    is close, a permutation test — reshuffle the group labels many times and see
+    how often a random split reaches your observed cosine distance — is a
+    distribution-free alternative you can build on top of `--groups`.
 
 ## Useful options
 
