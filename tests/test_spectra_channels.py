@@ -13,11 +13,11 @@ import logging
 import numpy as np
 
 from derip2.spectra.channels import (
+    BASES,
     SBS96_CHANNELS,
     SBS96_INDEX,
     SBS192_CHANNELS,
     SBS192_INDEX,
-    BASES,
     fold_to_pyrimidine,
     sbs96_channel,
     sbs192_channel,

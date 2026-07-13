@@ -21,8 +21,8 @@ from derip2.spectra.channels import (
     SBS96_CHANNELS,
     SBS192_CHANNELS,
     fold_to_pyrimidine,
-    sbs192_channel,
     sbs96_channel,
+    sbs192_channel,
     trinucleotide_context,
 )
 from derip2.spectra.matrix_io import read_sbs_matrix, write_sbs_matrix

@@ -14,6 +14,9 @@ import logging
 import os
 from types import SimpleNamespace
 
+from Bio.Align import MultipleSeqAlignment
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 import numpy as np
 import pytest
 
@@ -22,10 +25,6 @@ from derip2.derip import DeRIP
 from derip2.spectra.channels import SBS96_INDEX, SBS192_INDEX
 from derip2.stats import compute_spectra
 from derip2.stats.mutation_spectra import SpectraResult
-
-from Bio.Align import MultipleSeqAlignment
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
 
 logging.disable(logging.CRITICAL)
 
