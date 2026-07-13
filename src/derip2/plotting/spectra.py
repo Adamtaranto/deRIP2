@@ -21,6 +21,7 @@ import matplotlib
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import numpy as np
 
 from derip2.plotting.strandbias import (
@@ -55,6 +56,13 @@ SBS6_COLORS = {
     'T>G': '#eb6834',  # orange
 }
 
+# Two-colour encoding for the strand-asymmetry figure, so the legend swatches
+# match the bars exactly (the substitution class is given by the x-axis label).
+STRAND_COLORS = {
+    'coding': '#2a78d6',  # blue
+    'template': '#eb6834',  # orange
+}
+
 RASTER_EXTS = ('.png', '.jpg', '.jpeg', '.tif', '.tiff')
 
 
@@ -77,6 +85,31 @@ def _substitution_label(ref: str, alt: str) -> str:
     return f'{ref}>{alt}'
 
 
+def _folded_class(ref: str, alt: str) -> str:
+    """
+    Return the pyrimidine-folded substitution class for a ref/alt pair.
+
+    Parameters
+    ----------
+    ref : str
+        Reference base.
+    alt : str
+        Derived base.
+
+    Returns
+    -------
+    str
+        One of the six pyrimidine classes, e.g. ``'C>T'``.
+    """
+    from derip2.spectra.channels import COMPLEMENT
+
+    key = _substitution_label(ref, alt)
+    if key in SBS6_COLORS:
+        return key
+    # Purine reference: fold to the pyrimidine-strand class.
+    return _substitution_label(COMPLEMENT[ref], COMPLEMENT[alt])
+
+
 def _class_color(ref: str, alt: str) -> str:
     """
     Return the block colour for a substitution class, folding purines.
@@ -93,13 +126,7 @@ def _class_color(ref: str, alt: str) -> str:
     str
         A hex colour from :data:`SBS6_COLORS`.
     """
-    from derip2.spectra.channels import COMPLEMENT
-
-    key = _substitution_label(ref, alt)
-    if key in SBS6_COLORS:
-        return SBS6_COLORS[key]
-    # Purine reference: colour by the pyrimidine-folded class.
-    return SBS6_COLORS[_substitution_label(COMPLEMENT[ref], COMPLEMENT[alt])]
+    return SBS6_COLORS[_folded_class(ref, alt)]
 
 
 def _save(fig, outfile: Optional[str], dpi: int) -> None:
@@ -324,11 +351,13 @@ def plot_sbs96(
                 show_context_ticks=True,
             )
             if n > 1:
+                # pad lifts the sample name clear of the class-block labels.
                 ax.set_title(
                     result.sample_names[s],
                     fontsize=AXIS_LABEL_SIZE,
                     color=INK_PRIMARY,
                     loc='left',
+                    pad=16,
                 )
         if title:
             fig.suptitle(title, fontsize=TITLE_SIZE, color=INK_PRIMARY)
@@ -379,11 +408,13 @@ def plot_sbs192(
                 show_context_ticks=False,
             )
             if n > 1:
+                # pad lifts the sample name clear of the class-block labels.
                 ax.set_title(
                     result.sample_names[s],
                     fontsize=AXIS_LABEL_SIZE,
                     color=INK_PRIMARY,
                     loc='left',
+                    pad=16,
                 )
         if title:
             fig.suptitle(title, fontsize=TITLE_SIZE, color=INK_PRIMARY)
@@ -502,20 +533,26 @@ def plot_strand_asymmetry(
     """
     rows = strand_asymmetry(result, sample)
     with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
-        fig, ax = plt.subplots(figsize=(5.2, 3.0))
+        fig, ax = plt.subplots(figsize=(5.6, 3.2))
         fig.patch.set_facecolor(SURFACE)
         _style_axes(ax)
         x = np.arange(len(rows))
         coding = [r['coding'] for r in rows]
         template = [r['template'] for r in rows]
-        colors = [SBS6_COLORS[r['class']] for r in rows]
-        ax.bar(x - 0.2, coding, width=0.38, color=colors, label='Coding strand')
+        # Encode strand by colour (not substitution class) so the legend swatches
+        # match every bar exactly. The class is already given by the x-axis label.
+        ax.bar(
+            x - 0.2,
+            coding,
+            width=0.38,
+            color=STRAND_COLORS['coding'],
+            label='Coding strand',
+        )
         ax.bar(
             x + 0.2,
             template,
             width=0.38,
-            color=colors,
-            alpha=0.5,
+            color=STRAND_COLORS['template'],
             label='Template strand',
         )
         ax.set_xticks(x)
@@ -523,20 +560,32 @@ def plot_strand_asymmetry(
             [r['class'] for r in rows], fontsize=ANNOTATION_SIZE, color=INK_SECONDARY
         )
         ax.set_ylabel('Substitutions', fontsize=AXIS_LABEL_SIZE, color=INK_PRIMARY)
-        # Star the classes with a nominally significant strand bias.
+        # Star classes whose coding/template split departs from 50:50 (binomial).
         ymax = ax.get_ylim()[1]
+        any_star = False
         for xi, r in zip(x, rows):
             if r['pvalue'] < 0.05:
+                any_star = True
                 ax.text(
                     xi,
-                    ymax * 0.98,
+                    max(r['coding'], r['template']) + ymax * 0.02,
                     '*',
                     ha='center',
-                    va='top',
+                    va='bottom',
                     fontsize=TITLE_SIZE,
                     color=INK_PRIMARY,
                 )
-        ax.legend(fontsize=LEGEND_SIZE, frameon=False)
+        ax.legend(fontsize=LEGEND_SIZE, frameon=False, loc='upper right')
+        # Explain the asterisk so the figure is self-describing.
+        if any_star:
+            ax.text(
+                0.0,
+                -0.22,
+                '* binomial p < 0.05 vs an even 50:50 strand split',
+                transform=ax.transAxes,
+                fontsize=ANNOTATION_SIZE,
+                color=INK_SECONDARY,
+            )
         if title:
             ax.set_title(title, fontsize=TITLE_SIZE, color=INK_PRIMARY)
         fig.tight_layout()
@@ -578,23 +627,65 @@ def plot_homoplasy(
         The rendered figure.
     """
     table = result.homoplasy_table(min_hits=min_hits)
+    # The recurrence measure differs by method; name it honestly on the y-axis.
+    hit_unit = (
+        'independent branches'
+        if result.method == 'phylogenetic'
+        else 'sequences (multi-hit proxy)'
+    )
     with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
-        fig, ax = plt.subplots(figsize=(7.4, 2.6))
+        fig, ax = plt.subplots(figsize=(7.4, 2.8))
         fig.patch.set_facecolor(SURFACE)
         _style_axes(ax)
         if table:
             cols = [r['col'] for r in table]
             heights = [r['n_independent'] for r in table]
-            colors = [_class_color(r['ref'], r['alt']) for r in table]
-            ax.vlines(cols, 0, heights, color=colors, linewidth=1.4)
-            ax.scatter(cols, heights, s=14, color=colors, zorder=3)
+            classes = [_folded_class(r['ref'], r['alt']) for r in table]
+            colors = [SBS6_COLORS[c] for c in classes]
+            # Translucent stems and markers so that sites stacked at the same
+            # column/height stay individually visible instead of one hiding another.
+            ax.vlines(cols, 0, heights, color=colors, linewidth=1.0, alpha=0.35)
+            ax.scatter(
+                cols,
+                heights,
+                s=18,
+                color=colors,
+                alpha=0.55,
+                edgecolors='none',
+                zorder=3,
+            )
             ax.set_xlim(-1, result.homoplasy_counts.shape[0])
             ax.set_ylim(0, max(heights) + 1)
+            # Legend maps colour to the pyrimidine-folded substitution class,
+            # showing only the classes actually present.
+            present = [c for c in SBS6_COLORS if c in set(classes)]
+            handles = [
+                Line2D(
+                    [],
+                    [],
+                    marker='o',
+                    linestyle='none',
+                    markersize=5,
+                    markerfacecolor=SBS6_COLORS[c],
+                    markeredgecolor='none',
+                    label=c,
+                )
+                for c in present
+            ]
+            ax.legend(
+                handles=handles,
+                fontsize=LEGEND_SIZE,
+                frameon=False,
+                loc='upper right',
+                ncol=min(3, len(present)),
+                title='Substitution class',
+                title_fontsize=LEGEND_SIZE,
+            )
         else:
             ax.text(
                 0.5,
                 0.5,
-                f'No sites hit in >= {min_hits} sequences',
+                f'No sites hit in >= {min_hits} lineages',
                 transform=ax.transAxes,
                 ha='center',
                 va='center',
@@ -602,7 +693,11 @@ def plot_homoplasy(
                 color=INK_SECONDARY,
             )
         ax.set_xlabel('Alignment column', fontsize=AXIS_LABEL_SIZE, color=INK_PRIMARY)
-        ax.set_ylabel('Independent hits', fontsize=AXIS_LABEL_SIZE, color=INK_PRIMARY)
+        ax.set_ylabel(
+            f'Independent hits\n({hit_unit})',
+            fontsize=AXIS_LABEL_SIZE,
+            color=INK_PRIMARY,
+        )
         if title:
             ax.set_title(title, fontsize=TITLE_SIZE, color=INK_PRIMARY)
         fig.tight_layout()

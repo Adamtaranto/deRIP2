@@ -194,5 +194,16 @@ derip2-spectra -i family.fasta --method phylo --tree results/family_masked.treef
   -d results -p family_spectrum
 ```
 
+### Per-group spectra (species or user-defined sets)
+
+Pass a two-column (name, group) file with `--groups` to report one spectrum per
+group. Works for both methods and tolerates IQ-TREE name reformatting:
+
+```bash
+derip2-spectra -i family.fasta --groups groups.tsv -d results -p family
+derip2-spectra -i family.fasta --method phylo --groups groups.tsv -d results -p family
+```
+
 Run `derip2-spectra --help` for the full option list (`--sbs`, `--rooting`,
-`--outgroup`, `--partition-by`, `--min-prob`, `--root-sensitivity`, `--threads`, …).
+`--outgroup`, `--partition-by`, `--groups`, `--min-prob`, `--root-sensitivity`,
+`--threads`, …).

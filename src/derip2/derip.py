@@ -1115,7 +1115,9 @@ class DeRIP:
             self.column_classes, outfile=output_file, mode=mode, **kwargs
         )
 
-    def calculate_spectra(self, partition_by: str = 'none', ancestor=None):
+    def calculate_spectra(
+        self, partition_by: str = 'none', ancestor=None, samples=None
+    ):
         """
         Compute the SBS-96 and SBS-192 trinucleotide mutation spectra.
 
@@ -1135,10 +1137,14 @@ class DeRIP:
         partition_by : {'none', 'row'}, optional
             How to split the spectra into samples. ``'none'`` (default) pools
             every sequence into one ``AllSequences`` sample; ``'row'`` gives one
-            sample column per input sequence.
+            sample column per input sequence. Ignored when ``samples`` is given.
         ancestor : str or Bio.SeqRecord.SeqRecord, optional
             Ancestral reference sequence, one base per alignment column. Defaults
             to deRIP2's gapped consensus (:attr:`gapped_consensus`).
+        samples : sequence of str, optional
+            An explicit per-row sample label (length equal to the number of
+            sequences), e.g. species or group names. Overrides ``partition_by``
+            when provided.
 
         Returns
         -------
@@ -1166,7 +1172,9 @@ class DeRIP:
         else:
             ancestor_seq = str(ancestor)
 
-        if partition_by == 'none':
+        if samples is not None:
+            pass  # explicit per-row labels take precedence
+        elif partition_by == 'none':
             samples = None
         elif partition_by == 'row':
             samples = [record.id for record in self.alignment]

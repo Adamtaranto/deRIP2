@@ -94,6 +94,65 @@ def _write_homoplasy_tsv(result, out_path: str, min_hits: int = 2) -> None:
         writer.writerows(rows)
 
 
+# Column headers that mark a groups file's optional first row, to be skipped.
+_GROUP_HEADER_KEYS = {'name', 'id', 'sequence', 'seq', 'taxon', 'tip'}
+
+
+def _load_group_lookup(path):
+    """
+    Load a sequence-to-group mapping and return a sanitisation-tolerant lookup.
+
+    The file is two whitespace- or tab-separated columns: a sequence name and its
+    group label (e.g. a species). Blank lines and ``#`` comments are ignored, and
+    an optional header row (first token one of ``name``/``id``/``sequence``/…) is
+    skipped.
+
+    Parameters
+    ----------
+    path : str
+        Path to the mapping file.
+
+    Returns
+    -------
+    callable
+        ``lookup(name) -> str or None`` that resolves a sequence name to its
+        group, matching either the original name or its IQ-TREE-sanitised form
+        (so tree tip names resolve too).
+
+    Raises
+    ------
+    ValueError
+        If no usable name/group pairs are found.
+    """
+    from derip2.spectra.tree_asr import _sanitize_name
+
+    by_original = {}
+    with open(path, encoding='utf-8') as handle:
+        for line in handle:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            name, label = parts[0], parts[1]
+            if not by_original and name.lower() in _GROUP_HEADER_KEYS:
+                continue  # skip a header row
+            by_original[name] = label
+
+    if not by_original:
+        raise ValueError(f'No sequence/group pairs found in {path}')
+
+    by_sanitized = {_sanitize_name(name): label for name, label in by_original.items()}
+
+    def _lookup(name):
+        if name in by_original:
+            return by_original[name]
+        return by_sanitized.get(_sanitize_name(name))
+
+    return _lookup
+
+
 def _run_phylo(
     derip_obj,
     out_dir,
@@ -105,6 +164,7 @@ def _run_phylo(
     rooting,
     outgroup,
     partition_by,
+    groups,
     min_prob,
     root_sensitivity,
 ):
@@ -130,7 +190,11 @@ def _run_phylo(
     outgroup : str or None
         Comma-separated outgroup tip name(s).
     partition_by : {'none', 'clade'}
-        Sample partitioning; ``'clade'`` splits by root subtree.
+        Sample partitioning; ``'clade'`` splits by root subtree. Ignored when
+        ``groups`` is given.
+    groups : str or None
+        Path to a sequence-to-group mapping; branches whose descendants all share
+        one group are attributed to it (overrides ``partition_by``).
     min_prob : float
         Minimum parent x child posterior for an event to be kept.
     root_sensitivity : bool
@@ -147,6 +211,7 @@ def _run_phylo(
     from derip2.spectra.call_mutations import compute_spectra_from_tree
     from derip2.spectra.tree_asr import (
         assign_clades,
+        assign_groups,
         build_reconstruction,
         orientation_flip_fraction,
         reconstruct,
@@ -184,14 +249,22 @@ def _run_phylo(
         tree=tree,
     )
 
-    samples_by_child = assign_clades(rec) if partition_by == 'clade' else None
+    # Sample assignment: user-defined groups take precedence over clade splitting.
+    if groups:
+        lookup = _load_group_lookup(groups)
+        group_by_tip = {tip: (lookup(tip) or 'ungrouped') for tip in rec.tip_names}
+        samples_by_child = assign_groups(rec, group_by_tip)
+    elif partition_by == 'clade':
+        samples_by_child = assign_clades(rec)
+    else:
+        samples_by_child = None
     result = compute_spectra_from_tree(
         rec, samples_by_child=samples_by_child, min_prob=min_prob
     )
 
     manifest = dict(rec.manifest)
     manifest['min_prob'] = min_prob
-    manifest['partition_by'] = partition_by
+    manifest['partition_by'] = 'groups' if groups else partition_by
 
     # Root-sensitivity: how many edges flip direction under midpoint rooting.
     if root_sensitivity and rooting != 'midpoint':
@@ -335,6 +408,14 @@ def _write_outputs(result, out_dir, prefix, *, sbs, min_hits, percentage, no_plo
     'one per root clade (phylo).',
 )
 @click.option(
+    '--groups',
+    type=str,
+    default=None,
+    help='Path to a two-column (name, group) file mapping sequences to group '
+    'labels (e.g. species). Reports one spectrum per group; works for both '
+    'methods and tolerates IQ-TREE name reformatting. Overrides --partition-by.',
+)
+@click.option(
     '--percentage',
     is_flag=True,
     default=False,
@@ -475,6 +556,7 @@ def main(
     ancestor,
     sbs,
     partition_by,
+    groups,
     percentage,
     min_hits,
     no_plots,
@@ -515,8 +597,12 @@ def main(
         reconstructed deRIP consensus is used.
     sbs : {'96', '192', 'both'}
         Which SBS matrices and plots to produce.
-    partition_by : {'none', 'row'}
-        Whether to pool sequences into one sample or split per sequence.
+    partition_by : {'none', 'row', 'clade'}
+        Whether to pool sequences into one sample, split per sequence (baseline)
+        or per root clade (phylo).
+    groups : str or None
+        Path to a sequence-to-group mapping file; reports one spectrum per group
+        (overrides ``partition_by``).
     percentage : bool
         Plot spectra as percentages rather than counts.
     min_hits : int
@@ -591,9 +677,18 @@ def main(
     if method == 'baseline':
         if partition_by == 'clade':
             raise click.UsageError('--partition-by clade requires --method phylo')
-        result = derip_obj.calculate_spectra(
-            partition_by=partition_by, ancestor=ancestor_seq
-        )
+        if groups:
+            lookup = _load_group_lookup(groups)
+            row_labels = [
+                (lookup(record.id) or 'ungrouped') for record in derip_obj.alignment
+            ]
+            result = derip_obj.calculate_spectra(
+                samples=row_labels, ancestor=ancestor_seq
+            )
+        else:
+            result = derip_obj.calculate_spectra(
+                partition_by=partition_by, ancestor=ancestor_seq
+            )
     else:
         result = _run_phylo(
             derip_obj,
@@ -605,6 +700,7 @@ def main(
             rooting=rooting,
             outgroup=outgroup,
             partition_by=partition_by,
+            groups=groups,
             min_prob=min_prob,
             root_sensitivity=root_sensitivity,
         )

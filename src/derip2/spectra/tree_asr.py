@@ -673,6 +673,77 @@ def assign_clades(reconstruction: TreeReconstruction) -> Dict[str, str]:
     return node_to_clade
 
 
+def assign_groups(
+    reconstruction: TreeReconstruction,
+    group_by_tip: Dict[str, str],
+    *,
+    mixed_label: str = 'mixed',
+    ungrouped_label: str = 'ungrouped',
+) -> Dict[str, str]:
+    """
+    Attribute each branch to a group when its whole descendant clade shares one.
+
+    Groups are defined on the tips (e.g. species labels). A branch ``parent ->
+    child`` is attributed to a group only when every tip descending from
+    ``child`` belongs to that group; branches whose descendants span more than
+    one group (the ancestral trunk) are labelled ``mixed_label``. This gives the
+    ``samples_by_child`` mapping needed to report per-group spectra from the
+    phylogenetic path.
+
+    Parameters
+    ----------
+    reconstruction : TreeReconstruction
+        The rooted reconstruction.
+    group_by_tip : dict of str to str
+        Maps each tip node name (as it appears in the tree) to a group label.
+    mixed_label : str, optional
+        Label for branches whose descendants span several groups (default
+        ``'mixed'``).
+    ungrouped_label : str, optional
+        Label used for tips absent from ``group_by_tip`` (default
+        ``'ungrouped'``).
+
+    Returns
+    -------
+    dict of str to str
+        Maps each non-root node name to its group label.
+    """
+    children_of: Dict[str, List[str]] = {}
+    for parent, child in reconstruction.edges:
+        children_of.setdefault(parent, []).append(child)
+    tip_set = set(reconstruction.tip_names)
+
+    # Post-order so a node is processed after all its children.
+    postorder: List[str] = []
+    stack = [(reconstruction.root_name, False)]
+    while stack:
+        node, processed = stack.pop()
+        if processed:
+            postorder.append(node)
+            continue
+        stack.append((node, True))
+        for child in children_of.get(node, []):
+            stack.append((child, False))
+
+    groups_under: Dict[str, set] = {}
+    for node in postorder:
+        if node in tip_set:
+            groups_under[node] = {group_by_tip.get(node, ungrouped_label)}
+        else:
+            collected: set = set()
+            for child in children_of.get(node, []):
+                collected |= groups_under[child]
+            groups_under[node] = collected
+
+    samples_by_child: Dict[str, str] = {}
+    for _parent, child in reconstruction.edges:
+        labels = groups_under[child]
+        samples_by_child[child] = (
+            next(iter(labels)) if len(labels) == 1 else mixed_label
+        )
+    return samples_by_child
+
+
 def orientation_flip_fraction(
     edges_a: List[Tuple[str, str]], edges_b: List[Tuple[str, str]]
 ) -> float:

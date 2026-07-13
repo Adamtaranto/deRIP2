@@ -206,8 +206,13 @@ derip2-spectra -i family.fasta --method phylo --tree results/family_masked.treef
 
 ![SBS-96 mutation spectrum of a RIP-affected transposon](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/spectra_sbs96.png)
 
+Spectra can be reported per sequence, per clade, or per user-defined group
+(`--groups`, e.g. species), and the SigProfiler-compliant matrices can be
+decomposed against reference signatures.
+
 See the [Mutation Spectra tutorial](https://adamtaranto.github.io/deRIP2/tutorials/mutation-spectra/)
-for the full walkthrough, including supplying your own phylogeny.
+for the full walkthrough, including supplying your own phylogeny and per-group
+spectra.
 
 ## Standard Options
 

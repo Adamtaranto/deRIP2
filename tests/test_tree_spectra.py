@@ -139,6 +139,32 @@ def test_indel_on_branch_is_skipped():
     assert res.n_indel_or_ambiguous == 1
 
 
+def test_assign_groups_homogeneous_and_mixed():
+    """Branches inside one group get that label; spanning branches are 'mixed'."""
+    from derip2.spectra.tree_asr import assign_groups
+
+    # root -> g (a mixed internal node) and root -> c3 (group B).
+    # g -> c1 (group A), g -> c2 (group A). The g subtree is all A; the root's
+    # other side is B; branches above are mixed.
+    rec = _reconstruction(
+        {
+            'root': 'ACGTA',
+            'g': 'ACGTA',
+            'c1': 'ATGTA',
+            'c2': 'ATGTA',
+            'c3': 'ACGTT',
+        },
+        [('root', 'g'), ('g', 'c1'), ('g', 'c2'), ('root', 'c3')],
+        'root',
+    )
+    group_by_tip = {'c1': 'A', 'c2': 'A', 'c3': 'B'}
+    assigned = assign_groups(rec, group_by_tip)
+    assert assigned['c1'] == 'A'
+    assert assigned['c2'] == 'A'
+    assert assigned['g'] == 'A'  # whole g-subtree is group A
+    assert assigned['c3'] == 'B'
+
+
 def test_clade_partition_samples():
     """A samples_by_child map splits events into per-clade sample columns."""
     # 'a' has a col-1 C>T, 'b' has a col-2 G>T; both are internal columns with

@@ -264,34 +264,44 @@ class SpectraResult:
 
     def homoplasy_table(self, min_hits: int = 2) -> List[Dict]:
         """
-        Return columns hit by the same substitution in >= ``min_hits`` sequences.
+        Return substitutions that recurred in >= ``min_hits`` independent lineages.
+
+        Recurrence is counted over the actual per-event reference and derived
+        bases (the *parent* base for the phylogenetic path, the ancestor for the
+        baseline), so a column hit by two distinct substitutions is reported as
+        two separate entries and the reference base is always the base the event
+        mutated *from*.
 
         Parameters
         ----------
         min_hits : int, optional
-            Minimum number of independent sequences carrying the same derived
-            base at a column for it to be reported (default: 2).
+            Minimum number of independent lineages carrying the same
+            ``(column, ref, alt)`` substitution for it to be reported (default: 2).
 
         Returns
         -------
         list of dict
-            One dictionary per (column, derived base) meeting the threshold, with
-            keys ``col``, ``ref``, ``alt``, ``n_independent``, sorted by
-            descending ``n_independent`` then column.
+            One dictionary per recurrent ``(column, ref, alt)`` meeting the
+            threshold, with keys ``col``, ``ref``, ``alt``, ``n_independent``,
+            sorted by descending ``n_independent`` then column then derived base.
         """
-        rows: List[Dict] = []
-        cols, alts = np.nonzero(self.homoplasy_counts >= min_hits)
-        for col, alt_code in zip(cols, alts):
-            ref = self.ancestor_ref[col].decode('ascii')
-            rows.append(
-                {
-                    'col': int(col),
-                    'ref': ref,
-                    'alt': _CODE_TO_BASE[alt_code].decode('ascii'),
-                    'n_independent': int(self.homoplasy_counts[col, alt_code]),
-                }
+        from collections import Counter
+
+        counts: Counter = Counter()
+        for i in range(self.event_cols.size):
+            key = (
+                int(self.event_cols[i]),
+                self.event_ref[i].decode('ascii'),
+                self.event_alt[i].decode('ascii'),
             )
-        rows.sort(key=lambda r: (-r['n_independent'], r['col']))
+            counts[key] += 1
+
+        rows: List[Dict] = [
+            {'col': col, 'ref': ref, 'alt': alt, 'n_independent': n}
+            for (col, ref, alt), n in counts.items()
+            if n >= min_hits
+        ]
+        rows.sort(key=lambda r: (-r['n_independent'], r['col'], r['alt']))
         return rows
 
     def as_dict(self) -> Dict:

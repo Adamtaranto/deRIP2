@@ -59,18 +59,34 @@ The rigorous path reconstructs ancestral sequences at every internal node of a t
 substitution as an independent event with its context read from the **parent**
 sequence — the state at the moment the mutation occurred.
 
-The difference is large and biological. On 60 Sahana copies:
+The difference is large and biological. On the full Sahana family (396 copies):
 
 | | Events (SBS-96) | Interpretation |
 |---|---|---|
-| Baseline | 38,727 | every tip vs one reference |
-| Phylogenetic | 7,560 | independent branch events |
+| Baseline | 326,778 | every tip vs one reference |
+| Phylogenetic | ~47,000 | independent branch events |
 
-The baseline's extra ~31,000 "events" are shared/inherited RIP mutations counted
+The baseline's extra ~280,000 "events" are shared/inherited RIP mutations counted
 once per descendant. The phylogenetic path assigns each to the single branch it
 arose on — and flags the sites that really were hit again and again:
 
 ![SBS-96 spectrum, phylogenetic](../img/spectra_sbs96_phylo.png)
+
+!!! warning "Read direction with care on heavily-RIP'd families"
+    Notice the `T>C` peak in the phylogenetic spectrum, absent from the baseline.
+    It is largely an artefact of **maximum-likelihood ancestral reconstruction**,
+    which is biased toward the majority state. When RIP has converted *most* copies
+    of a column from C to T, IQ-TREE reconstructs the internal nodes as the
+    majority `T`, so the minority copies that *retained* the ancestral C read as
+    `T>C` reversals. The **recurrence counting is still correct** (46,952 vs
+    326,778 events) — this bias affects the inferred *direction*, not the event
+    count.
+
+    deRIP2's consensus-based **baseline is more robust to RIP direction**: its
+    ancestor is the deRIP'd (un-RIP'd) sequence, recovered by finding the copies
+    that escaped RIP even when they are the minority. Use the two together — the
+    baseline for polarity, the phylogenetic path for correct recurrence — and lean
+    on the masked-topology workflow below to keep the tree itself honest.
 
 !!! note "IQ-TREE is required for `--method phylo`"
     Install it separately (`conda install -c bioconda iqtree`) and make sure
@@ -122,8 +138,11 @@ ancestral states for the **unmasked** sequences on that same topology:
 derip2 -i family.fasta --mask --no-append -d out -p family
 #    -> out/family_masked_alignment.fasta
 
-# 2. Infer the topology from the masked alignment (RIP signal removed)
-iqtree3 -s out/family_masked_alignment.fasta -m MFP -B 1000 -T AUTO \
+# 2. Infer the topology from the masked alignment (RIP signal removed).
+#    -st DNA forces the DNA model: a heavily masked alignment carries many IUPAC
+#    ambiguity codes, and IQ-TREE's sequence-type auto-detection can otherwise
+#    fail with "Unknown sequence type".
+iqtree3 -s out/family_masked_alignment.fasta -m MFP -B 1000 -T AUTO -st DNA \
     --prefix out/family_masked
 
 # 3. Reconstruct ancestral states for the UNMASKED sequences on that fixed
@@ -147,31 +166,104 @@ only rewrites bases in place), so the topology transfers exactly.
     its ancestors would be masked too, and the spectrum would be blank exactly
     where RIP acted.
 
+The resulting spectrum for the full Sahana family (topology from the masked
+alignment, ancestral states from the unmasked sequences) still resolves the RIP
+`C>T`/CpA signal cleanly, now on a topology that RIP homoplasy could not distort:
+
+![SBS-96 spectrum, phylogenetic on a RIP-masked topology](../img/spectra_sbs96_maskedtopo.png)
+
 ## Reading the outputs
 
 ### Homoplasy (recurrence)
 
 The homoplasy report lists sites hit by the same substitution on two or more
 independent lineages — the explicit, measured record of recurrent deamination.
-Under `--method phylo` these are counts of **independent branches**; under the
-baseline they are the multi-hit-column proxy.
+Each stem is one (column, derived base); its colour is the pyrimidine-folded
+substitution class (see the legend) and its height is the number of independent
+hits. Markers are drawn semi-transparent so that stems stacked at the same column
+and height remain visible.
 
-![Recurrently hit sites](../img/spectra_homoplasy.png)
+The recurrence *unit* differs by method, and the two plots make the point of the
+whole feature. Under the **baseline** every hit is one sequence carrying the
+derived state, so shared/inherited RIP makes almost every column look "recurrent"
+— the multi-hit-column proxy saturates:
+
+![Recurrent sites, baseline](../img/spectra_homoplasy_baseline.png)
+
+Under **`--method phylo`** each hit is an independent *branch* event, so only sites
+that truly mutated more than once on the tree remain. The plot is far sparser and
+each stem is a real recurrence (here, sites hit on ≥3 independent branches):
+
+![Recurrent sites, phylogenetic](../img/spectra_homoplasy_phylo.png)
 
 ### Strand asymmetry
 
 From the SBS-192 matrix, each pyrimidine class is compared to its
-reverse-complement partner, with a binomial screening p-value. This is where
-enzyme-, replication- or transcription-linked strand biases show up.
+reverse-complement partner. For every class two bars are drawn: **coding-strand**
+counts (blue) and **template-strand** counts (orange) — the legend colours the two
+strands, and the substitution class is read off the x-axis. An **asterisk** marks a
+class whose coding-vs-template split departs from an even 50:50 at a binomial
+`p < 0.05` (the figure footnote states this). This is where enzyme-, replication-
+or transcription-linked strand biases show up.
 
 ![Strand asymmetry](../img/spectra_strand_asymmetry.png)
 
 ### Per-lineage spectra
 
 `--partition-by clade` (phylo) splits the matrices into one sample column per
-subtree hanging off the root, so `SigProfilerPlotting` renders one panel per
-lineage — useful for spotting lineage-specific deamination. `--partition-by row`
-does the analogous per-sequence split for the baseline.
+subtree hanging off the root, so both the matrix files and the plots carry one
+panel per lineage — useful for spotting lineage-specific deamination. Each branch
+is attributed to the clade its child subtree belongs to; branches above the split
+form the ancestral trunk.
+
+```bash
+derip2-spectra -i family.fasta --method phylo --partition-by clade \
+    -d out -p family
+```
+
+![Per-clade spectra](../img/spectra_clade.png)
+
+`--partition-by row` does the analogous per-sequence split for the baseline.
+
+### Per-group spectra (species or user-defined sets)
+
+When you already know which sequences belong together — species, populations,
+sub-families — pass a two-column mapping with `--groups` to get one spectrum per
+group. This works for **both** methods.
+
+The mapping file is whitespace- or tab-separated: sequence name, then group label.
+A header row and `#` comments are optional:
+
+```text
+# sequence            group
+UNSE01000019.1:422682-431483(-)   speciesA
+UNSE01000019.1:709761-718562(-)   speciesA
+UNSE01000006.1:12043-20871(+)     speciesB
+Sahana_prime                      reference
+```
+
+```bash
+# Baseline: one spectrum per group, each sequence compared to the deRIP ancestor
+derip2-spectra -i family.fasta --groups groups.tsv -d out -p family
+
+# Phylogenetic: a branch is attributed to a group only when its whole descendant
+# clade belongs to that group (spanning branches become 'mixed')
+derip2-spectra -i family.fasta --method phylo --groups groups.tsv -d out -p family
+```
+
+Names are matched leniently: the label file may use the original FASTA ids even
+though IQ-TREE rewrites special characters in tree tip names, so the same file
+works for both methods. Sequences absent from the map fall into an `ungrouped`
+sample.
+
+![Per-group spectra](../img/spectra_groups.png)
+
+!!! note "Grouping in the example"
+    The Sahana copies have no species labels, so this figure bins them by genomic
+    scaffold purely to illustrate the mechanic. In practice the labels would be
+    your species or population names, and the panels would let you compare, say,
+    RIP intensity between a methylation-competent and a methylation-deficient
+    lineage.
 
 ### Run manifest
 
@@ -191,19 +283,54 @@ rooting. Directionality depends on the root, so record it.
 | `--threads` | IQ-TREE `-T` (default `AUTO`; pass an integer to skip its benchmark on small alignments) |
 | `--min-prob` | drop phylo events below this parent × child ancestral posterior |
 | `--partition-by {none,row,clade}` | pool, per-sequence, or per-clade samples |
+| `--groups FILE` | report one spectrum per user-defined group (both methods) |
 | `--root-sensitivity` | report how much polarity depends on the rooting choice |
 | `--ancestor FASTA` | baseline only: call against a supplied ancestor instead of the deRIP consensus |
 
 ## Decomposing against COSMIC signatures
 
 Because the matrices are SigProfiler-compliant, you can fit them to reference
-signatures with the SigProfiler tools (installed separately):
+signatures. First render the standard SBS-96 figure (`SigProfilerPlotting`), then
+fit COSMIC signatures with `SigProfilerAssignment` (both installed separately):
 
 ```python
-import sigProfilerPlotting as sigPlt
-sigPlt.plotSBS('out/family.SBS96.txt', 'out/plots/', 'family', '96')
+from SigProfilerAssignment import Analyzer as Analyze
+
+Analyze.cosmic_fit(
+    samples='out/family.SBS96.txt',
+    output='out/cosmic',
+    input_type='matrix',
+    context_type='96',
+    cosmic_version=3.4,
+    make_plots=True,
+)
 ```
 
-Interpret single-gene or single-family fits cautiously: COSMIC signatures were
-derived on whole-genome trinucleotide opportunities, so a normalisation caveat
-applies.
+Fitting the full Sahana spectrum (326,778 events) to COSMIC v3.4 gives:
+
+| COSMIC signature | Assigned mutations | Share | Human-cancer aetiology |
+|---|---:|---:|---|
+| SBS44 | 135,625 | 41.5% | defective mismatch repair |
+| SBS96 | 92,238 | 28.2% | unknown |
+| SBS2  | 51,312 | 15.7% | APOBEC cytosine deamination |
+| SBS1  | 47,603 | 14.6% | spontaneous 5-methyl-cytosine deamination |
+
+The reconstruction **cosine similarity is only 0.80** (a good fit is usually
+> 0.9). That poor fit is itself the result: RIP has no COSMIC signature, so the
+fitter approximates it with a blend of the human deamination signatures (SBS1,
+the CpG 5mC-deamination clock, and SBS2, APOBEC) plus catch-all signatures.
+
+!!! warning "COSMIC signatures do not apply directly to fungi"
+    The COSMIC reference set was derived from **human cancers**, on whole-genome
+    trinucleotide opportunities. RIP and fungal methylation-driven deamination are
+    not represented, so a decomposition like the one above is at best a loose
+    analogy — treat the assigned signatures as "the nearest human look-alikes",
+    not as mechanisms operating in your fungus. The low cosine similarity is the
+    honest signal of that mismatch. The same machinery would, however, work well
+    against a **fungal-specific reference library** (a custom signature matrix in
+    the same SBS-96 format), which is the appropriate way to interpret these
+    spectra — and building one is a natural next step for the community.
+
+Interpret single-gene or single-family fits cautiously in any case: reference
+signatures assume genome-wide trinucleotide opportunities, so a normalisation
+caveat applies on top of the species-mismatch one.

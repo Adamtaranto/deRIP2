@@ -88,6 +88,85 @@ def test_cli_partition_by_row(tmp_path):
     assert matrix.shape == (96, 6)
 
 
+def test_group_lookup_tolerates_sanitised_names(tmp_path):
+    """The groups lookup matches both original and IQ-TREE-sanitised names."""
+    from derip2.app_spectra import _load_group_lookup
+
+    mapping = tmp_path / 'groups.tsv'
+    mapping.write_text('name\tgroup\nscf:1-9(+)\tspeciesA\nSeq2\tspeciesB\n')
+    lookup = _load_group_lookup(str(mapping))
+    # Original name resolves...
+    assert lookup('scf:1-9(+)') == 'speciesA'
+    # ...and so does the sanitised form IQ-TREE would write.
+    assert lookup('scf_1-9___') == 'speciesA'
+    assert lookup('Seq2') == 'speciesB'
+    assert lookup('unknown') is None
+
+
+def test_cli_groups_baseline(tmp_path):
+    """--groups splits the baseline matrix into one column per group."""
+    mapping = tmp_path / 'groups.tsv'
+    mapping.write_text(
+        'name\tgroup\nSeq1\tA\nSeq2\tA\nSeq3\tA\nSeq4\tB\nSeq5\tB\nSeq6\tB\n'
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            '-i',
+            MINTEST,
+            '-d',
+            str(tmp_path),
+            '-p',
+            'g',
+            '--sbs',
+            '96',
+            '--groups',
+            str(mapping),
+            '--no-plots',
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    _, samples, matrix = read_sbs_matrix(str(tmp_path / 'g.SBS96.txt'))
+    assert set(samples) == {'A', 'B'}
+    assert matrix.shape == (96, 2)
+
+
+@pytest.mark.skipif(not _HAVE_IQTREE, reason='IQ-TREE not on PATH')
+def test_cli_groups_phylo(tmp_path):
+    """--groups works for the phylo path, giving per-group sample columns."""
+    mapping = tmp_path / 'groups.tsv'
+    mapping.write_text(
+        'name\tgroup\nSeq1\tA\nSeq2\tA\nSeq3\tA\nSeq4\tB\nSeq5\tB\nSeq6\tB\n'
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            '-i',
+            MINTEST,
+            '-d',
+            str(tmp_path),
+            '-p',
+            'g',
+            '--sbs',
+            '96',
+            '--method',
+            'phylo',
+            '--iqtree-model',
+            'JC',
+            '--threads',
+            '1',
+            '--groups',
+            str(mapping),
+            '--no-plots',
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    _, samples, _ = read_sbs_matrix(str(tmp_path / 'g.SBS96.txt'))
+    assert {'A', 'B'} & set(samples)
+
+
 def test_cli_clade_partition_rejected_for_baseline(tmp_path):
     """--partition-by clade is only valid for --method phylo."""
     runner = CliRunner()
