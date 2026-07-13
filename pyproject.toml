@@ -34,6 +34,7 @@ repository = "https://github.com/adamtaranto/derip2"
 
 [project.scripts]
 derip2 = "derip2.app:main"
+derip2-spectra = "derip2.app_spectra:main"
 
 [tool.hatch.build]
 source = "src"
