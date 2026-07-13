@@ -25,6 +25,7 @@ from collections import deque
 from dataclasses import dataclass, field
 import logging
 import os
+import re
 import shutil
 import subprocess
 from typing import Dict, List, Optional, Tuple
@@ -35,6 +36,31 @@ logger = logging.getLogger(__name__)
 
 # Candidate IQ-TREE executable names, most recent first.
 _IQTREE_BINARIES = ('iqtree3', 'iqtree2', 'iqtree')
+
+# IQ-TREE keeps only these characters in taxon names; everything else becomes '_'.
+_NAME_UNSAFE = re.compile(r'[^A-Za-z0-9._-]')
+
+
+def _sanitize_name(name: str) -> str:
+    """
+    Apply IQ-TREE's taxon-name sanitisation to a sequence id.
+
+    IQ-TREE replaces every character outside ``[A-Za-z0-9._-]`` with an
+    underscore in its tree and state outputs, so a FASTA id such as
+    ``UNSE01.1:1-9(-)`` is written as ``UNSE01.1_1-9_-_``. Reproducing that rule
+    lets tree leaves be matched back to alignment sequences.
+
+    Parameters
+    ----------
+    name : str
+        The original sequence id.
+
+    Returns
+    -------
+    str
+        The sanitised name as IQ-TREE would write it.
+    """
+    return _NAME_UNSAFE.sub('_', name)
 
 
 def find_iqtree(binary: Optional[str] = None) -> str:
@@ -150,6 +176,8 @@ def run_iqtree(
         executable,
         '-s',
         alignment_path,
+        '-m',
+        model,
         '--ancestral',
         '-T',
         threads,
@@ -157,10 +185,13 @@ def run_iqtree(
         prefix,
         '-redo',
     ]
+    # A fixed topology (``-te``) constrains the tree while the model, branch
+    # lengths and ancestral states are still estimated from ``alignment_path``.
+    # This is what the RIP-masked-topology workflow needs: infer the topology
+    # from the masked alignment, then reconstruct ancestral states for the
+    # unmasked sequences on that same topology.
     if fixed_tree is not None:
         cmd += ['-te', fixed_tree]
-    else:
-        cmd += ['-m', model]
     if extra_args:
         cmd += list(extra_args)
 
@@ -464,18 +495,41 @@ def build_reconstruction(
 
     node_seq, node_prob, n_sites = parse_state(state_path)
 
-    # Tip sequences come straight from the alignment (probability 1).
     arr = alignment_to_array(alignment)
     if arr.shape[1] != n_sites:
         raise ValueError(
             f'Alignment width {arr.shape[1]} does not match .state sites {n_sites}'
         )
-    tip_names = [record.id for record in alignment]
-    for i, name in enumerate(tip_names):
-        node_seq[name] = arr[i]
-        node_prob[name] = np.ones(n_sites, dtype=np.float64)
 
     tree = _load_tree(treefile)
+    leaf_names = [leaf.name for leaf in tree.leaves()]
+
+    # IQ-TREE sanitises tip names in its outputs (every character outside
+    # [A-Za-z0-9._-] becomes '_'), so a header like 'seq:1(-)' appears as
+    # 'seq_1_-_' in the tree. Map each tree leaf back to the alignment row via the
+    # same sanitisation so tip sequences attach to the right node.
+    sanitized_to_id = {}
+    for record in alignment:
+        key = _sanitize_name(record.id)
+        if key in sanitized_to_id:
+            raise ValueError(
+                f'Alignment ids {sanitized_to_id[key]!r} and {record.id!r} collide '
+                'after IQ-TREE name sanitisation; rename the sequences.'
+            )
+        sanitized_to_id[key] = record.id
+    id_to_row = {record.id: i for i, record in enumerate(alignment)}
+
+    tip_names = []
+    for leaf in leaf_names:
+        original = sanitized_to_id.get(leaf, leaf)
+        if original not in id_to_row:
+            raise ValueError(
+                f'Tree leaf {leaf!r} does not match any alignment sequence id'
+            )
+        node_seq[leaf] = arr[id_to_row[original]]
+        node_prob[leaf] = np.ones(n_sites, dtype=np.float64)
+        tip_names.append(leaf)
+
     root_name, resolved_method = _choose_root_name(tree, rooting, outgroup)
     edges = _orient_edges(tree, root_name)
 

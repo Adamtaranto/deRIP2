@@ -209,6 +209,52 @@ def test_find_iqtree_missing_raises():
         find_iqtree('definitely-not-iqtree-xyz')
 
 
+def test_sanitize_name_matches_iqtree():
+    """Name sanitisation matches IQ-TREE: only [A-Za-z0-9._-] survive."""
+    from derip2.spectra.tree_asr import _sanitize_name
+
+    assert _sanitize_name('UNSE01.1:1-9(-)') == 'UNSE01.1_1-9_-_'
+    assert _sanitize_name('scf|a b+c') == 'scf_a_b_c'
+    assert _sanitize_name('Seq1') == 'Seq1'  # clean names are unchanged
+
+
+def test_build_reconstruction_maps_sanitised_leaf_names(tmp_path):
+    """Tree leaves with IQ-TREE-sanitised names attach to the right sequences."""
+    from Bio.Align import MultipleSeqAlignment
+    from Bio.Seq import Seq
+    from Bio.SeqRecord import SeqRecord
+
+    from derip2.spectra.tree_asr import _sanitize_name
+
+    # Alignment ids carry characters IQ-TREE would rewrite to '_'.
+    aln = MultipleSeqAlignment(
+        [
+            SeqRecord(Seq('ACGT'), id='a:1(+)'),
+            SeqRecord(Seq('ATGT'), id='b:2(-)'),
+            SeqRecord(Seq('ACGA'), id='c'),
+        ]
+    )
+    # A tree written with the sanitised tip names, plus two internal nodes.
+    a_name = _sanitize_name('a:1(+)')
+    b_name = _sanitize_name('b:2(-)')
+    treefile = tmp_path / 'san.treefile'
+    treefile.write_text(f'(({a_name},{b_name})Node2,c)Node1;')
+    # A minimal .state for the two internal nodes over four sites.
+    statefile = tmp_path / 'san.state'
+    lines = ['# comment', 'Node\tSite\tState\tp_A\tp_C\tp_G\tp_T']
+    for node in ('Node1', 'Node2'):
+        for site, base in enumerate('ACGT', start=1):
+            probs = ['0.01', '0.01', '0.01', '0.01']
+            probs['ACGT'.index(base)] = '0.97'
+            lines.append(f'{node}\t{site}\t{base}\t' + '\t'.join(probs))
+    statefile.write_text('\n'.join(lines) + '\n')
+
+    rec = build_reconstruction(str(treefile), str(statefile), aln, rooting='none')
+    # The sanitised leaf name resolves to the original sequence's bases.
+    assert rec.node_seq[a_name].tobytes() == b'ACGT'
+    assert rec.node_seq[b_name].tobytes() == b'ATGT'
+
+
 # --------------------------------------------------------------------------
 # Live IQ-TREE integration (only when the binary is installed)
 # --------------------------------------------------------------------------
@@ -227,3 +273,26 @@ def test_reconstruct_end_to_end(tmp_path):
     res = compute_spectra_from_tree(rec)
     assert res.sbs96.sum() == res.sbs192.sum()
     assert 'iqtree_version' in rec.manifest
+
+
+@pytest.mark.skipif(not _HAVE_IQTREE, reason='IQ-TREE not on PATH')
+def test_reconstruct_fixed_tree(tmp_path):
+    """A user-supplied topology is used while ancestral states are recomputed."""
+    from derip2.aln_ops import loadAlign
+    from derip2.spectra.tree_asr import reconstruct
+
+    aln = loadAlign(MINTEST)
+    # Reconstruct ancestral states on the committed fixture topology.
+    rec = reconstruct(
+        aln,
+        str(tmp_path / 'fixed'),
+        model='JC',
+        threads='1',
+        rooting='none',
+        tree=TREEFILE,
+    )
+    assert rec.manifest['user_tree'] == TREEFILE
+    assert len(rec.edges) == 9
+    # Every internal node still has a reconstructed sequence on the fixed tree.
+    res = compute_spectra_from_tree(rec)
+    assert res.method == 'phylogenetic'

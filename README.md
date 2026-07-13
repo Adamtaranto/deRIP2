@@ -180,6 +180,35 @@ derip2 -i tests/data/mintest.fa \
 
 ![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_reaminated_visualization.png)
 
+### Mutation spectra (`derip2-spectra`)
+
+`derip2-spectra` builds trinucleotide-context **SBS-96** and **SBS-192** mutation
+spectra (SigProfiler-compliant matrices plus plots), so RIP (a `C>T` peak in CpA
+context) can be told apart from other cytosine-deamination processes. It offers a
+fast tree-free baseline and a phylogenetic path (IQ-TREE ancestral reconstruction)
+that counts recurrent deamination correctly.
+
+```bash
+# Tree-free baseline (no external tools)
+derip2-spectra -i tests/data/mintest.fa -d results -p family
+
+# Phylogenetic path (requires IQ-TREE on PATH)
+derip2-spectra -i family.fasta --method phylo -d results -p family
+
+# Recommended: infer topology from a RIP-masked alignment, then reconstruct
+# ancestral states for the unmasked sequences on that topology
+derip2 -i family.fasta --mask --no-append -d results -p family
+iqtree3 -s results/family_masked_alignment.fasta -m MFP -B 1000 -T AUTO \
+  --prefix results/family_masked
+derip2-spectra -i family.fasta --method phylo --tree results/family_masked.treefile \
+  -d results -p family_spectrum
+```
+
+![SBS-96 mutation spectrum of a RIP-affected transposon](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/spectra_sbs96.png)
+
+See the [Mutation Spectra tutorial](https://adamtaranto.github.io/deRIP2/tutorials/mutation-spectra/)
+for the full walkthrough, including supplying your own phylogeny.
+
 ## Standard Options
 
 ```code

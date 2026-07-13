@@ -55,11 +55,11 @@ version-file = "src/derip2/_version.py"
 # Optional dependencies for testing
 [project.optional-dependencies]
 
-# Phylogenetic mutation-spectrum path (derip2-spectra --run-iqtree / --tree).
-# ete4 handles tree parsing, rooting and traversal. The IQ-TREE binary is not
-# pip-installable: install it separately (e.g. `conda install -c bioconda
-# iqtree`) and ensure `iqtree`/`iqtree2`/`iqtree3` is on PATH.
-spectra = ["ete4>=4.0"]
+# NOTE: the phylogenetic mutation-spectrum path (derip2-spectra --method phylo)
+# also needs the IQ-TREE binary, which is not pip-installable. Install it
+# separately (e.g. `conda install -c bioconda iqtree`) and ensure
+# `iqtree3`/`iqtree2`/`iqtree` is on PATH. The ete4 Python dependency it uses is
+# a core dependency above.
 
 docs = [
     "mkdocs-jupyter",

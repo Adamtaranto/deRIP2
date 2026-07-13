@@ -144,3 +144,55 @@ derip2 -i tests/data/mintest.fa \
   --logfile TEXT                  Log file path.
   -h, --help                      Show this message and exit.
 ```
+
+## Mutation spectra (`derip2-spectra`)
+
+`derip2-spectra` builds trinucleotide-context SBS-96 and SBS-192 mutation spectra
+from an alignment. See the [Mutation Spectra tutorial](../tutorials/mutation-spectra.md)
+for a full walkthrough; the essentials are below.
+
+### Baseline (no tree, no external tools)
+
+```bash
+derip2-spectra -i tests/data/mintest.fa -d results -p family
+```
+
+Writes `family.SBS96.txt`, `family.SBS192.txt` (SigProfiler-compliant matrices),
+the spectrum/strand-asymmetry/homoplasy plots, and `family_events.tsv`.
+
+### Phylogenetic (IQ-TREE ancestral reconstruction)
+
+Requires IQ-TREE (`iqtree3`/`iqtree2`/`iqtree`) on `PATH`.
+
+```bash
+# Infer the tree and reconstruct ancestors automatically
+derip2-spectra -i family.fasta --method phylo -d results -p family
+```
+
+### Supplying a precalculated phylogeny
+
+Pass any Newick tree with `--tree`; IQ-TREE fixes that topology and recomputes the
+model, branch lengths and ancestral states from the alignment.
+
+```bash
+iqtree3 -s family.fasta -m MFP -B 1000 -T AUTO --prefix family_tree
+derip2-spectra -i family.fasta --method phylo --tree family_tree.treefile \
+  -d results -p family
+```
+
+### Recommended: topology from a RIP-masked alignment
+
+Infer the topology from a RIP-masked alignment (so convergent RIP does not distort
+it), then reconstruct ancestral states for the **unmasked** sequences on that same
+topology:
+
+```bash
+derip2 -i family.fasta --mask --no-append -d results -p family
+iqtree3 -s results/family_masked_alignment.fasta -m MFP -B 1000 -T AUTO \
+  --prefix results/family_masked
+derip2-spectra -i family.fasta --method phylo --tree results/family_masked.treefile \
+  -d results -p family_spectrum
+```
+
+Run `derip2-spectra --help` for the full option list (`--sbs`, `--rooting`,
+`--outgroup`, `--partition-by`, `--min-prob`, `--root-sensitivity`, `--threads`, …).

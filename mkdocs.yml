@@ -9,6 +9,7 @@ nav:
   - Home: index.md
   - Getting Started: tutorial.ipynb
   - RIP Strand Bias: tutorials/rip-strand-bias.md
+  - Mutation Spectra: tutorials/mutation-spectra.md
   - API Docs: api-docs/deRIP_API.md
   - CLI Docs: cli-docs/deRIP_cmd_line.md
 theme:

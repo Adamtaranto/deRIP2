@@ -145,6 +145,41 @@ def test_bench_compute_rsi_weighted(benchmark, sahana_alignment_small):
     benchmark(lambda: compute_rsi(cls, ambiguous='weight'))
 
 
+def test_bench_compute_spectra(benchmark, sahana_alignment_small):
+    """Benchmark the tree-free SBS-96/192 assembly against a single reference."""
+    from derip2.stats.mutation_spectra import compute_spectra
+
+    cls = ao.classify_alignment(sahana_alignment_small, progress=False)
+    # Use the first sequence as the ancestral reference for the benchmark.
+    ancestor = str(sahana_alignment_small[0].seq)
+    benchmark(lambda: compute_spectra(cls, ancestor))
+
+
+def test_bench_compute_spectra_from_tree(benchmark, sahana_alignment_small):
+    """Benchmark per-branch substitution calling over a star topology."""
+    import numpy as np
+
+    from derip2.spectra.call_mutations import compute_spectra_from_tree
+    from derip2.spectra.tree_asr import TreeReconstruction
+
+    arr = ao.alignment_to_array(sahana_alignment_small)
+    n_rows, n_cols = arr.shape
+    names = [f'r{i}' for i in range(n_rows)]
+    node_seq = {names[i]: arr[i] for i in range(n_rows)}
+    node_prob = {name: np.ones(n_cols) for name in names}
+    # A star tree: every other sequence descends directly from the first.
+    edges = [(names[0], names[i]) for i in range(1, n_rows)]
+    rec = TreeReconstruction(
+        edges=edges,
+        node_seq=node_seq,
+        node_prob=node_prob,
+        root_name=names[0],
+        tip_names=names[1:],
+        n_cols=n_cols,
+    )
+    benchmark(lambda: compute_spectra_from_tree(rec))
+
+
 def test_bench_plot_strand_bias(benchmark, sahana_alignment_small):
     """Benchmark rendering the strand-bias figure to an in-memory SVG."""
     import io
