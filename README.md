@@ -192,6 +192,14 @@ that counts recurrent deamination correctly.
 # Tree-free baseline (no external tools)
 derip2-spectra -i tests/data/mintest.fa -d results -p family
 
+# Reuse an ancestor you already deRIP'd: if the input alignment already contains
+# a consensus row (default id "deRIPseq", e.g. from `derip2`), it is used as the
+# reference and excluded from the counted sequences instead of being recomputed.
+# Use --reference-tag to point at a differently-named row, or --ancestor FILE to
+# supply a separate single-sequence FASTA (validated to match the alignment width).
+derip2-spectra -i family_with_deRIPseq.fasta -d results -p family
+derip2-spectra -i family.fasta --ancestor ancestor.fasta -d results -p family
+
 # Phylogenetic path (requires IQ-TREE on PATH)
 derip2-spectra -i family.fasta --method phylo -d results -p family
 
@@ -208,7 +216,9 @@ derip2-spectra -i family.fasta --method phylo --tree results/family_masked.treef
 
 Spectra can be reported per sequence, per clade, or per user-defined group
 (`--groups`, e.g. species), and the SigProfiler-compliant matrices can be
-decomposed against reference signatures.
+decomposed against reference signatures. Input alignments must be unambiguous
+DNA (`A/C/G/T/-`, case-insensitive); degenerate IUPAC characters (`N`, `R`, `Y`,
+…) are rejected with a clear error rather than being silently coerced to gaps.
 
 See the [Mutation Spectra tutorial](https://adamtaranto.github.io/deRIP2/tutorials/mutation-spectra/)
 for the full walkthrough, including supplying your own phylogeny and per-group

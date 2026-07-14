@@ -99,6 +99,43 @@ result = d.calculate_spectra()           # baseline spectra against that ancesto
 result.sbs96                             # (96, n_samples) count matrix
 ```
 
+#### Reusing an ancestor already in your alignment
+
+The plain `derip2` command appends its deRIP'd consensus to the output alignment
+by default, as a row whose id is its `--prefix` (default `deRIPseq`). If you feed
+that alignment straight to `derip2-spectra`, it **detects that row, uses it as the
+ancestor, and excludes it from the counted sequences** — no recomputation, and no
+self-comparison inflating the counts:
+
+```bash
+# 1. deRIP the family with the default prefix; this writes
+#    out/deRIPseq_alignment.fasta with a "deRIPseq" consensus row appended
+derip2 -i family.fasta -d out
+
+# 2. Spectra reuse that row automatically (logged: "Using pre-computed reference
+#    'deRIPseq' from MSA; excluding it from counted sequences")
+derip2-spectra -i out/deRIPseq_alignment.fasta -d out -p family_spectrum
+```
+
+Because the appended row takes `derip2`'s `--prefix`, the spectra default
+`--reference-tag deRIPseq` matches a default `derip2` run. If you deRIP'd with a
+different prefix (or curated the row by hand), name the tag to match — it is an
+exact id match:
+
+```bash
+derip2 -i family.fasta -d out -p family      # row is named "family"
+derip2-spectra -i out/family_alignment.fasta --reference-tag family -d out -p fam_spec
+```
+
+Precedence is explicit: an `--ancestor FILE` always wins over an in-alignment row,
+which in turn wins over recomputing the consensus.
+
+!!! note "Input must be unambiguous DNA"
+    Alignments may contain only `A/C/G/T/-` (upper or lower case — soft-masking is
+    normalised before analysis). Degenerate IUPAC characters (`N`, `R`, `Y`, …)
+    are **rejected with an error** naming the offending character and its location,
+    rather than being silently coerced to gaps as they were previously.
+
 ### Phylogenetic (`--method phylo`)
 
 The rigorous path reconstructs ancestral sequences at every internal node of a tree
@@ -415,7 +452,8 @@ print(res['cosine_similarity'], res['pvalue'], res['cramers_v'])
 | `--partition-by {none,row,clade}` | pool, per-sequence, or per-clade samples |
 | `--groups FILE` | report one spectrum per user-defined group (both methods) |
 | `--root-sensitivity` | report how much polarity depends on the rooting choice |
-| `--ancestor FASTA` | baseline only: call against a supplied ancestor instead of the deRIP consensus |
+| `--ancestor FASTA` | baseline only: call against a supplied ancestor (validated to match the alignment width) instead of the deRIP consensus |
+| `--reference-tag ID` | baseline only: id of an ancestor row already in the alignment to reuse and exclude from counting (default `deRIPseq`) |
 
 ## Decomposing against COSMIC signatures
 
