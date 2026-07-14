@@ -190,8 +190,8 @@ def test_cli_clade_partition_rejected_for_baseline(tmp_path):
 def _write_alignment(path, records):
     """Write ``(id, seq)`` pairs to a FASTA file."""
     from Bio.Align import MultipleSeqAlignment
-    from Bio.SeqIO import write
     from Bio.Seq import Seq
+    from Bio.SeqIO import write
     from Bio.SeqRecord import SeqRecord
 
     aln = MultipleSeqAlignment(

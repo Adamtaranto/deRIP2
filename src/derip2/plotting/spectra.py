@@ -20,8 +20,8 @@ from typing import List, Optional, Tuple
 import matplotlib
 
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+import matplotlib.pyplot as plt
 import numpy as np
 
 from derip2.plotting.strandbias import (
