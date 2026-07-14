@@ -262,6 +262,125 @@ def loadAlign(file: str, alnFormat: str = 'fasta') -> 'AlignIO.MultipleSeqAlignm
     return align
 
 
+def loadFirstSequence(file: str) -> 'SeqRecord':
+    """
+    Load the first sequence record from a FASTA file.
+
+    Unlike :func:`loadAlign`, this accepts a single-sequence file, which is the
+    usual shape of a hypothetical-ancestor reference. Gzipped input is supported.
+
+    Parameters
+    ----------
+    file : str
+        Path to the FASTA file (optionally gzipped).
+
+    Returns
+    -------
+    Bio.SeqRecord.SeqRecord
+        The first record in the file.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the file does not exist.
+    ValueError
+        If the file contains no sequences.
+    """
+    import gzip
+
+    path = isfile(file)
+    is_gzipped = path.lower().endswith(('.gz', '.gzip'))
+
+    if is_gzipped:
+        with gzip.open(path, 'rt') as handle:
+            record = next(SeqIO.parse(handle, 'fasta'), None)
+    else:
+        with open(path) as handle:
+            record = next(SeqIO.parse(handle, 'fasta'), None)
+
+    if record is None:
+        raise ValueError(f'No sequences found in {file}')
+    return record
+
+
+# Characters an unambiguous DNA alignment may contain. Lowercase is kept so that
+# soft-masked alignments (common from RepeatMasker et al.) are accepted; '-' is
+# the gap. Everything else — N and the IUPAC degeneracy codes (R, Y, W, S, K, M,
+# B, D, H, V), '.', '*', whitespace — is rejected.
+_ALLOWED_ALIGN_CHARS = frozenset('ACGTacgt-')
+
+
+def validate_no_degenerate(align: 'AlignIO.MultipleSeqAlignment') -> None:
+    """
+    Ensure an alignment contains only unambiguous DNA characters.
+
+    Mutation-spectrum calling is only meaningful over clean ``ACGT`` (plus gaps).
+    Degenerate IUPAC codes (``N``, ``R``, ``Y`` ...) would otherwise be silently
+    coerced to gaps downstream, so this gate makes the problem explicit. Lowercase
+    ``acgt`` is accepted so soft-masked alignments pass.
+
+    Parameters
+    ----------
+    align : Bio.Align.MultipleSeqAlignment
+        The alignment to validate.
+
+    Returns
+    -------
+    None
+        Returns nothing if every character is allowed.
+
+    Raises
+    ------
+    ValueError
+        If any sequence contains a character other than ``A``, ``C``, ``G``,
+        ``T`` (either case) or ``-``. The message names the offending character
+        and the first sequence ID and 1-based column where it occurs.
+    """
+    for record in align:
+        for col, char in enumerate(str(record.seq), start=1):
+            if char not in _ALLOWED_ALIGN_CHARS:
+                raise ValueError(
+                    f'Alignment contains a non-ACGT character {char!r} in '
+                    f'sequence {record.id!r} at column {col}. Mutation-spectrum '
+                    'analysis requires unambiguous DNA (A/C/G/T/- only); resolve '
+                    'or remove degenerate/IUPAC characters before running.'
+                )
+
+
+def uppercase_alignment(
+    align: 'AlignIO.MultipleSeqAlignment',
+) -> 'AlignIO.MultipleSeqAlignment':
+    """
+    Return a copy of an alignment with every sequence upper-cased.
+
+    RIP detection in this module compares against upper-case byte literals, so
+    soft-masked (lower-case) input would be silently treated as non-RIP. Normalise
+    to upper case once, up front, so masked and unmasked alignments give identical
+    results.
+
+    Parameters
+    ----------
+    align : Bio.Align.MultipleSeqAlignment
+        The alignment to normalise.
+
+    Returns
+    -------
+    Bio.Align.MultipleSeqAlignment
+        A new alignment with upper-cased sequences; record IDs/descriptions kept.
+    """
+    return MultipleSeqAlignment(
+        [
+            SeqRecord(
+                Seq(str(record.seq).upper()),
+                id=record.id,
+                name=record.name,
+                description=record.description,
+            )
+            for record in align
+        ]
+    )
+
+
 def alignSummary(align: 'AlignIO.MultipleSeqAlignment') -> None:
     """
     Log a summary of an alignment's dimensions and sequence IDs.

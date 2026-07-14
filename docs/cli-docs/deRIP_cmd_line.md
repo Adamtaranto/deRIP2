@@ -144,3 +144,98 @@ derip2 -i tests/data/mintest.fa \
   --logfile TEXT                  Log file path.
   -h, --help                      Show this message and exit.
 ```
+
+## Mutation spectra (`derip2-spectra`)
+
+`derip2-spectra` builds trinucleotide-context SBS-96 and SBS-192 mutation spectra
+from an alignment. See the [Mutation Spectra tutorial](../tutorials/mutation-spectra.md)
+for a full walkthrough; the essentials are below.
+
+### Baseline (no tree, no external tools)
+
+```bash
+derip2-spectra -i tests/data/mintest.fa -d results -p family
+```
+
+Writes `family.SBS96.txt`, `family.SBS192.txt` (SigProfiler-compliant matrices),
+the spectrum/strand-asymmetry/homoplasy plots, and `family_events.tsv`.
+
+By default the baseline reconstructs the deRIP consensus internally and calls
+every sequence against it.
+
+### Reusing a precomputed ancestral reference
+
+If you have already run `derip2` and appended the deRIP'd consensus to your
+alignment, `derip2-spectra` will reuse it instead of recomputing. Any row whose
+id matches `--reference-tag` (default `deRIPseq`) is used as the ancestral
+reference and **excluded from the counted sequences** (a message is logged when
+this happens):
+
+```bash
+# family_with_deRIPseq.fasta already contains a "deRIPseq" row
+derip2-spectra -i family_with_deRIPseq.fasta -d results -p family
+
+# Point at a differently-named reference row
+derip2-spectra -i family.fasta --reference-tag MyAncestor -d results -p family
+```
+
+Alternatively, supply a separate hypothetical ancestor as a single-sequence
+FASTA with `--ancestor`. It must be the same length as the alignment (this is
+validated up front) and takes precedence over any in-alignment reference row:
+
+```bash
+derip2-spectra -i family.fasta --ancestor ancestor.fasta -d results -p family
+```
+
+> **Input must be unambiguous DNA.** Alignments may only contain `A/C/G/T/-`
+> (upper or lower case; soft-masking is normalised). Degenerate IUPAC characters
+> (`N`, `R`, `Y`, …) are rejected with an error naming the offending character
+> and its location, rather than being silently treated as gaps.
+
+### Phylogenetic (IQ-TREE ancestral reconstruction)
+
+Requires IQ-TREE (`iqtree3`/`iqtree2`/`iqtree`) on `PATH`.
+
+```bash
+# Infer the tree and reconstruct ancestors automatically
+derip2-spectra -i family.fasta --method phylo -d results -p family
+```
+
+### Supplying a precalculated phylogeny
+
+Pass any Newick tree with `--tree`; IQ-TREE fixes that topology and recomputes the
+model, branch lengths and ancestral states from the alignment.
+
+```bash
+iqtree3 -s family.fasta -m MFP -B 1000 -T AUTO --prefix family_tree
+derip2-spectra -i family.fasta --method phylo --tree family_tree.treefile \
+  -d results -p family
+```
+
+### Recommended: topology from a RIP-masked alignment
+
+Infer the topology from a RIP-masked alignment (so convergent RIP does not distort
+it), then reconstruct ancestral states for the **unmasked** sequences on that same
+topology:
+
+```bash
+derip2 -i family.fasta --mask --no-append -d results -p family
+iqtree3 -s results/family_masked_alignment.fasta -m MFP -B 1000 -T AUTO \
+  --prefix results/family_masked
+derip2-spectra -i family.fasta --method phylo --tree results/family_masked.treefile \
+  -d results -p family_spectrum
+```
+
+### Per-group spectra (species or user-defined sets)
+
+Pass a two-column (name, group) file with `--groups` to report one spectrum per
+group. Works for both methods and tolerates IQ-TREE name reformatting:
+
+```bash
+derip2-spectra -i family.fasta --groups groups.tsv -d results -p family
+derip2-spectra -i family.fasta --method phylo --groups groups.tsv -d results -p family
+```
+
+Run `derip2-spectra --help` for the full option list (`--sbs`, `--rooting`,
+`--outgroup`, `--partition-by`, `--groups`, `--min-prob`, `--root-sensitivity`,
+`--threads`, …).

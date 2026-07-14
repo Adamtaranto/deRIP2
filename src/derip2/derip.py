@@ -128,6 +128,7 @@ class DeRIP:
         self.markupdict = None
         self.column_classes = None
         self.rsi_result = None
+        self.spectra_result = None
 
         # Load the alignment
         self._load_alignment(alignment_input)
@@ -363,6 +364,7 @@ class DeRIP:
         self.markupdict = None
         self.column_classes = None
         self.rsi_result = None
+        self.spectra_result = None
 
     def _require_rip(self, action: str) -> None:
         """
@@ -1112,6 +1114,154 @@ class DeRIP:
         return plot_strand_bias(
             self.column_classes, outfile=output_file, mode=mode, **kwargs
         )
+
+    def calculate_spectra(
+        self, partition_by: str = 'none', ancestor=None, samples=None
+    ):
+        """
+        Compute the SBS-96 and SBS-192 trinucleotide mutation spectra.
+
+        Every alignment cell whose base differs from the ancestral reference at
+        that column is counted as one substitution event, with its trinucleotide
+        context read from the ancestor using nearest non-gap bases. Events are
+        folded to the pyrimidine strand for the SBS-96 matrix and kept
+        strand-resolved for the SBS-192 matrix.
+
+        This is the tree-free *baseline* spectrum: the ancestor is deRIP2's
+        reconstructed consensus (or a user-supplied sequence), so recurrence is
+        reported only as a multi-hit-column proxy. Correct independent-event
+        counting requires the phylogenetic path.
+
+        Parameters
+        ----------
+        partition_by : {'none', 'row'}, optional
+            How to split the spectra into samples. ``'none'`` (default) pools
+            every sequence into one ``AllSequences`` sample; ``'row'`` gives one
+            sample column per input sequence. Ignored when ``samples`` is given.
+        ancestor : str or Bio.SeqRecord.SeqRecord, optional
+            Ancestral reference sequence, one base per alignment column. Defaults
+            to deRIP2's gapped consensus (:attr:`gapped_consensus`).
+        samples : sequence of str, optional
+            An explicit per-row sample label (length equal to the number of
+            sequences), e.g. species or group names. Overrides ``partition_by``
+            when provided.
+
+        Returns
+        -------
+        derip2.stats.mutation_spectra.SpectraResult
+            The assembled spectra, per-event detail and homoplasy proxy.
+
+        Raises
+        ------
+        ValueError
+            If :meth:`calculate_rip` has not been called first, or if
+            ``partition_by`` is not recognised.
+
+        See Also
+        --------
+        derip2.stats.mutation_spectra.compute_spectra : The underlying calculation.
+        """
+        from derip2.stats import compute_spectra
+
+        self._require_rip('calculating spectra')
+
+        if ancestor is None:
+            ancestor_seq = str(self.gapped_consensus.seq)
+        elif hasattr(ancestor, 'seq'):
+            ancestor_seq = str(ancestor.seq)
+        else:
+            ancestor_seq = str(ancestor)
+
+        if samples is not None:
+            pass  # explicit per-row labels take precedence
+        elif partition_by == 'none':
+            samples = None
+        elif partition_by == 'row':
+            samples = [record.id for record in self.alignment]
+        else:
+            raise ValueError(
+                f"partition_by must be 'none' or 'row', got {partition_by!r}"
+            )
+
+        self.spectra_result = compute_spectra(
+            self.column_classes, ancestor_seq, samples=samples
+        )
+        logger.info(
+            'Computed mutation spectra: %d events across %d sample(s)',
+            self.spectra_result.event_rows.size,
+            len(self.spectra_result.sample_names),
+        )
+        return self.spectra_result
+
+    def write_spectra_matrix(self, output_file: str, kind: str = '96', **kwargs) -> str:
+        """
+        Write a SigProfiler-compliant SBS matrix, computing spectra if needed.
+
+        Parameters
+        ----------
+        output_file : str
+            Destination path for the tab-separated matrix file.
+        kind : {'96', '192'}, optional
+            Which spectrum matrix to write (default: ``'96'``).
+        **kwargs
+            Passed to :meth:`calculate_spectra` when spectra have not yet been
+            computed.
+
+        Returns
+        -------
+        str
+            The path written.
+        """
+        from derip2.spectra import write_sbs_matrix
+
+        if self.spectra_result is None:
+            self.calculate_spectra(**kwargs)
+        return write_sbs_matrix(self.spectra_result, output_file, kind=kind)
+
+    def plot_spectra(
+        self, output_file: Optional[str] = None, kind: str = '96', **kwargs
+    ):
+        """
+        Draw an SBS mutation-spectrum figure, computing spectra if needed.
+
+        Parameters
+        ----------
+        output_file : str, optional
+            Path to write the figure to. Use ``.svg`` or ``.pdf`` for
+            publication output.
+        kind : {'96', '192', 'strand', 'homoplasy'}, optional
+            Which figure to draw: the SBS-96 spectrum (default), the SBS-192
+            strand-resolved spectrum, the strand-asymmetry panel, or the
+            homoplasy (recurrence) plot.
+        **kwargs
+            Forwarded to the underlying plotting function (e.g. ``title``,
+            ``percentage``, ``min_hits``), except any that
+            :meth:`calculate_spectra` consumes when spectra are first computed.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            The figure.
+
+        Raises
+        ------
+        ValueError
+            If ``kind`` is not recognised.
+        """
+        from derip2.plotting import spectra as spectra_plots
+
+        if self.spectra_result is None:
+            self.calculate_spectra()
+
+        plotters = {
+            '96': spectra_plots.plot_sbs96,
+            '192': spectra_plots.plot_sbs192,
+            'strand': spectra_plots.plot_strand_asymmetry,
+            'homoplasy': spectra_plots.plot_homoplasy,
+        }
+        if kind not in plotters:
+            raise ValueError(f'kind must be one of {sorted(plotters)}, got {kind!r}')
+        return plotters[kind](self.spectra_result, output_file, **kwargs)
 
     def write_html_report(
         self,

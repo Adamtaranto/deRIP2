@@ -4,10 +4,16 @@ channels:
   - bioconda
 dependencies:
   - python 3.14
+  # IQ-TREE provides the maximum-likelihood tree and marginal ancestral state
+  # reconstruction for the phylogenetic mutation-spectrum path (derip2-spectra
+  # --run-iqtree). It is an external binary, so it is installed via conda rather
+  # than pip and must be on PATH; the core derip2 command does not need it.
+  - iqtree >=2.2
   - pip
   - pip:
       - "biopython >=1.80"
       - click
+      - "ete4 >=4.0"
       - matplotlib
       - notebook
       - numpy

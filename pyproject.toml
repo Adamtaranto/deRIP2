@@ -19,6 +19,7 @@ classifiers = [
 dependencies = [
     "biopython>1.80",
     "click",
+    "ete4",
     "matplotlib",
     "numpy",
     "pandas",
@@ -34,6 +35,7 @@ repository = "https://github.com/adamtaranto/derip2"
 
 [project.scripts]
 derip2 = "derip2.app:main"
+derip2-spectra = "derip2.app_spectra:main"
 
 [tool.hatch.build]
 source = "src"
@@ -52,6 +54,12 @@ version-file = "src/derip2/_version.py"
 
 # Optional dependencies for testing
 [project.optional-dependencies]
+
+# NOTE: the phylogenetic mutation-spectrum path (derip2-spectra --method phylo)
+# also needs the IQ-TREE binary, which is not pip-installable. Install it
+# separately (e.g. `conda install -c bioconda iqtree`) and ensure
+# `iqtree3`/`iqtree2`/`iqtree` is on PATH. The ete4 Python dependency it uses is
+# a core dependency above.
 
 docs = [
     "mkdocs-jupyter",
@@ -119,12 +127,13 @@ exclude = [ # don't report on checks for these
     '\.__init__$',
     '\.__repr__$',
     '\.__str__$',
-    '\._lap$',       # local timing closure in calculate_rip
-    '\._mark$',      # local markup helper in correctRIP
-    '\._set_cell$',  # local overlay-fill helper in markupRIPBases
-    '\._cells$',     # local coordinate gather in build_markupdict
-    '\._merge$',     # local strand-merge helper in build_markupdict
-    '\._sort_key$',  # local sort key in sort_by_rsi
+    '\._lap$',      # local timing closure in calculate_rip
+    '\._mark$',     # local markup helper in correctRIP
+    '\._set_cell$', # local overlay-fill helper in markupRIPBases
+    '\._cells$',    # local coordinate gather in build_markupdict
+    '\._merge$',    # local strand-merge helper in build_markupdict
+    '\._sort_key$', # local sort key in sort_by_rsi
+    '\._lookup$',   # local group-name resolver in _load_group_lookup
 ]
 override_SS05 = [ # allow docstrings to start with these words
     '^Process ',
