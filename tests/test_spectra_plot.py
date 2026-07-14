@@ -84,3 +84,55 @@ def test_homoplasy_plot_handles_no_sites(result):
     fig = sp.plot_homoplasy(result, min_hits=999)
     assert fig is not None
     plt.close(fig)
+
+
+def test_binomial_pvalue_large_n_normal_approx():
+    """Above n=1000 the normal-approximation branch gives a sane p-value."""
+
+    # A 750/750 split is unbiased -> p near 1; a 900/1500 split is biased -> small.
+    even = sp._binom_two_sided(750, 1500)
+    biased = sp._binom_two_sided(900, 1500)
+    assert 0.0 <= biased <= even <= 1.0
+    assert even == pytest.approx(1.0, abs=1e-6)
+    assert biased < 0.01
+
+
+def test_counts_for_sample_zero_total_percentage():
+    """A percentage view of an all-zero sample stays zero (no divide-by-zero)."""
+    import numpy as np
+
+    matrix = np.zeros((96, 1))
+    counts = sp._counts_for_sample(matrix, 0, percentage=True)
+    assert counts.shape == (96,)
+    assert float(counts.sum()) == 0.0
+
+
+def test_multi_sample_sbs192_has_one_panel_per_sample(result_multi):
+    """A multi-sample result draws one SBS-192 axes per sample (title branch)."""
+    fig = sp.plot_sbs192(result_multi)
+    assert len(fig.axes) == len(result_multi.sample_names)
+    plt.close(fig)
+
+
+def test_strand_asymmetry_stars_biased_class():
+    """A class biased beyond 50:50 with enough events is starred and captioned."""
+    import numpy as np
+
+    # Build a minimal result-like object: strand_asymmetry only reads .sbs192.
+    class _Stub:
+        pass
+
+    stub = _Stub()
+    arr = np.zeros((192, 1))
+    # C>A coding block (channels 0..15) vs its purine partner (channels 96..111):
+    # 40 coding vs 12 template -> both >= min_count(10), strongly biased.
+    arr[0, 0] = 40
+    arr[96, 0] = 12
+    stub.sbs192 = arr
+
+    fig = sp.plot_strand_asymmetry(stub)
+    ax = fig.axes[0]
+    texts = [t.get_text() for t in ax.texts]
+    assert '*' in texts  # the star was drawn
+    assert any('binomial p < 0.05' in t for t in texts)  # caption drawn
+    plt.close(fig)

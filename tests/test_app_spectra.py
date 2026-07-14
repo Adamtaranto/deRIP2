@@ -187,6 +187,251 @@ def test_cli_clade_partition_rejected_for_baseline(tmp_path):
     assert result.exit_code != 0
 
 
+def _write_alignment(path, records):
+    """Write ``(id, seq)`` pairs to a FASTA file."""
+    from Bio.Align import MultipleSeqAlignment
+    from Bio.SeqIO import write
+    from Bio.Seq import Seq
+    from Bio.SeqRecord import SeqRecord
+
+    aln = MultipleSeqAlignment(
+        [SeqRecord(Seq(seq), id=rid, description='') for rid, seq in records]
+    )
+    write(aln, str(path), 'fasta')
+
+
+def _mintest_records():
+    """Return mintest as a list of ``(id, seq)`` pairs."""
+    from Bio import SeqIO
+
+    return [(rec.id, str(rec.seq)) for rec in SeqIO.parse(MINTEST, 'fasta')]
+
+
+def test_reference_tag_detected_and_excluded(tmp_path):
+    """A 'deRIPseq' row is used as ancestor and dropped from counted samples."""
+    records = _mintest_records()
+    width = len(records[0][1])
+    aln_path = tmp_path / 'withref.fa'
+    _write_alignment(aln_path, records + [('deRIPseq', 'A' * width)])
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            '-i',
+            str(aln_path),
+            '-d',
+            str(tmp_path),
+            '-p',
+            'mt',
+            '--sbs',
+            '96',
+            '--partition-by',
+            'row',
+            '--no-plots',
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    _, samples, matrix = read_sbs_matrix(str(tmp_path / 'mt.SBS96.txt'))
+    # The seven-row input yields six counted samples; the reference is excluded.
+    assert len(samples) == 6
+    assert 'deRIPseq' not in samples
+
+
+def test_custom_reference_tag(tmp_path):
+    """--reference-tag detects a differently-named reference row."""
+    records = _mintest_records()
+    width = len(records[0][1])
+    aln_path = tmp_path / 'withref.fa'
+    _write_alignment(aln_path, records + [('MyAnc', 'A' * width)])
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            '-i',
+            str(aln_path),
+            '-d',
+            str(tmp_path),
+            '-p',
+            'mt',
+            '--sbs',
+            '96',
+            '--partition-by',
+            'row',
+            '--reference-tag',
+            'MyAnc',
+            '--no-plots',
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    _, samples, _ = read_sbs_matrix(str(tmp_path / 'mt.SBS96.txt'))
+    assert len(samples) == 6
+    assert 'MyAnc' not in samples
+
+
+def test_ancestor_file_happy_path(tmp_path):
+    """A single-sequence --ancestor FASTA of the right length is accepted."""
+    records = _mintest_records()
+    width = len(records[0][1])
+    anc = tmp_path / 'anc.fa'
+    anc.write_text(f'>anc\n{"A" * width}\n')
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            '-i',
+            MINTEST,
+            '-d',
+            str(tmp_path),
+            '-p',
+            'mt',
+            '--sbs',
+            '96',
+            '--ancestor',
+            str(anc),
+            '--no-plots',
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / 'mt.SBS96.txt').exists()
+
+
+def test_ancestor_file_overrides_in_msa_reference(tmp_path):
+    """When both are present, --ancestor wins and the deRIPseq row stays counted."""
+    records = _mintest_records()
+    width = len(records[0][1])
+    aln_path = tmp_path / 'withref.fa'
+    _write_alignment(aln_path, records + [('deRIPseq', 'A' * width)])
+    anc = tmp_path / 'anc.fa'
+    anc.write_text(f'>anc\n{"C" * width}\n')
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            '-i',
+            str(aln_path),
+            '-d',
+            str(tmp_path),
+            '-p',
+            'mt',
+            '--sbs',
+            '96',
+            '--ancestor',
+            str(anc),
+            '--partition-by',
+            'row',
+            '--no-plots',
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    _, samples, _ = read_sbs_matrix(str(tmp_path / 'mt.SBS96.txt'))
+    # The file overrides the in-MSA row, which is therefore NOT excluded.
+    assert len(samples) == 7
+    assert 'deRIPseq' in samples
+
+
+def test_reference_exclusion_too_few_sequences(tmp_path):
+    """Excluding the reference from a two-row alignment is a clear error."""
+    records = _mintest_records()
+    width = len(records[0][1])
+    aln_path = tmp_path / 'tiny.fa'
+    # One real sequence + the reference: excluding the reference leaves one row.
+    _write_alignment(aln_path, [records[0], ('deRIPseq', 'A' * width)])
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ['-i', str(aln_path), '-d', str(tmp_path), '-p', 'mt', '--no-plots']
+    )
+    assert result.exit_code != 0
+    assert 'fewer than 2 sequences' in result.output
+
+
+def test_ancestor_length_mismatch_rejected(tmp_path):
+    """An --ancestor of the wrong length is a clear CLI error."""
+    anc = tmp_path / 'anc.fa'
+    anc.write_text('>anc\nACGT\n')  # far shorter than the alignment
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ['-i', MINTEST, '-d', str(tmp_path), '-p', 'mt', '--ancestor', str(anc)],
+    )
+    assert result.exit_code != 0
+    assert 'does not match the alignment width' in result.output
+
+
+def test_degenerate_character_rejected(tmp_path):
+    """An N in the alignment is rejected before any spectrum work."""
+    records = _mintest_records()
+    rid, seq = records[0]
+    records[0] = (rid, 'N' + seq[1:])
+    aln_path = tmp_path / 'withN.fa'
+    _write_alignment(aln_path, records)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ['-i', str(aln_path), '-d', str(tmp_path), '-p', 'mt', '--no-plots']
+    )
+    assert result.exit_code != 0
+    assert 'non-ACGT character' in result.output
+
+
+def test_lowercase_alignment_accepted(tmp_path):
+    """Soft-masked (lower-case) input is accepted and normalised."""
+    records = [(rid, seq.lower()) for rid, seq in _mintest_records()]
+    aln_path = tmp_path / 'lower.fa'
+    _write_alignment(aln_path, records)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            '-i',
+            str(aln_path),
+            '-d',
+            str(tmp_path),
+            '-p',
+            'mt',
+            '--sbs',
+            '96',
+            '--no-plots',
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / 'mt.SBS96.txt').exists()
+
+
+def test_group_lookup_skips_blank_comment_and_short_lines(tmp_path):
+    """Blank/comment/one-column lines are ignored; real pairs still resolve."""
+    from derip2.app_spectra import _load_group_lookup
+
+    mapping = tmp_path / 'groups.tsv'
+    mapping.write_text(
+        '# a comment\n'
+        '\n'
+        'orphan\n'  # only one column -> skipped
+        'Seq1\tA\n'
+        'Seq2\tB\n'
+    )
+    lookup = _load_group_lookup(str(mapping))
+    assert lookup('Seq1') == 'A'
+    assert lookup('Seq2') == 'B'
+    assert lookup('orphan') is None
+
+
+def test_group_lookup_empty_file_raises(tmp_path):
+    """A file with no usable pairs is an error."""
+    from derip2.app_spectra import _load_group_lookup
+
+    mapping = tmp_path / 'groups.tsv'
+    mapping.write_text('# only comments\n\n')
+    with pytest.raises(ValueError, match='No sequence/group pairs'):
+        _load_group_lookup(str(mapping))
+
+
 @pytest.mark.skipif(not _HAVE_IQTREE, reason='IQ-TREE not on PATH')
 def test_cli_phylo_path(tmp_path):
     """The phylo path runs IQ-TREE and writes QC, manifest and matrices."""

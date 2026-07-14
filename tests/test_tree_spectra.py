@@ -284,6 +284,189 @@ def test_build_reconstruction_maps_sanitised_leaf_names(tmp_path):
 # --------------------------------------------------------------------------
 # Live IQ-TREE integration (only when the binary is installed)
 # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Clade assignment and pure-Python guard branches (no binary needed)
+# --------------------------------------------------------------------------
+def test_assign_clades_labels_each_subtree():
+    """Every non-root node is labelled by the root-child at the top of its clade."""
+    from derip2.spectra.tree_asr import assign_clades
+
+    # root -> a -> a1, root -> b. Clade 'a' covers {a, a1}; clade 'b' covers {b}.
+    rec = _reconstruction(
+        {'root': 'ACGTA', 'a': 'ACGTA', 'a1': 'ATGTA', 'b': 'ACGTT'},
+        [('root', 'a'), ('a', 'a1'), ('root', 'b')],
+        'root',
+    )
+    clades = assign_clades(rec)
+    assert clades == {'a': 'a', 'a1': 'a', 'b': 'b'}
+    assert 'root' not in clades  # the root belongs to no clade
+
+
+def test_parse_state_empty_raises(tmp_path):
+    """A .state file with a header but no data rows is an error."""
+    statefile = tmp_path / 'empty.state'
+    statefile.write_text('# comment\nNode\tSite\tState\tp_A\tp_C\tp_G\tp_T\n')
+    with pytest.raises(ValueError, match='No ancestral states'):
+        parse_state(str(statefile))
+
+
+def test_parse_state_out_of_range_site_raises(tmp_path):
+    """A site index beyond the declared width is rejected."""
+    statefile = tmp_path / 'oor.state'
+    lines = ['Node\tSite\tState\tp_A\tp_C\tp_G\tp_T']
+    # Sites 1 and 3 present but no 2: max is 3 so n_sites=3; indices in range.
+    # Force out-of-range by using site 0 (idx -1).
+    lines.append('Node1\t0\tA\t0.97\t0.01\t0.01\t0.01')
+    lines.append('Node1\t1\tC\t0.01\t0.97\t0.01\t0.01')
+    statefile.write_text('\n'.join(lines) + '\n')
+    with pytest.raises(ValueError, match='out-of-range'):
+        parse_state(str(statefile))
+
+
+def test_build_reconstruction_width_mismatch_raises(tmp_path):
+    """An alignment wider/narrower than the .state sites is rejected."""
+    from Bio.Align import MultipleSeqAlignment
+    from Bio.Seq import Seq
+    from Bio.SeqRecord import SeqRecord
+
+    # .state fixture is 35 sites; give a 4-column alignment.
+    aln = MultipleSeqAlignment(
+        [SeqRecord(Seq('ACGT'), id='Seq1'), SeqRecord(Seq('ATGT'), id='Seq2')]
+    )
+    with pytest.raises(ValueError, match='does not match .state sites'):
+        build_reconstruction(TREEFILE, STATEFILE, aln, rooting='none')
+
+
+def test_build_reconstruction_sanitised_collision_raises(tmp_path):
+    """Two ids that collapse to the same sanitised name are rejected."""
+    from Bio.Align import MultipleSeqAlignment
+    from Bio.Seq import Seq
+    from Bio.SeqRecord import SeqRecord
+
+    treefile = tmp_path / 't.treefile'
+    treefile.write_text('((a_1,b)Node2,c)Node1;')
+    statefile = tmp_path / 't.state'
+    lines = ['Node\tSite\tState\tp_A\tp_C\tp_G\tp_T']
+    for node in ('Node1', 'Node2'):
+        for site, base in enumerate('ACGT', start=1):
+            probs = ['0.01', '0.01', '0.01', '0.01']
+            probs['ACGT'.index(base)] = '0.97'
+            lines.append(f'{node}\t{site}\t{base}\t' + '\t'.join(probs))
+    statefile.write_text('\n'.join(lines) + '\n')
+    # 'a:1' and 'a_1' both sanitise to 'a_1'.
+    aln = MultipleSeqAlignment(
+        [
+            SeqRecord(Seq('ACGT'), id='a:1'),
+            SeqRecord(Seq('ATGT'), id='a_1'),
+            SeqRecord(Seq('ACGA'), id='b'),
+            SeqRecord(Seq('ACGA'), id='c'),
+        ]
+    )
+    with pytest.raises(ValueError, match='collide'):
+        build_reconstruction(str(treefile), str(statefile), aln, rooting='none')
+
+
+def test_build_reconstruction_leaf_without_sequence_raises(tmp_path):
+    """A tree leaf absent from the alignment is rejected."""
+    from Bio.Align import MultipleSeqAlignment
+    from Bio.Seq import Seq
+    from Bio.SeqRecord import SeqRecord
+
+    treefile = tmp_path / 't.treefile'
+    treefile.write_text('((a,ghost)Node2,c)Node1;')
+    statefile = tmp_path / 't.state'
+    lines = ['Node\tSite\tState\tp_A\tp_C\tp_G\tp_T']
+    for node in ('Node1', 'Node2'):
+        for site, base in enumerate('ACGT', start=1):
+            probs = ['0.01', '0.01', '0.01', '0.01']
+            probs['ACGT'.index(base)] = '0.97'
+            lines.append(f'{node}\t{site}\t{base}\t' + '\t'.join(probs))
+    statefile.write_text('\n'.join(lines) + '\n')
+    aln = MultipleSeqAlignment(
+        [
+            SeqRecord(Seq('ACGT'), id='a'),
+            SeqRecord(Seq('ATGT'), id='b'),  # 'ghost' is in the tree, not here
+            SeqRecord(Seq('ACGA'), id='c'),
+        ]
+    )
+    with pytest.raises(ValueError, match='does not match any alignment sequence'):
+        build_reconstruction(str(treefile), str(statefile), aln, rooting='none')
+
+
+def test_choose_root_name_outgroup_not_found():
+    """Outgroup rooting names a tip that is not in the tree."""
+    from derip2.spectra.tree_asr import _choose_root_name, _load_tree
+
+    tree = _load_tree(TREEFILE)
+    with pytest.raises(ValueError, match='not found in the tree'):
+        _choose_root_name(tree, 'outgroup', 'no-such-tip')
+
+
+def test_choose_root_name_outgroup_mrca():
+    """A multi-tip outgroup roots at the tips' common ancestor."""
+    from derip2.spectra.tree_asr import _choose_root_name, _load_tree
+
+    tree = _load_tree(TREEFILE)
+    root_name, method = _choose_root_name(tree, 'outgroup', ['Seq1', 'Seq2'])
+    assert method.startswith('outgroup-mrca:')
+    assert root_name  # an internal node name
+
+
+def test_orient_edges_duplicate_name_raises(tmp_path):
+    """A tree with a repeated node name is ambiguous and rejected."""
+    from derip2.spectra.tree_asr import _load_tree, _orient_edges
+
+    treefile = tmp_path / 'dup.treefile'
+    # Two leaves both named 'x'.
+    treefile.write_text('((x,x)Node2,c)Node1;')
+    tree = _load_tree(str(treefile))
+    with pytest.raises(ValueError, match='Duplicate node name'):
+        _orient_edges(tree, 'Node1')
+
+
+def test_iqtree_version_unknown_on_bad_binary():
+    """A binary that cannot be executed yields the 'unknown' version banner."""
+    from derip2.spectra.tree_asr import iqtree_version
+
+    assert iqtree_version('definitely-not-iqtree-xyz') == 'unknown'
+
+
+def test_run_iqtree_nonzero_exit_raises(monkeypatch, tmp_path):
+    """A non-zero IQ-TREE exit is surfaced as a RuntimeError."""
+    import subprocess
+
+    from derip2.spectra import tree_asr
+
+    monkeypatch.setattr(tree_asr, 'find_iqtree', lambda binary=None: 'fake-iqtree')
+    monkeypatch.setattr(tree_asr, 'iqtree_version', lambda binary: 'fake 1.0')
+
+    class _Result:
+        returncode = 1
+        stderr = 'boom'
+
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **k: _Result())
+    with pytest.raises(RuntimeError, match='exited with status 1'):
+        tree_asr.run_iqtree(str(tmp_path / 'aln.fa'), str(tmp_path / 'out'))
+
+
+def test_run_iqtree_missing_output_raises(monkeypatch, tmp_path):
+    """A zero exit that leaves no .treefile is surfaced as FileNotFoundError."""
+    import subprocess
+
+    from derip2.spectra import tree_asr
+
+    monkeypatch.setattr(tree_asr, 'find_iqtree', lambda binary=None: 'fake-iqtree')
+    monkeypatch.setattr(tree_asr, 'iqtree_version', lambda binary: 'fake 1.0')
+
+    class _Result:
+        returncode = 0
+        stderr = ''
+
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **k: _Result())
+    with pytest.raises(FileNotFoundError, match='was not produced'):
+        tree_asr.run_iqtree(str(tmp_path / 'aln.fa'), str(tmp_path / 'out'))
+
+
 @pytest.mark.skipif(not _HAVE_IQTREE, reason='IQ-TREE not on PATH')
 def test_reconstruct_end_to_end(tmp_path):
     """A full IQ-TREE run over mintest yields a usable reconstruction."""

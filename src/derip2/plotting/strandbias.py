@@ -102,6 +102,12 @@ TICK_LABEL_SIZE = 7
 LEGEND_SIZE = 7
 ANNOTATION_SIZE = 6.5
 
+# Headroom above the tallest bar / top tick on each arm, as a multiplier of the
+# extent. The arm labels ("forward strand ...", "reverse strand ...") are pinned
+# to the axes top/bottom edges, so the bars need clearance beneath them or the
+# labels sit on top of the tallest bars.
+ARM_LABEL_HEADROOM = 1.22
+
 # Hatch marking a column in which neither strand holds a majority.
 TIE_HATCH = '///'
 
@@ -1037,7 +1043,7 @@ def _finish(
         ax.set_xlim(col_idx.min() - pad, col_idx.max() + pad)
 
     ticks = _nice_ticks(extent, scale)
-    limit = gutter + max(ticks.max(), extent) * 1.06 + 0.02
+    limit = gutter + max(ticks.max(), extent) * ARM_LABEL_HEADROOM + 0.02
 
     # Ticks are mirrored about the gutter: the sign of a bar is its strand, so
     # labelling the lower arm "-0.5" would read as a negative proportion.

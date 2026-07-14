@@ -20,6 +20,7 @@ import logging
 from os import path
 import sys
 
+from Bio.Align import MultipleSeqAlignment
 import click
 
 from derip2._version import __version__
@@ -391,6 +392,16 @@ def _write_outputs(result, out_dir, prefix, *, sbs, min_hits, percentage, no_plo
     'instead of the reconstructed deRIP consensus. Must be the same '
     'length as the alignment.',
 )
+@click.option(
+    '--reference-tag',
+    default='deRIPseq',
+    show_default=True,
+    help='Exact sequence ID of a pre-computed ancestral reference already '
+    'present in the input alignment (e.g. a deRIP consensus you appended with '
+    'derip2). When found (baseline method), that row is used as the ancestor and '
+    'excluded from the counted sequences instead of re-running deRIP. Overridden '
+    'by --ancestor.',
+)
 # Spectrum options
 @click.option(
     '--sbs',
@@ -554,6 +565,7 @@ def main(
     out_dir,
     prefix,
     ancestor,
+    reference_tag,
     sbs,
     partition_by,
     groups,
@@ -595,6 +607,11 @@ def main(
     ancestor : str or None
         Optional FASTA of a hypothetical ancestor to call against; when None the
         reconstructed deRIP consensus is used.
+    reference_tag : str
+        Exact sequence ID of a pre-computed ancestral reference already present in
+        the input alignment. When matched (baseline method) that row is used as
+        the ancestor and excluded from the counted sequences. Overridden by
+        ``ancestor``.
     sbs : {'96', '192', 'both'}
         Which SBS matrices and plots to produce.
     partition_by : {'none', 'row', 'clade'}
@@ -654,8 +671,58 @@ def main(
     init_logging(loglevel=loglevel, logfile=logfile)
 
     logger.info(f'Processing alignment file: \033[0m{input}')
+    alignment = ao.loadAlign(input, alnFormat='fasta')
+    try:
+        ao.validate_no_degenerate(alignment)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    # Normalise soft-masking so lower-case bases are RIP-detected like upper-case.
+    alignment = ao.uppercase_alignment(alignment)
+    n_cols = alignment.get_alignment_length()
+
+    # Resolve the ancestral reference by precedence:
+    #   1. --ancestor FASTA file (explicit, highest priority)
+    #   2. a --reference-tag row already in the alignment (baseline only)
+    #   3. otherwise the deRIP consensus recomputed below (ancestor_seq stays None)
+    ancestor_seq = None
+    if ancestor is not None:
+        ancestor_seq = str(ao.loadFirstSequence(ancestor).seq)
+        if len(ancestor_seq) != n_cols:
+            raise click.UsageError(
+                f'Supplied --ancestor sequence length ({len(ancestor_seq)}) does '
+                f'not match the alignment width ({n_cols}).'
+            )
+        logger.info(f'Using supplied ancestor: \033[0m{ancestor}')
+
+    # Detect a pre-computed reference already sitting in the alignment (baseline
+    # only). loadAlign guarantees unique ids, so at most one row can match. If
+    # used, it becomes the ancestor and is dropped from the counted rows.
+    if method == 'baseline':
+        match = next((r for r in alignment if r.id == reference_tag), None)
+        if match is not None:
+            if ancestor is not None:
+                logger.info(
+                    "Ignoring in-MSA reference '%s'; --ancestor file takes precedence.",
+                    reference_tag,
+                )
+            else:
+                ancestor_seq = str(match.seq)
+                alignment = MultipleSeqAlignment(
+                    [record for record in alignment if record.id != reference_tag]
+                )
+                logger.info(
+                    "Using pre-computed reference '%s' from MSA; excluding it "
+                    'from counted sequences.',
+                    reference_tag,
+                )
+                if len(alignment) < 2:
+                    raise click.UsageError(
+                        'Excluding the reference row leaves fewer than 2 sequences '
+                        'to analyse.'
+                    )
+
     derip_obj = DeRIP(
-        alignment_input=input,
+        alignment_input=alignment,
         max_snp_noise=max_snp_noise,
         min_rip_like=min_rip_like,
         reaminate=reaminate,
@@ -665,13 +732,6 @@ def main(
     )
     logger.info(f'Loaded alignment with {len(derip_obj.alignment)} sequences')
     derip_obj.calculate_rip(label=prefix)
-
-    # Resolve the ancestral reference: user-supplied FASTA or the deRIP consensus.
-    ancestor_seq = None
-    if ancestor is not None:
-        ancestor_aln = ao.loadAlign(ancestor, alnFormat='fasta')
-        ancestor_seq = str(ancestor_aln[0].seq)
-        logger.info(f'Using supplied ancestor: \033[0m{ancestor}')
 
     # ---------- Compute the spectra by the chosen method ----------
     if method == 'baseline':

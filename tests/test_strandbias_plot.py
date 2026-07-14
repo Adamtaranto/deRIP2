@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from derip2.aln_ops import classify_alignment  # noqa: E402
 from derip2.plotting.logo import column_information  # noqa: E402
 from derip2.plotting.strandbias import (  # noqa: E402
+    ARM_LABEL_HEADROOM,
     BASE_COLORS,
     INK_MUTED,
     NOISE_ALPHA,
@@ -118,6 +119,26 @@ def test_reverse_columns_draw_below_the_axis():
     for p in patches:
         _lo, hi = patch_extent(p)
         assert hi <= 1e-9, 'reverse bar rose above the axis'
+
+
+def test_arm_labels_have_headroom_above_bars():
+    """The y-limit clears the tallest bar so the arm labels don't overlap bars.
+
+    The arm labels are pinned to the axes top/bottom edges, so the tallest bar
+    on each arm must stop short of the limit by the ARM_LABEL_HEADROOM margin.
+    """
+    assert ARM_LABEL_HEADROOM > 1.1  # a meaningful margin, not the old 1.06
+    cls = classify_alignment(make_alignment(MIXED), progress=False)
+    fig = plot_strand_bias(cls)
+    ax = fig.axes[0]
+
+    extents = [patch_extent(p) for p in bar_patches(ax)]
+    tallest = max(hi for _lo, hi in extents)
+    deepest = min(lo for lo, _hi in extents)
+    lo_lim, hi_lim = ax.get_ylim()
+    # Both arms leave clearance between the extreme bar and the axis edge.
+    assert hi_lim > tallest * 1.1
+    assert lo_lim < deepest * 1.1
 
 
 def test_mixed_alignment_draws_on_both_arms():
