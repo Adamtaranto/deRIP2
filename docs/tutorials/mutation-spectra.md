@@ -484,7 +484,7 @@ Fitting the full Sahana spectrum (326,778 events) to COSMIC v3.4 gives:
 | SBS1  | 47,603 | 14.6% | spontaneous 5-methyl-cytosine deamination |
 
 The reconstruction **cosine similarity is only 0.80** (a good fit is usually
-> 0.9). That poor fit is itself the result: RIP has no COSMIC signature, so the
+\> 0.9). That poor fit is itself the result: RIP has no COSMIC signature, so the
 fitter approximates it with a blend of the human deamination signatures (SBS1,
 the CpG 5mC-deamination clock, and SBS2, APOBEC) plus catch-all signatures.
 
