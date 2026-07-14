@@ -221,7 +221,7 @@ axis, which belongs to the sequence.
 ```python
 from derip2.derip import DeRIP
 
-d = DeRIP('tests/data/mintest.fasta')
+d = DeRIP('tests/data/mintest.fa')
 d.calculate_rip()
 
 print(d.stats_summary())
