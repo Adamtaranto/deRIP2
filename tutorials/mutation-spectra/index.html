@@ -1,0 +1,1523 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Predict ancestral fungal transposon sequences by correcting for RIP-like mutations">
+      
+      
+        <meta name="author" content="adamtaranto">
+      
+      
+      
+        <link rel="prev" href="../rip-strand-bias/">
+      
+      
+        <link rel="next" href="../../api-docs/deRIP_API/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Mutation Spectra - deRIP2</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mutation-spectra-sbs-96-sbs-192" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="deRIP2" class="md-header__button md-logo" aria-label="deRIP2" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            deRIP2
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Mutation Spectra
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/adamtaranto/deRIP2" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    adamtaranto/deRIP2
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="deRIP2" class="md-nav__button md-logo" aria-label="deRIP2" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    deRIP2
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/adamtaranto/deRIP2" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    adamtaranto/deRIP2
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rip-strand-bias/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RIP Strand Bias
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mutation Spectra
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mutation Spectra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-methods-baseline-and-phylogenetic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two methods: baseline and phylogenetic
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Two methods: baseline and phylogenetic">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#baseline-method-baseline-the-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Baseline (--method baseline, the default)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Baseline (--method baseline, the default)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#worked-example-the-baseline-ancestor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worked example: the baseline ancestor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reusing-an-ancestor-already-in-your-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reusing an ancestor already in your alignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phylogenetic-method-phylo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phylogenetic (--method phylo)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supplying-your-own-phylogeny" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supplying your own phylogeny
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-infer-topology-from-a-rip-masked-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended: infer topology from a RIP-masked alignment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-the-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the outputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reading the outputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#homoplasy-recurrence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Homoplasy (recurrence)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#strand-asymmetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Strand asymmetry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-lineage-spectra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-lineage spectra
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-group-spectra-species-or-user-defined-sets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-group spectra (species or user-defined sets)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run manifest
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparing-spectra-statistically" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparing spectra statistically
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Comparing spectra statistically">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#compare-groups-by-label" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compare groups by label
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#compare-two-precalculated-matrices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compare two precalculated matrices
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#useful-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Useful options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decomposing-against-cosmic-signatures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decomposing against COSMIC signatures
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-docs/deRIP_API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli-docs/deRIP_cmd_line/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-methods-baseline-and-phylogenetic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two methods: baseline and phylogenetic
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Two methods: baseline and phylogenetic">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#baseline-method-baseline-the-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Baseline (--method baseline, the default)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Baseline (--method baseline, the default)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#worked-example-the-baseline-ancestor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worked example: the baseline ancestor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reusing-an-ancestor-already-in-your-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reusing an ancestor already in your alignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phylogenetic-method-phylo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phylogenetic (--method phylo)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supplying-your-own-phylogeny" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supplying your own phylogeny
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-infer-topology-from-a-rip-masked-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended: infer topology from a RIP-masked alignment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-the-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the outputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reading the outputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#homoplasy-recurrence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Homoplasy (recurrence)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#strand-asymmetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Strand asymmetry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-lineage-spectra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-lineage spectra
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-group-spectra-species-or-user-defined-sets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-group spectra (species or user-defined sets)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run manifest
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparing-spectra-statistically" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparing spectra statistically
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Comparing spectra statistically">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#compare-groups-by-label" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compare groups by label
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#compare-two-precalculated-matrices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compare two precalculated matrices
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#useful-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Useful options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decomposing-against-cosmic-signatures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decomposing against COSMIC signatures
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="mutation-spectra-sbs-96-sbs-192">Mutation spectra (SBS-96 / SBS-192)</h1>
+<p>RIP is one of several processes that deaminate cytosine in fungal repeats. To tell
+them apart you need more than a count of C→T changes — you need the <strong>sequence
+context</strong> each change happened in. <code>derip2-spectra</code> builds the standard
+single-base-substitution spectra used in mutational-signature analysis:</p>
+<ul>
+<li><strong>SBS-96</strong> — every substitution folded onto the pyrimidine strand, classified by
+  its 5′ and 3′ neighbours: 6 substitution types × 16 contexts = 96 channels.</li>
+<li><strong>SBS-192</strong> — the strand-resolved form (12 types × 16 contexts) that keeps the
+  reference base as observed on the coding strand, so strand asymmetries stay
+  visible.</li>
+</ul>
+<p>RIP (CpA → TpA) shows up as a sharp <code>C&gt;T</code> peak concentrated in <code>NCA</code> contexts:</p>
+<p><img alt="SBS-96 spectrum of the Sahana transposon" src="../../img/spectra_sbs96.png" /></p>
+<p>The matrices are written in SigProfiler-compliant format, so they drop straight
+into <code>SigProfilerPlotting</code> / <code>SigProfilerAssignment</code> if you want to decompose them
+against COSMIC signatures later.</p>
+<h2 id="quick-start">Quick start</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family
+</code></pre></div>
+<p>This writes, into <code>out/</code>:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>family.SBS96.txt</code>, <code>family.SBS192.txt</code></td>
+<td>SigProfiler-compliant count matrices</td>
+</tr>
+<tr>
+<td><code>family_SBS96.png</code>, <code>family_SBS192.png</code></td>
+<td>spectrum bar plots</td>
+</tr>
+<tr>
+<td><code>family_strand_asymmetry.png</code></td>
+<td>coding- vs template-strand counts per class</td>
+</tr>
+<tr>
+<td><code>family_homoplasy.png</code>, <code>family_homoplasy.tsv</code></td>
+<td>recurrently-hit sites</td>
+</tr>
+<tr>
+<td><code>family_events.tsv</code></td>
+<td>one row per called substitution</td>
+</tr>
+</tbody>
+</table>
+<h2 id="two-methods-baseline-and-phylogenetic">Two methods: baseline and phylogenetic</h2>
+<p>Direction and recurrence are not free from an alignment — you need an ancestor. The
+tool offers two ways to get one.</p>
+<h3 id="baseline-method-baseline-the-default">Baseline (<code>--method baseline</code>, the default)</h3>
+<p>Every sequence is compared to a <strong>single reference</strong> — deRIP2's reconstructed
+ancestral consensus — and each difference is one event, with its context read from
+that ancestor. It needs no tree and no external tools.</p>
+<p>Its blind spot is <strong>recurrence</strong>. If the same C→T deamination struck independently
+on many lineages, comparing every tip to one reference records the derived state on
+each tip and cannot tell "one ancestral event inherited by twenty tips" from
+"twenty independent events". The baseline therefore <em>over-counts</em> homoplasic sites
+and reports recurrence only as a <em>multi-hit-column</em> proxy.</p>
+<h4 id="worked-example-the-baseline-ancestor">Worked example: the baseline ancestor</h4>
+<p>By default you do not have to build the ancestor yourself — <code>derip2-spectra</code>
+reconstructs it internally by running deRIP2's correction, then compares every
+sequence to it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>baseline<span class="w"> </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family
+</code></pre></div>
+<p>The ancestor it uses is deRIP2's <strong>gapped deRIP consensus</strong>: for every column,
+deRIP2 finds the un-RIP'd ancestral base (a <code>C</code> where RIP produced <code>T</code>, a <code>G</code>
+where it produced <code>A</code>) by looking across all copies for one that escaped RIP, and
+falls back to the majority base elsewhere. This is exactly the sequence the plain
+<code>derip2</code> command writes to <code>family.fasta</code>, so the two are consistent.</p>
+<p>If you want to see or reuse that ancestor, run <code>derip2</code> first and pass it back
+with <code>--ancestor</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># 1. Reconstruct the deRIP&#39;d ancestral consensus (writes out/family.fasta)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>derip2<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># 2. Call the spectrum against that explicit ancestor</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>baseline<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span>--ancestor<span class="w"> </span>out/family.fasta<span class="w"> </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family_spectrum
+</code></pre></div>
+<p><code>--ancestor</code> accepts any FASTA whose single sequence is the <strong>same length as the
+alignment</strong> (one base per column, gaps allowed). Use it when you have an
+independent progenitor — a known germline element, a manually curated ancestor,
+or a consensus built under different deRIP settings (e.g. <code>derip2 --reaminate</code> to
+treat <em>all</em> cytosine deamination as ancestral, not just RIP-context events). The
+deRIP parameters on <code>derip2-spectra</code> itself (<code>--max-gaps</code>, <code>--reaminate</code>,
+<code>--min-rip-like</code>, …) tune the <em>internal</em> ancestor when you do not supply one.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># The same thing from Python</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.derip</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeRIP</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">d</span> <span class="o">=</span> <span class="n">DeRIP</span><span class="p">(</span><span class="s1">&#39;family.fasta&#39;</span><span class="p">)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">d</span><span class="o">.</span><span class="n">calculate_rip</span><span class="p">()</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">ancestor</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">gapped_consensus</span><span class="o">.</span><span class="n">seq</span><span class="p">)</span>   <span class="c1"># the deRIP&#39;d ancestor, one base per column</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">result</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">calculate_spectra</span><span class="p">()</span>           <span class="c1"># baseline spectra against that ancestor</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="n">result</span><span class="o">.</span><span class="n">sbs96</span>                             <span class="c1"># (96, n_samples) count matrix</span>
+</code></pre></div>
+<h4 id="reusing-an-ancestor-already-in-your-alignment">Reusing an ancestor already in your alignment</h4>
+<p>The plain <code>derip2</code> command appends its deRIP'd consensus to the output alignment
+by default, as a row whose id is its <code>--prefix</code> (default <code>deRIPseq</code>). If you feed
+that alignment straight to <code>derip2-spectra</code>, it <strong>detects that row, uses it as the
+ancestor, and excludes it from the counted sequences</strong> — no recomputation, and no
+self-comparison inflating the counts:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># 1. deRIP the family with the default prefix; this writes</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1">#    out/deRIPseq_alignment.fasta with a &quot;deRIPseq&quot; consensus row appended</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>derip2<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>-d<span class="w"> </span>out
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># 2. Spectra reuse that row automatically (logged: &quot;Using pre-computed reference</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1">#    &#39;deRIPseq&#39; from MSA; excluding it from counted sequences&quot;)</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>out/deRIPseq_alignment.fasta<span class="w"> </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family_spectrum
+</code></pre></div>
+<p>Because the appended row takes <code>derip2</code>'s <code>--prefix</code>, the spectra default
+<code>--reference-tag deRIPseq</code> matches a default <code>derip2</code> run. If you deRIP'd with a
+different prefix (or curated the row by hand), name the tag to match — it is an
+exact id match:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>derip2<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family<span class="w">      </span><span class="c1"># row is named &quot;family&quot;</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>out/family_alignment.fasta<span class="w"> </span>--reference-tag<span class="w"> </span>family<span class="w"> </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>fam_spec
+</code></pre></div>
+<p>Precedence is explicit: an <code>--ancestor FILE</code> always wins over an in-alignment row,
+which in turn wins over recomputing the consensus.</p>
+<div class="admonition note">
+<p class="admonition-title">Input must be unambiguous DNA</p>
+<p>Alignments may contain only <code>A/C/G/T/-</code> (upper or lower case — soft-masking is
+normalised before analysis). Degenerate IUPAC characters (<code>N</code>, <code>R</code>, <code>Y</code>, …)
+are <strong>rejected with an error</strong> naming the offending character and its location,
+rather than being silently coerced to gaps as they were previously.</p>
+</div>
+<h3 id="phylogenetic-method-phylo">Phylogenetic (<code>--method phylo</code>)</h3>
+<p>The rigorous path reconstructs ancestral sequences at every internal node of a tree
+(IQ-TREE marginal ASR) and walks every parent→child branch, logging each
+substitution as an independent event with its context read from the <strong>parent</strong>
+sequence — the state at the moment the mutation occurred.</p>
+<p>The difference is large and biological. On the full Sahana family (396 copies):</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Events (SBS-96)</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Baseline</td>
+<td>326,778</td>
+<td>every tip vs one reference</td>
+</tr>
+<tr>
+<td>Phylogenetic</td>
+<td>~47,000</td>
+<td>independent branch events</td>
+</tr>
+</tbody>
+</table>
+<p>The baseline's extra ~280,000 "events" are shared/inherited RIP mutations counted
+once per descendant. The phylogenetic path assigns each to the single branch it
+arose on — and flags the sites that really were hit again and again:</p>
+<p><img alt="SBS-96 spectrum, phylogenetic" src="../../img/spectra_sbs96_phylo.png" /></p>
+<div class="admonition warning">
+<p class="admonition-title">Read direction with care on heavily-RIP'd families</p>
+<p>Notice the <code>T&gt;C</code> peak in the phylogenetic spectrum, absent from the baseline.
+It is largely an artefact of <strong>maximum-likelihood ancestral reconstruction</strong>,
+which is biased toward the majority state. When RIP has converted <em>most</em> copies
+of a column from C to T, IQ-TREE reconstructs the internal nodes as the
+majority <code>T</code>, so the minority copies that <em>retained</em> the ancestral C read as
+<code>T&gt;C</code> reversals. The <strong>recurrence counting is still correct</strong> (46,952 vs
+326,778 events) — this bias affects the inferred <em>direction</em>, not the event
+count.</p>
+<p>deRIP2's consensus-based <strong>baseline is more robust to RIP direction</strong>: its
+ancestor is the deRIP'd (un-RIP'd) sequence, recovered by finding the copies
+that escaped RIP even when they are the minority. Use the two together — the
+baseline for polarity, the phylogenetic path for correct recurrence — and lean
+on the masked-topology workflow below to keep the tree itself honest.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">IQ-TREE is required for <code>--method phylo</code></p>
+<p>Install it separately (<code>conda install -c bioconda iqtree</code>) and make sure
+<code>iqtree3</code>, <code>iqtree2</code> or <code>iqtree</code> is on your <code>PATH</code>. <code>ete4</code> (a Python
+dependency) handles the tree.</p>
+</div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Infer the tree and reconstruct ancestors in one step</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>phylo<span class="w"> </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family
+</code></pre></div>
+<h2 id="supplying-your-own-phylogeny">Supplying your own phylogeny</h2>
+<p>You will usually get a better tree from a dedicated run than from the built-in
+one-shot inference. Pass any Newick tree with <code>--tree</code>; IQ-TREE then keeps that
+<strong>topology fixed</strong> (<code>-te</code>) and re-estimates the model, branch lengths and ancestral
+states from your alignment.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Build a well-supported tree however you like...</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>iqtree3<span class="w"> </span>-s<span class="w"> </span>family.fasta<span class="w"> </span>-m<span class="w"> </span>MFP<span class="w"> </span>-B<span class="w"> </span><span class="m">1000</span><span class="w"> </span>-T<span class="w"> </span>AUTO<span class="w"> </span>--prefix<span class="w"> </span>family_tree
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># ...then reconstruct ancestral states on it and call the spectrum</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>phylo<span class="w"> </span>--tree<span class="w"> </span>family_tree.treefile<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family
+</code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">Tip names</p>
+<p>Tree leaf names must correspond to the FASTA sequence ids. IQ-TREE rewrites
+characters outside <code>[A-Za-z0-9._-]</code> to <code>_</code> in its output (so <code>scf:1-9(+)</code>
+becomes <code>scf_1-9___</code>); deRIP2 applies the same rule to match leaves back to
+sequences, so trees produced by IQ-TREE Just Work. If you supply a tree from
+another tool, keep tip names to those safe characters.</p>
+</div>
+<h2 id="recommended-infer-topology-from-a-rip-masked-alignment">Recommended: infer topology from a RIP-masked alignment</h2>
+<p>RIP mutations are <strong>convergent</strong> — the same CpA→TpA change happens independently in
+many copies. To a tree-builder that convergence looks like shared ancestry, so a
+tree built directly from RIP-riddled repeats can be pulled out of shape, grouping
+copies by <em>how much they were RIP'd</em> rather than by their true history. That
+distorted topology would then mis-assign the very substitutions you are trying to
+count.</p>
+<p>The fix is to <strong>infer the topology from a RIP-masked alignment</strong>, then reconstruct
+ancestral states for the <strong>unmasked</strong> sequences on that same topology:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># 1. Mask RIP-corrected positions (degenerate IUPAC codes); no consensus appended</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>derip2<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--mask<span class="w"> </span>--no-append<span class="w"> </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="c1">#    -&gt; out/family_masked_alignment.fasta</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1"># 2. Infer the topology from the masked alignment (RIP signal removed).</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="c1">#    -st DNA forces the DNA model: a heavily masked alignment carries many IUPAC</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1">#    ambiguity codes, and IQ-TREE&#39;s sequence-type auto-detection can otherwise</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="c1">#    fail with &quot;Unknown sequence type&quot;.</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>iqtree3<span class="w"> </span>-s<span class="w"> </span>out/family_masked_alignment.fasta<span class="w"> </span>-m<span class="w"> </span>MFP<span class="w"> </span>-B<span class="w"> </span><span class="m">1000</span><span class="w"> </span>-T<span class="w"> </span>AUTO<span class="w"> </span>-st<span class="w"> </span>DNA<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">    </span>--prefix<span class="w"> </span>out/family_masked
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="c1"># 3. Reconstruct ancestral states for the UNMASKED sequences on that fixed</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="c1">#    topology, and call the spectrum</span>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>phylo<span class="w"> </span>--tree<span class="w"> </span>out/family_masked.treefile<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="w">    </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family_spectrum
+</code></pre></div>
+<p>Why this works: masking removes the homoplasic RIP columns that mislead tree
+search, giving a topology that reflects true descent. Step 3 then <em>fixes</em> that
+topology (<code>--tree</code>) but re-derives branch lengths, the substitution model and the
+ancestral sequences from the <strong>full, unmasked</strong> alignment — so the spectrum is
+computed from the real substitutions while the tree shape is not an artefact of
+RIP. The masked and unmasked alignments share identical tips and columns (masking
+only rewrites bases in place), so the topology transfers exactly.</p>
+<div class="admonition note">
+<p class="admonition-title">Same topology, unmasked ancestors</p>
+<p>The point of <code>--tree</code> here is precisely that the <strong>topology comes from the
+masked tree</strong> while the <strong>ancestral sequences are recomputed for the unmasked
+data</strong>. Do not run IQ-TREE ancestral reconstruction on the masked alignment —
+its ancestors would be masked too, and the spectrum would be blank exactly
+where RIP acted.</p>
+</div>
+<p>The resulting spectrum for the full Sahana family (topology from the masked
+alignment, ancestral states from the unmasked sequences) still resolves the RIP
+<code>C&gt;T</code>/CpA signal cleanly, now on a topology that RIP homoplasy could not distort:</p>
+<p><img alt="SBS-96 spectrum, phylogenetic on a RIP-masked topology" src="../../img/spectra_sbs96_maskedtopo.png" /></p>
+<h2 id="reading-the-outputs">Reading the outputs</h2>
+<h3 id="homoplasy-recurrence">Homoplasy (recurrence)</h3>
+<p>The homoplasy report lists sites hit by the same substitution on two or more
+independent lineages — the explicit, measured record of recurrent deamination.
+Each stem is one (column, derived base); its colour is the pyrimidine-folded
+substitution class (see the legend) and its height is the number of independent
+hits. Markers are drawn semi-transparent so that stems stacked at the same column
+and height remain visible.</p>
+<p>The recurrence <em>unit</em> differs by method, and the two plots make the point of the
+whole feature. Under the <strong>baseline</strong> every hit is one sequence carrying the
+derived state, so shared/inherited RIP makes almost every column look "recurrent"
+— the multi-hit-column proxy saturates:</p>
+<p><img alt="Recurrent sites, baseline" src="../../img/spectra_homoplasy_baseline.png" /></p>
+<p>Under <strong><code>--method phylo</code></strong> each hit is an independent <em>branch</em> event, so only sites
+that truly mutated more than once on the tree remain. The plot is far sparser and
+each stem is a real recurrence (here, sites hit on ≥3 independent branches):</p>
+<p><img alt="Recurrent sites, phylogenetic" src="../../img/spectra_homoplasy_phylo.png" /></p>
+<h3 id="strand-asymmetry">Strand asymmetry</h3>
+<p>From the SBS-192 matrix, each pyrimidine class is compared to its
+reverse-complement partner. For every class two bars are drawn: <strong>coding-strand</strong>
+counts (blue) and <strong>template-strand</strong> counts (orange) — the legend colours the two
+strands, and the substitution class is read off the x-axis. An <strong>asterisk</strong> marks a
+class whose coding-vs-template split departs from an even 50:50 at a binomial
+<code>p &lt; 0.05</code> (the figure footnote states this). This is where enzyme-, replication-
+or transcription-linked strand biases show up.</p>
+<p><img alt="Strand asymmetry" src="../../img/spectra_strand_asymmetry.png" /></p>
+<h3 id="per-lineage-spectra">Per-lineage spectra</h3>
+<p><code>--partition-by clade</code> (phylo) splits the matrices into one sample column per
+subtree hanging off the root, so both the matrix files and the plots carry one
+panel per lineage — useful for spotting lineage-specific deamination. Each branch
+is attributed to the clade its child subtree belongs to; branches above the split
+form the ancestral trunk.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>phylo<span class="w"> </span>--partition-by<span class="w"> </span>clade<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family
+</code></pre></div>
+<p><img alt="Per-clade spectra" src="../../img/spectra_clade.png" /></p>
+<p><code>--partition-by row</code> does the analogous per-sequence split for the baseline.</p>
+<h3 id="per-group-spectra-species-or-user-defined-sets">Per-group spectra (species or user-defined sets)</h3>
+<p>When you already know which sequences belong together — species, populations,
+sub-families — pass a two-column mapping with <code>--groups</code> to get one spectrum per
+group. This works for <strong>both</strong> methods.</p>
+<p>The mapping file is whitespace- or tab-separated: sequence name, then group label.
+A header row and <code>#</code> comments are optional:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a># sequence            group
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>UNSE01000019.1:422682-431483(-)   speciesA
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>UNSE01000019.1:709761-718562(-)   speciesA
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>UNSE01000006.1:12043-20871(+)     speciesB
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>Sahana_prime                      reference
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Baseline: one spectrum per group, each sequence compared to the deRIP ancestor</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--groups<span class="w"> </span>groups.tsv<span class="w"> </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># Phylogenetic: a branch is attributed to a group only when its whole descendant</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="c1"># clade belongs to that group (spanning branches become &#39;mixed&#39;)</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>phylo<span class="w"> </span>--groups<span class="w"> </span>groups.tsv<span class="w"> </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family
+</code></pre></div>
+<p>Names are matched leniently: the label file may use the original FASTA ids even
+though IQ-TREE rewrites special characters in tree tip names, so the same file
+works for both methods. Sequences absent from the map fall into an <code>ungrouped</code>
+sample.</p>
+<p><img alt="Per-group spectra" src="../../img/spectra_groups.png" /></p>
+<div class="admonition note">
+<p class="admonition-title">Grouping in the example</p>
+<p>The Sahana copies have no species labels, so this figure bins them by genomic
+scaffold purely to illustrate the mechanic. In practice the labels would be
+your species or population names, and the panels would let you compare, say,
+RIP intensity between a methylation-competent and a methylation-deficient
+lineage.</p>
+</div>
+<h3 id="run-manifest">Run manifest</h3>
+<p>The phylo path writes <code>*_run_manifest.json</code> recording the IQ-TREE version, the
+model, the rooting method and the root node, node/edge counts, and — with
+<code>--root-sensitivity</code> — the fraction of edges whose direction flips under midpoint
+rooting. Directionality depends on the root, so record it.</p>
+<h2 id="comparing-spectra-statistically">Comparing spectra statistically</h2>
+<p>Once you have spectra for two or more groups — or two matrices from separate runs
+— you will want to ask whether they actually <em>differ</em>. deRIP2 provides two
+complementary measures in <code>derip2.stats</code> (no SciPy required):</p>
+<ul>
+<li><strong>Cosine similarity</strong> — a scale-free <em>effect size</em> in <code>[0, 1]</code>. It compares the
+  <em>shape</em> of two profiles and ignores their totals, so it answers "do these look
+  alike?". 1.0 is identical.</li>
+<li><strong>Chi-squared test of homogeneity</strong> — a <em>significance test</em> of whether the
+  channel counts could have come from one shared distribution ("is the difference
+  more than sampling noise?"). Its per-channel <strong>standardised residuals</strong> show
+  <em>which</em> channels drive any difference, and <strong>Cramér's V</strong> is its effect size.</li>
+</ul>
+<div class="admonition warning">
+<p class="admonition-title">Read the p-value with the effect size</p>
+<p>Spectra often carry hundreds of thousands of events, and at that sample size a
+chi-squared test flags even biologically trivial differences as "significant".
+<strong>Always read the p-value next to the cosine similarity and Cramér's V.</strong> A
+tiny p with cosine ≈ 1 and Cramér's V ≈ 0 means "different, but only in a way
+that does not matter"; a small p <em>with</em> low cosine and larger Cramér's V is a
+real shift in the spectrum.</p>
+</div>
+<h3 id="compare-groups-by-label">Compare groups by label</h3>
+<p>Run with <code>--groups</code> (or <code>--partition-by</code>), then compare the sample columns of the
+matrix it writes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.spectra</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_sbs_matrix</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">compare_spectra</span><span class="p">,</span> <span class="n">pairwise_compare</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">channels</span><span class="p">,</span> <span class="n">samples</span><span class="p">,</span> <span class="n">matrix</span> <span class="o">=</span> <span class="n">read_sbs_matrix</span><span class="p">(</span><span class="s1">&#39;out/family.SBS96.txt&#39;</span><span class="p">)</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="c1"># One pair, with the channels that differ most</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="n">a</span> <span class="o">=</span> <span class="n">matrix</span><span class="p">[:,</span> <span class="n">samples</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s1">&#39;setA&#39;</span><span class="p">)]</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="n">b</span> <span class="o">=</span> <span class="n">matrix</span><span class="p">[:,</span> <span class="n">samples</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s1">&#39;setB&#39;</span><span class="p">)]</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="n">res</span> <span class="o">=</span> <span class="n">compare_spectra</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">channels</span><span class="p">)</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">res</span><span class="p">[</span><span class="s1">&#39;cosine_similarity&#39;</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;pvalue&#39;</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;cramers_v&#39;</span><span class="p">])</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;top_channels&#39;</span><span class="p">][:</span><span class="mi">5</span><span class="p">]:</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="p">[</span><span class="s1">&#39;channel&#39;</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="s1">&#39;a&#39;</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="s1">&#39;b&#39;</span><span class="p">],</span> <span class="nb">round</span><span class="p">(</span><span class="n">c</span><span class="p">[</span><span class="s1">&#39;residual&#39;</span><span class="p">],</span> <span class="mi">2</span><span class="p">))</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="c1"># Every pair at once (Bonferroni-corrected), most-different first</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">pairwise_compare</span><span class="p">(</span><span class="n">matrix</span><span class="p">,</span> <span class="n">samples</span><span class="p">):</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;a&#39;</span><span class="p">],</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;b&#39;</span><span class="p">],</span> <span class="nb">round</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;cosine_similarity&#39;</span><span class="p">],</span> <span class="mi">4</span><span class="p">),</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>          <span class="sa">f</span><span class="s2">&quot;p_adj=</span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;pvalue_adjusted&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>For two random scaffold-based halves of the Sahana family the result is:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>cosine_similarity = 0.9999   pvalue = 0.136   cramers_v = 0.018
+</code></pre></div>
+<p>Cosine ≈ 1, a non-significant p and Cramér's V ≈ 0 — exactly what you expect when
+both groups are shaped by the <em>same</em> RIP process. A methylation-competent versus
+methylation-deficient pair, by contrast, would show a lower cosine, a small p and
+<code>C[C&gt;T]G</code>/<code>CHG</code>-context channels topping the residual list.</p>
+<h3 id="compare-two-precalculated-matrices">Compare two precalculated matrices</h3>
+<p>Comparing SigProfiler-format matrices from separate runs (or external tools) is
+the same call — read each file and pass one column from each. Both must be the
+same context (both SBS-96 or both SBS-192):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.spectra</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_sbs_matrix</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">compare_spectra</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="n">ch_a</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">mat_a</span> <span class="o">=</span> <span class="n">read_sbs_matrix</span><span class="p">(</span><span class="s1">&#39;speciesA.SBS96.txt&#39;</span><span class="p">)</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="n">ch_b</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">mat_b</span> <span class="o">=</span> <span class="n">read_sbs_matrix</span><span class="p">(</span><span class="s1">&#39;speciesB.SBS96.txt&#39;</span><span class="p">)</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="k">assert</span> <span class="n">ch_a</span> <span class="o">==</span> <span class="n">ch_b</span>   <span class="c1"># deRIP2 writes channels in canonical order, so they align</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="n">res</span> <span class="o">=</span> <span class="n">compare_spectra</span><span class="p">(</span><span class="n">mat_a</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">mat_b</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">ch_a</span><span class="p">)</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">res</span><span class="p">[</span><span class="s1">&#39;cosine_similarity&#39;</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;pvalue&#39;</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;cramers_v&#39;</span><span class="p">])</span>
+</code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">For a robustness check</p>
+<p>The chi-squared test assumes each event is independent. Recurrent RIP breaks
+that assumption mildly, so treat borderline p-values as a screen. When a call
+is close, a permutation test — reshuffle the group labels many times and see
+how often a random split reaches your observed cosine distance — is a
+distribution-free alternative you can build on top of <code>--groups</code>.</p>
+</div>
+<h2 id="useful-options">Useful options</h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--sbs {96,192,both}</code></td>
+<td>which matrices/plots to produce</td>
+</tr>
+<tr>
+<td><code>--rooting {midpoint,outgroup,none}</code></td>
+<td>how to root (sets substitution direction)</td>
+</tr>
+<tr>
+<td><code>--outgroup NAME[,NAME…]</code></td>
+<td>outgroup tip(s) for <code>--rooting outgroup</code></td>
+</tr>
+<tr>
+<td><code>--iqtree-model</code></td>
+<td>IQ-TREE model (default <code>MFP</code>)</td>
+</tr>
+<tr>
+<td><code>--threads</code></td>
+<td>IQ-TREE <code>-T</code> (default <code>AUTO</code>; pass an integer to skip its benchmark on small alignments)</td>
+</tr>
+<tr>
+<td><code>--min-prob</code></td>
+<td>drop phylo events below this parent × child ancestral posterior</td>
+</tr>
+<tr>
+<td><code>--partition-by {none,row,clade}</code></td>
+<td>pool, per-sequence, or per-clade samples</td>
+</tr>
+<tr>
+<td><code>--groups FILE</code></td>
+<td>report one spectrum per user-defined group (both methods)</td>
+</tr>
+<tr>
+<td><code>--root-sensitivity</code></td>
+<td>report how much polarity depends on the rooting choice</td>
+</tr>
+<tr>
+<td><code>--ancestor FASTA</code></td>
+<td>baseline only: call against a supplied ancestor (validated to match the alignment width) instead of the deRIP consensus</td>
+</tr>
+<tr>
+<td><code>--reference-tag ID</code></td>
+<td>baseline only: id of an ancestor row already in the alignment to reuse and exclude from counting (default <code>deRIPseq</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="decomposing-against-cosmic-signatures">Decomposing against COSMIC signatures</h2>
+<p>Because the matrices are SigProfiler-compliant, you can fit them to reference
+signatures. First render the standard SBS-96 figure (<code>SigProfilerPlotting</code>), then
+fit COSMIC signatures with <code>SigProfilerAssignment</code> (both installed separately):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">SigProfilerAssignment</span><span class="w"> </span><span class="kn">import</span> <span class="n">Analyzer</span> <span class="k">as</span> <span class="n">Analyze</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="n">Analyze</span><span class="o">.</span><span class="n">cosmic_fit</span><span class="p">(</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="n">samples</span><span class="o">=</span><span class="s1">&#39;out/family.SBS96.txt&#39;</span><span class="p">,</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="n">output</span><span class="o">=</span><span class="s1">&#39;out/cosmic&#39;</span><span class="p">,</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>    <span class="n">input_type</span><span class="o">=</span><span class="s1">&#39;matrix&#39;</span><span class="p">,</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>    <span class="n">context_type</span><span class="o">=</span><span class="s1">&#39;96&#39;</span><span class="p">,</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>    <span class="n">cosmic_version</span><span class="o">=</span><span class="mf">3.4</span><span class="p">,</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>    <span class="n">make_plots</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="p">)</span>
+</code></pre></div>
+<p>Fitting the full Sahana spectrum (326,778 events) to COSMIC v3.4 gives:</p>
+<table>
+<thead>
+<tr>
+<th>COSMIC signature</th>
+<th style="text-align: right;">Assigned mutations</th>
+<th style="text-align: right;">Share</th>
+<th>Human-cancer aetiology</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SBS44</td>
+<td style="text-align: right;">135,625</td>
+<td style="text-align: right;">41.5%</td>
+<td>defective mismatch repair</td>
+</tr>
+<tr>
+<td>SBS96</td>
+<td style="text-align: right;">92,238</td>
+<td style="text-align: right;">28.2%</td>
+<td>unknown</td>
+</tr>
+<tr>
+<td>SBS2</td>
+<td style="text-align: right;">51,312</td>
+<td style="text-align: right;">15.7%</td>
+<td>APOBEC cytosine deamination</td>
+</tr>
+<tr>
+<td>SBS1</td>
+<td style="text-align: right;">47,603</td>
+<td style="text-align: right;">14.6%</td>
+<td>spontaneous 5-methyl-cytosine deamination</td>
+</tr>
+</tbody>
+</table>
+<p>The reconstruction <strong>cosine similarity is only 0.80</strong> (a good fit is usually
+&gt; 0.9). That poor fit is itself the result: RIP has no COSMIC signature, so the
+fitter approximates it with a blend of the human deamination signatures (SBS1,
+the CpG 5mC-deamination clock, and SBS2, APOBEC) plus catch-all signatures.</p>
+<div class="admonition warning">
+<p class="admonition-title">COSMIC signatures do not apply directly to fungi</p>
+<p>The COSMIC reference set was derived from <strong>human cancers</strong>, on whole-genome
+trinucleotide opportunities. RIP and fungal methylation-driven deamination are
+not represented, so a decomposition like the one above is at best a loose
+analogy — treat the assigned signatures as "the nearest human look-alikes",
+not as mechanisms operating in your fungus. The low cosine similarity is the
+honest signal of that mismatch. The same machinery would, however, work well
+against a <strong>fungal-specific reference library</strong> (a custom signature matrix in
+the same SBS-96 format), which is the appropriate way to interpret these
+spectra — and building one is a natural next step for the community.</p>
+</div>
+<p>Interpret single-gene or single-family fits cautiously in any case: reference
+signatures assume genome-wide trinucleotide opportunities, so a normalisation
+caveat applies on top of the species-mismatch one.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.top", "navigation.expand", "navigation.tabs.sticky", "navigation.sections"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
