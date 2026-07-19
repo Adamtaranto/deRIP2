@@ -539,6 +539,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#downstream-triplet-context-chg-methylation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downstream-triplet context (CHG methylation)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#comparing-spectra-statistically" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -860,6 +871,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#downstream-triplet-context-chg-methylation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downstream-triplet context (CHG methylation)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#comparing-spectra-statistically" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -954,6 +976,8 @@ single-base-substitution spectra used in mutational-signature analysis:</p>
 <p>The matrices are written in SigProfiler-compliant format, so they drop straight
 into <code>SigProfilerPlotting</code> / <code>SigProfilerAssignment</code> if you want to decompose them
 against COSMIC signatures later.</p>
+<p>There is also a third, CHG-aware context — the <strong>downstream-triplet</strong> — described
+in <a href="#downstream-triplet-context-chg-methylation">its own section</a> below.</p>
 <h2 id="quick-start">Quick start</h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family
 </code></pre></div>
@@ -1249,8 +1273,9 @@ sample.</p>
 <p><img alt="Per-group spectra" src="../../img/spectra_groups.png" /></p>
 <div class="admonition note">
 <p class="admonition-title">Grouping in the example</p>
-<p>The Sahana copies have no species labels, so this figure bins them by genomic
-scaffold purely to illustrate the mechanic. In practice the labels would be
+<p>The Sahana copies have no species labels, so this figure simply splits the
+alignment into a few <strong>arbitrary subsets</strong> purely to illustrate the mechanic —
+the groups carry no biological meaning here. In practice the labels would be
 your species or population names, and the panels would let you compare, say,
 RIP intensity between a methylation-competent and a methylation-deficient
 lineage.</p>
@@ -1260,6 +1285,75 @@ lineage.</p>
 model, the rooting method and the root node, node/edge counts, and — with
 <code>--root-sensitivity</code> — the fraction of edges whose direction flips under midpoint
 rooting. Directionality depends on the root, so record it.</p>
+<h2 id="downstream-triplet-context-chg-methylation">Downstream-triplet context (CHG methylation)</h2>
+<p>The trinucleotide context sees only <strong>one</strong> base downstream of the mutated base.
+But in ascomycete fungi, cytosine methylation targets the <strong>CHG</strong> context — a <code>C</code>
+followed by <code>H</code> (any of A/C/T) then a <code>G</code> — and methyl-cytosine deaminates to <code>T</code>.
+If methylation is driving <code>C&gt;T</code>, the signal lives <strong>two</strong> bases downstream (the
+<code>G</code> of <code>CHG</code>), which the trinucleotide model cannot resolve.</p>
+<p>The downstream-triplet context fixes this. Each substitution is classified by the
+mutated base plus its <strong>two downstream bases</strong> (motif <code>ref d1 d2</code>, read 5′→3′),
+giving a pyrimidine-folded 96-channel matrix. Turn it on with <code>--context
+downstream</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>-d<span class="w"> </span>out<span class="w"> </span>-p<span class="w"> </span>family<span class="w"> </span>--context<span class="w"> </span>downstream
+</code></pre></div>
+<p>This writes a distinct set of files (no SBS-192 or strand-asymmetry — see below):</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>family.SBSdownstream.txt</code></td>
+<td>96-channel downstream count matrix</td>
+</tr>
+<tr>
+<td><code>family.SBSdownstream.meta.json</code></td>
+<td>provenance sidecar (context, method, kind)</td>
+</tr>
+<tr>
+<td><code>family_SBSdownstream.png</code></td>
+<td>downstream spectrum bar plot</td>
+</tr>
+<tr>
+<td><code>family_homoplasy.png</code>, <code>family_homoplasy.tsv</code>, <code>family_events.tsv</code></td>
+<td>as usual</td>
+</tr>
+</tbody>
+</table>
+<p><img alt="Downstream-triplet spectrum of the Sahana transposon" src="../../img/spectra_downstream.png" /></p>
+<p>In both plots the <strong>mutated base is bold</strong> in every x-axis motif — the <em>middle</em>
+base for the trinucleotide plot, the <em>first</em> base for the downstream plot — and the
+heading names the context so the two are never confused. To read the CHG signal,
+look along the <code>C&gt;T</code> block for the channels whose <strong>second</strong> downstream base is <code>G</code>
+(<code>[C&gt;T]AG</code>, <code>[C&gt;T]CG</code>, <code>[C&gt;T]TG</code>).</p>
+<p>Two design points worth knowing:</p>
+<ul>
+<li><strong>Orientation invariance.</strong> Reading two bases downstream is not symmetric under
+  reverse-complement, so the counts are always taken on the <em>pyrimidine</em> strand: a
+  purine-reference event contributes the reverse-complement of its two <em>upstream</em>
+  bases. The result is identical whichever strand your alignment happens to be in.</li>
+<li><strong>No strand-resolved form.</strong> Because "downstream" is already defined relative to
+  the pyrimidine strand, a strand-resolved (192-channel) downstream matrix would be
+  orientation-dependent and misleading, so it is not produced. <code>--sbs 192</code>/<code>both</code>
+  are rejected in this mode, and there is no strand-asymmetry plot.</li>
+</ul>
+<p>The channel labels use a distinct <code>[REF&gt;ALT]d1d2</code> form (e.g. <code>[C&gt;T]AG</code>) so a
+downstream matrix can never be mistaken for — or compared against — an SBS-96 one.
+Everything else (baseline vs <code>--method phylo</code>, <code>--groups</code>, <code>--partition-by</code>,
+homoplasy, the statistical comparisons below) works identically.</p>
+<p>From Python:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.derip</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeRIP</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">DeRIP</span><span class="p">(</span><span class="s1">&#39;family.fasta&#39;</span><span class="p">)</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="n">d</span><span class="o">.</span><span class="n">calculate_rip</span><span class="p">()</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="n">res</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">calculate_spectra</span><span class="p">(</span><span class="n">context</span><span class="o">=</span><span class="s1">&#39;downstream&#39;</span><span class="p">)</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="n">d</span><span class="o">.</span><span class="n">write_spectra_matrix</span><span class="p">(</span><span class="s1">&#39;family.SBSdownstream.txt&#39;</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;downstream&#39;</span><span class="p">)</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="n">d</span><span class="o">.</span><span class="n">plot_spectra</span><span class="p">(</span><span class="s1">&#39;family_SBSdownstream.png&#39;</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;downstream&#39;</span><span class="p">)</span>
+</code></pre></div>
 <h2 id="comparing-spectra-statistically">Comparing spectra statistically</h2>
 <p>Once you have spectra for two or more groups — or two matrices from separate runs
 — you will want to ask whether they actually <em>differ</em>. deRIP2 provides two
@@ -1285,26 +1379,26 @@ real shift in the spectrum.</p>
 <h3 id="compare-groups-by-label">Compare groups by label</h3>
 <p>Run with <code>--groups</code> (or <code>--partition-by</code>), then compare the sample columns of the
 matrix it writes:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.spectra</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_sbs_matrix</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">compare_spectra</span><span class="p">,</span> <span class="n">pairwise_compare</span>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">channels</span><span class="p">,</span> <span class="n">samples</span><span class="p">,</span> <span class="n">matrix</span> <span class="o">=</span> <span class="n">read_sbs_matrix</span><span class="p">(</span><span class="s1">&#39;out/family.SBS96.txt&#39;</span><span class="p">)</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="c1"># One pair, with the channels that differ most</span>
-<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="n">a</span> <span class="o">=</span> <span class="n">matrix</span><span class="p">[:,</span> <span class="n">samples</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s1">&#39;setA&#39;</span><span class="p">)]</span>
-<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="n">b</span> <span class="o">=</span> <span class="n">matrix</span><span class="p">[:,</span> <span class="n">samples</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s1">&#39;setB&#39;</span><span class="p">)]</span>
-<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="n">res</span> <span class="o">=</span> <span class="n">compare_spectra</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">channels</span><span class="p">)</span>
-<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">res</span><span class="p">[</span><span class="s1">&#39;cosine_similarity&#39;</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;pvalue&#39;</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;cramers_v&#39;</span><span class="p">])</span>
-<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;top_channels&#39;</span><span class="p">][:</span><span class="mi">5</span><span class="p">]:</span>
-<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="p">[</span><span class="s1">&#39;channel&#39;</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="s1">&#39;a&#39;</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="s1">&#39;b&#39;</span><span class="p">],</span> <span class="nb">round</span><span class="p">(</span><span class="n">c</span><span class="p">[</span><span class="s1">&#39;residual&#39;</span><span class="p">],</span> <span class="mi">2</span><span class="p">))</span>
-<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>
-<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="c1"># Every pair at once (Bonferroni-corrected), most-different first</span>
-<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">pairwise_compare</span><span class="p">(</span><span class="n">matrix</span><span class="p">,</span> <span class="n">samples</span><span class="p">):</span>
-<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;a&#39;</span><span class="p">],</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;b&#39;</span><span class="p">],</span> <span class="nb">round</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;cosine_similarity&#39;</span><span class="p">],</span> <span class="mi">4</span><span class="p">),</span>
-<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>          <span class="sa">f</span><span class="s2">&quot;p_adj=</span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;pvalue_adjusted&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.spectra</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_sbs_matrix</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">compare_spectra</span><span class="p">,</span> <span class="n">pairwise_compare</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="n">channels</span><span class="p">,</span> <span class="n">samples</span><span class="p">,</span> <span class="n">matrix</span> <span class="o">=</span> <span class="n">read_sbs_matrix</span><span class="p">(</span><span class="s1">&#39;out/family.SBS96.txt&#39;</span><span class="p">)</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="c1"># One pair, with the channels that differ most</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="n">a</span> <span class="o">=</span> <span class="n">matrix</span><span class="p">[:,</span> <span class="n">samples</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s1">&#39;setA&#39;</span><span class="p">)]</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="n">b</span> <span class="o">=</span> <span class="n">matrix</span><span class="p">[:,</span> <span class="n">samples</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s1">&#39;setB&#39;</span><span class="p">)]</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="n">res</span> <span class="o">=</span> <span class="n">compare_spectra</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">channels</span><span class="p">)</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">res</span><span class="p">[</span><span class="s1">&#39;cosine_similarity&#39;</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;pvalue&#39;</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;cramers_v&#39;</span><span class="p">])</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;top_channels&#39;</span><span class="p">][:</span><span class="mi">5</span><span class="p">]:</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="p">[</span><span class="s1">&#39;channel&#39;</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="s1">&#39;a&#39;</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="s1">&#39;b&#39;</span><span class="p">],</span> <span class="nb">round</span><span class="p">(</span><span class="n">c</span><span class="p">[</span><span class="s1">&#39;residual&#39;</span><span class="p">],</span> <span class="mi">2</span><span class="p">))</span>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="c1"># Every pair at once (Bonferroni-corrected), most-different first</span>
+<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">pairwise_compare</span><span class="p">(</span><span class="n">matrix</span><span class="p">,</span> <span class="n">samples</span><span class="p">):</span>
+<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;a&#39;</span><span class="p">],</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;b&#39;</span><span class="p">],</span> <span class="nb">round</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;cosine_similarity&#39;</span><span class="p">],</span> <span class="mi">4</span><span class="p">),</span>
+<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>          <span class="sa">f</span><span class="s2">&quot;p_adj=</span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;pvalue_adjusted&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </code></pre></div>
 <p>For two random scaffold-based halves of the Sahana family the result is:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>cosine_similarity = 0.9999   pvalue = 0.136   cramers_v = 0.018
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>cosine_similarity = 0.9999   pvalue = 0.136   cramers_v = 0.018
 </code></pre></div>
 <p>Cosine ≈ 1, a non-significant p and Cramér's V ≈ 0 — exactly what you expect when
 both groups are shaped by the <em>same</em> RIP process. A methylation-competent versus
@@ -1313,16 +1407,24 @@ methylation-deficient pair, by contrast, would show a lower cosine, a small p an
 <h3 id="compare-two-precalculated-matrices">Compare two precalculated matrices</h3>
 <p>Comparing SigProfiler-format matrices from separate runs (or external tools) is
 the same call — read each file and pass one column from each. Both must be the
-same context (both SBS-96 or both SBS-192):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.spectra</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_sbs_matrix</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">compare_spectra</span>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="n">ch_a</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">mat_a</span> <span class="o">=</span> <span class="n">read_sbs_matrix</span><span class="p">(</span><span class="s1">&#39;speciesA.SBS96.txt&#39;</span><span class="p">)</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="n">ch_b</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">mat_b</span> <span class="o">=</span> <span class="n">read_sbs_matrix</span><span class="p">(</span><span class="s1">&#39;speciesB.SBS96.txt&#39;</span><span class="p">)</span>
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="k">assert</span> <span class="n">ch_a</span> <span class="o">==</span> <span class="n">ch_b</span>   <span class="c1"># deRIP2 writes channels in canonical order, so they align</span>
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>
-<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="n">res</span> <span class="o">=</span> <span class="n">compare_spectra</span><span class="p">(</span><span class="n">mat_a</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">mat_b</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">ch_a</span><span class="p">)</span>
-<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">res</span><span class="p">[</span><span class="s1">&#39;cosine_similarity&#39;</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;pvalue&#39;</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;cramers_v&#39;</span><span class="p">])</span>
+same context (both SBS-96, both SBS-192, or both downstream):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.spectra</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_sbs_matrix</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">compare_spectra</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="n">ch_a</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">mat_a</span> <span class="o">=</span> <span class="n">read_sbs_matrix</span><span class="p">(</span><span class="s1">&#39;speciesA.SBS96.txt&#39;</span><span class="p">)</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="n">ch_b</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">mat_b</span> <span class="o">=</span> <span class="n">read_sbs_matrix</span><span class="p">(</span><span class="s1">&#39;speciesB.SBS96.txt&#39;</span><span class="p">)</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="k">assert</span> <span class="n">ch_a</span> <span class="o">==</span> <span class="n">ch_b</span>   <span class="c1"># deRIP2 writes channels in canonical order, so they align</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="n">res</span> <span class="o">=</span> <span class="n">compare_spectra</span><span class="p">(</span><span class="n">mat_a</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">mat_b</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">ch_a</span><span class="p">)</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">res</span><span class="p">[</span><span class="s1">&#39;cosine_similarity&#39;</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;pvalue&#39;</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;cramers_v&#39;</span><span class="p">])</span>
+</code></pre></div>
+<p><code>compare_matrix_files</code> does the read-and-guard for you, refusing to compare
+matrices whose channel sets differ (so a trinucleotide matrix can never be
+compared against a downstream one):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">compare_matrix_files</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">res</span> <span class="o">=</span> <span class="n">compare_matrix_files</span><span class="p">(</span><span class="s1">&#39;speciesA.SBSdownstream.txt&#39;</span><span class="p">,</span> <span class="s1">&#39;speciesB.SBSdownstream.txt&#39;</span><span class="p">)</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">res</span><span class="p">[</span><span class="s1">&#39;cosine_similarity&#39;</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s1">&#39;pvalue&#39;</span><span class="p">])</span>
 </code></pre></div>
 <div class="admonition tip">
 <p class="admonition-title">For a robustness check</p>
@@ -1342,8 +1444,12 @@ distribution-free alternative you can build on top of <code>--groups</code>.</p>
 </thead>
 <tbody>
 <tr>
+<td><code>--context {trinucleotide,downstream}</code></td>
+<td>sequence context: 5′/3′ flanks (SBS-96/192) or the mutated base + its two downstream bases (CHG-aware, 96 folded channels)</td>
+</tr>
+<tr>
 <td><code>--sbs {96,192,both}</code></td>
-<td>which matrices/plots to produce</td>
+<td>which matrices/plots to produce (trinucleotide context only)</td>
 </tr>
 <tr>
 <td><code>--rooting {midpoint,outgroup,none}</code></td>
@@ -1391,16 +1497,16 @@ distribution-free alternative you can build on top of <code>--groups</code>.</p>
 <p>Because the matrices are SigProfiler-compliant, you can fit them to reference
 signatures. First render the standard SBS-96 figure (<code>SigProfilerPlotting</code>), then
 fit COSMIC signatures with <code>SigProfilerAssignment</code> (both installed separately):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">SigProfilerAssignment</span><span class="w"> </span><span class="kn">import</span> <span class="n">Analyzer</span> <span class="k">as</span> <span class="n">Analyze</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="n">Analyze</span><span class="o">.</span><span class="n">cosmic_fit</span><span class="p">(</span>
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="n">samples</span><span class="o">=</span><span class="s1">&#39;out/family.SBS96.txt&#39;</span><span class="p">,</span>
-<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="n">output</span><span class="o">=</span><span class="s1">&#39;out/cosmic&#39;</span><span class="p">,</span>
-<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>    <span class="n">input_type</span><span class="o">=</span><span class="s1">&#39;matrix&#39;</span><span class="p">,</span>
-<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>    <span class="n">context_type</span><span class="o">=</span><span class="s1">&#39;96&#39;</span><span class="p">,</span>
-<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>    <span class="n">cosmic_version</span><span class="o">=</span><span class="mf">3.4</span><span class="p">,</span>
-<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>    <span class="n">make_plots</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">SigProfilerAssignment</span><span class="w"> </span><span class="kn">import</span> <span class="n">Analyzer</span> <span class="k">as</span> <span class="n">Analyze</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="n">Analyze</span><span class="o">.</span><span class="n">cosmic_fit</span><span class="p">(</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>    <span class="n">samples</span><span class="o">=</span><span class="s1">&#39;out/family.SBS96.txt&#39;</span><span class="p">,</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>    <span class="n">output</span><span class="o">=</span><span class="s1">&#39;out/cosmic&#39;</span><span class="p">,</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>    <span class="n">input_type</span><span class="o">=</span><span class="s1">&#39;matrix&#39;</span><span class="p">,</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>    <span class="n">context_type</span><span class="o">=</span><span class="s1">&#39;96&#39;</span><span class="p">,</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>    <span class="n">cosmic_version</span><span class="o">=</span><span class="mf">3.4</span><span class="p">,</span>
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>    <span class="n">make_plots</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="p">)</span>
 </code></pre></div>
 <p>Fitting the full Sahana spectrum (326,778 events) to COSMIC v3.4 gives:</p>
 <table>

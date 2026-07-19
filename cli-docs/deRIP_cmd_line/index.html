@@ -514,6 +514,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#downstream-triplet-context-chg-methylation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downstream-triplet context (CHG methylation)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#reusing-a-precomputed-ancestral-reference" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -696,6 +707,17 @@
     <span class="md-ellipsis">
       
         Baseline (no tree, no external tools)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#downstream-triplet-context-chg-methylation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downstream-triplet context (CHG methylation)
       
     </span>
   </a>
@@ -904,8 +926,9 @@ Non-RIP deamination events are also highlighted.</p>
 </code></pre></div>
 <h2 id="mutation-spectra-derip2-spectra">Mutation spectra (<code>derip2-spectra</code>)</h2>
 <p><code>derip2-spectra</code> builds trinucleotide-context SBS-96 and SBS-192 mutation spectra
-from an alignment. See the <a href="../../tutorials/mutation-spectra/">Mutation Spectra tutorial</a>
-for a full walkthrough; the essentials are below.</p>
+from an alignment (or a CHG-aware downstream-triplet context, see below). See the
+<a href="../../tutorials/mutation-spectra/">Mutation Spectra tutorial</a> for a full
+walkthrough; the essentials are below.</p>
 <h3 id="baseline-no-tree-no-external-tools">Baseline (no tree, no external tools)</h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>tests/data/mintest.fa<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
 </code></pre></div>
@@ -913,22 +936,34 @@ for a full walkthrough; the essentials are below.</p>
 the spectrum/strand-asymmetry/homoplasy plots, and <code>family_events.tsv</code>.</p>
 <p>By default the baseline reconstructs the deRIP consensus internally and calls
 every sequence against it.</p>
+<h3 id="downstream-triplet-context-chg-methylation">Downstream-triplet context (CHG methylation)</h3>
+<p><code>--context downstream</code> classifies each substitution by the mutated base plus its
+<strong>two downstream bases</strong> (motif <code>ref-d1-d2</code>) instead of the 5′/3′ flanks, exposing
+methylation-driven <code>C&gt;T</code> in the fungal <strong>CHG</strong> context. It produces a single
+pyrimidine-folded, orientation-invariant 96-channel matrix — no SBS-192 or
+strand-asymmetry — with distinct <code>[REF&gt;ALT]d1d2</code> labels and a JSON provenance
+sidecar. <code>--sbs 192</code>/<code>both</code> are rejected in this mode. It composes with everything
+else (<code>--method phylo</code>, <code>--groups</code>, <code>--partition-by</code>).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--context<span class="w"> </span>downstream<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># writes family.SBSdownstream.txt, family.SBSdownstream.meta.json,</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="c1"># family_SBSdownstream.png, family_events.tsv, family_homoplasy.{tsv,png}</span>
+</code></pre></div>
 <h3 id="reusing-a-precomputed-ancestral-reference">Reusing a precomputed ancestral reference</h3>
 <p>If you have already run <code>derip2</code> and appended the deRIP'd consensus to your
 alignment, <code>derip2-spectra</code> will reuse it instead of recomputing. Any row whose
 id matches <code>--reference-tag</code> (default <code>deRIPseq</code>) is used as the ancestral
 reference and <strong>excluded from the counted sequences</strong> (a message is logged when
 this happens):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># family_with_deRIPseq.fasta already contains a &quot;deRIPseq&quot; row</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family_with_deRIPseq.fasta<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># Point at a differently-named reference row</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--reference-tag<span class="w"> </span>MyAncestor<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># family_with_deRIPseq.fasta already contains a &quot;deRIPseq&quot; row</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family_with_deRIPseq.fasta<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Point at a differently-named reference row</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--reference-tag<span class="w"> </span>MyAncestor<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
 </code></pre></div>
 <p>Alternatively, supply a separate hypothetical ancestor as a single-sequence
 FASTA with <code>--ancestor</code>. It must be the same length as the alignment (this is
 validated up front) and takes precedence over any in-alignment reference row:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--ancestor<span class="w"> </span>ancestor.fasta<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--ancestor<span class="w"> </span>ancestor.fasta<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
 </code></pre></div>
 <blockquote>
 <p><strong>Input must be unambiguous DNA.</strong> Alignments may only contain <code>A/C/G/T/-</code>
@@ -938,31 +973,31 @@ and its location, rather than being silently treated as gaps.</p>
 </blockquote>
 <h3 id="phylogenetic-iq-tree-ancestral-reconstruction">Phylogenetic (IQ-TREE ancestral reconstruction)</h3>
 <p>Requires IQ-TREE (<code>iqtree3</code>/<code>iqtree2</code>/<code>iqtree</code>) on <code>PATH</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Infer the tree and reconstruct ancestors automatically</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>phylo<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Infer the tree and reconstruct ancestors automatically</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>phylo<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
 </code></pre></div>
 <h3 id="supplying-a-precalculated-phylogeny">Supplying a precalculated phylogeny</h3>
 <p>Pass any Newick tree with <code>--tree</code>; IQ-TREE fixes that topology and recomputes the
 model, branch lengths and ancestral states from the alignment.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>iqtree3<span class="w"> </span>-s<span class="w"> </span>family.fasta<span class="w"> </span>-m<span class="w"> </span>MFP<span class="w"> </span>-B<span class="w"> </span><span class="m">1000</span><span class="w"> </span>-T<span class="w"> </span>AUTO<span class="w"> </span>--prefix<span class="w"> </span>family_tree
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>phylo<span class="w"> </span>--tree<span class="w"> </span>family_tree.treefile<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>iqtree3<span class="w"> </span>-s<span class="w"> </span>family.fasta<span class="w"> </span>-m<span class="w"> </span>MFP<span class="w"> </span>-B<span class="w"> </span><span class="m">1000</span><span class="w"> </span>-T<span class="w"> </span>AUTO<span class="w"> </span>--prefix<span class="w"> </span>family_tree
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>phylo<span class="w"> </span>--tree<span class="w"> </span>family_tree.treefile<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
 </code></pre></div>
 <h3 id="recommended-topology-from-a-rip-masked-alignment">Recommended: topology from a RIP-masked alignment</h3>
 <p>Infer the topology from a RIP-masked alignment (so convergent RIP does not distort
 it), then reconstruct ancestral states for the <strong>unmasked</strong> sequences on that same
 topology:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>derip2<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--mask<span class="w"> </span>--no-append<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>iqtree3<span class="w"> </span>-s<span class="w"> </span>results/family_masked_alignment.fasta<span class="w"> </span>-m<span class="w"> </span>MFP<span class="w"> </span>-B<span class="w"> </span><span class="m">1000</span><span class="w"> </span>-T<span class="w"> </span>AUTO<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span>--prefix<span class="w"> </span>results/family_masked
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>phylo<span class="w"> </span>--tree<span class="w"> </span>results/family_masked.treefile<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">  </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family_spectrum
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>derip2<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--mask<span class="w"> </span>--no-append<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>iqtree3<span class="w"> </span>-s<span class="w"> </span>results/family_masked_alignment.fasta<span class="w"> </span>-m<span class="w"> </span>MFP<span class="w"> </span>-B<span class="w"> </span><span class="m">1000</span><span class="w"> </span>-T<span class="w"> </span>AUTO<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span>--prefix<span class="w"> </span>results/family_masked
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>phylo<span class="w"> </span>--tree<span class="w"> </span>results/family_masked.treefile<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">  </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family_spectrum
 </code></pre></div>
 <h3 id="per-group-spectra-species-or-user-defined-sets">Per-group spectra (species or user-defined sets)</h3>
 <p>Pass a two-column (name, group) file with <code>--groups</code> to report one spectrum per
 group. Works for both methods and tolerates IQ-TREE name reformatting:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--groups<span class="w"> </span>groups.tsv<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>phylo<span class="w"> </span>--groups<span class="w"> </span>groups.tsv<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--groups<span class="w"> </span>groups.tsv<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>derip2-spectra<span class="w"> </span>-i<span class="w"> </span>family.fasta<span class="w"> </span>--method<span class="w"> </span>phylo<span class="w"> </span>--groups<span class="w"> </span>groups.tsv<span class="w"> </span>-d<span class="w"> </span>results<span class="w"> </span>-p<span class="w"> </span>family
 </code></pre></div>
 <p>Run <code>derip2-spectra --help</code> for the full option list (<code>--sbs</code>, <code>--rooting</code>,
 <code>--outgroup</code>, <code>--partition-by</code>, <code>--groups</code>, <code>--min-prob</code>, <code>--root-sensitivity</code>,
