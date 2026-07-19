@@ -29,7 +29,11 @@ from derip2.spectra.channels import (
     sbs192_channel,
     trinucleotide_context,
 )
-from derip2.spectra.matrix_io import read_sbs_matrix, write_sbs_matrix
+from derip2.spectra.matrix_io import (
+    read_sbs_matrix,
+    write_matrix_metadata,
+    write_sbs_matrix,
+)
 
 __all__ = [
     'DOWNSTREAM_CHANNELS',
@@ -43,5 +47,6 @@ __all__ = [
     'sbs96_channel',
     'trinucleotide_context',
     'read_sbs_matrix',
+    'write_matrix_metadata',
     'write_sbs_matrix',
 ]
