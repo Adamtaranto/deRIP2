@@ -27,7 +27,7 @@
     
     
       
-        <title>Getting Started - deRIP2</title>
+        <title>Colab demo notebook - deRIP2</title>
       
     
     
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Getting Started
+              Colab demo notebook
             
           </span>
         </div>
@@ -233,7 +233,7 @@
   <span class="md-ellipsis">
     
   
-    Home
+    Getting Started
   
 
     
@@ -267,7 +267,7 @@
   <span class="md-ellipsis">
     
   
-    Getting Started
+    Colab demo notebook
   
 
     
@@ -285,7 +285,7 @@
   <span class="md-ellipsis">
     
   
-    Getting Started
+    Colab demo notebook
   
 
     
@@ -598,6 +598,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#11-per-sequence-strand-imbalance-rsi-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Per-sequence strand-imbalance (RSI) statistics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-mutation-spectra-sbs-96-from-the-derip-consensus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Mutation spectra (SBS-96) from the deRIP consensus
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#conclusion" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -631,6 +653,33 @@
     
   
     RIP Strand Bias
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/rip-masking-phylogeny/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RIP Masking & Phylogeny
   
 
     
@@ -1038,6 +1087,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#11-per-sequence-strand-imbalance-rsi-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Per-sequence strand-imbalance (RSI) statistics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-mutation-spectra-sbs-96-from-the-derip-consensus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Mutation spectra (SBS-96) from the deRIP consensus
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#conclusion" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1065,7 +1136,7 @@
 
 
 
-  <h1>Getting Started</h1>
+  <h1>Colab demo notebook</h1>
 
 <script>
 (function (global, factory) {
@@ -3692,6 +3763,243 @@ display(Image(plot_file))</div>
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="11-per-sequence-strand-imbalance-rsi-statistics">11. Per-sequence strand-imbalance (RSI) statistics<a class="anchor-link" href="#11-per-sequence-strand-imbalance-rsi-statistics">¶</a></h2><p>A single round of meiotic RIP acts on only <strong>one strand</strong> of a duplex, so a sequence RIP'd in a single burst shows a <strong>strand imbalance</strong>: far more <code>CpA→TpA</code> conversions on one strand than the other. deRIP2 quantifies this per sequence as the <strong>RIP Strandedness Imbalance (RSI)</strong>, which ranges from <code>+1</code> (all forward-strand RIP), through <code>0</code> (balanced, or never RIP'd), to <code>−1</code> (all reverse-strand RIP).</p>
+<p>The <code>summarize_stats()</code> / <code>stats_summary()</code> methods return a per-sequence table combining the RIP event counts, CRI, GC content, and the RSI components <code>p_fwd</code> and <code>p_rev</code>. <code>sort_by_rsi()</code> ranks the alignment by strandedness. See the <a href="tutorials/rip-strand-bias.md">RIP strand bias tutorial</a> for how to read and interpret these columns (including why <code>RSI = 0</code> is ambiguous without <code>p_fwd</code>/<code>p_rev</code>).</p>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-29">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="c1"># Full per-sequence statistics table: RIP counts, CRI, GC, and RSI components.</span>
+<span class="c1"># stats_summary() computes RSI internally if it has not been run yet.</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">derip_obj</span><span class="o">.</span><span class="n">stats_summary</span><span class="p">())</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-29"># Full per-sequence statistics table: RIP counts, CRI, GC, and RSI components.
+# stats_summary() computes RSI internally if it has not been run yet.
+print(derip_obj.stats_summary())</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-30">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="c1"># Identify the sequence with the greatest strand imbalance (largest |RSI|)</span>
+<span class="n">stats</span> <span class="o">=</span> <span class="n">derip_obj</span><span class="o">.</span><span class="n">summarize_stats</span><span class="p">()</span>
+<span class="n">most_imbalanced</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">stats</span><span class="p">[</span><span class="s1">'RSI'</span><span class="p">]</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">idxmax</span><span class="p">()]</span>
+<span class="nb">print</span><span class="p">(</span>
+    <span class="sa">f</span><span class="s1">'Most strand-imbalanced sequence: </span><span class="si">{</span><span class="n">most_imbalanced</span><span class="p">[</span><span class="s2">"ID"</span><span class="p">]</span><span class="si">}</span><span class="se">\n</span><span class="s1">'</span>
+    <span class="sa">f</span><span class="s1">'  RSI   = </span><span class="si">{</span><span class="n">most_imbalanced</span><span class="p">[</span><span class="s2">"RSI"</span><span class="p">]</span><span class="si">:</span><span class="s1">+.3f</span><span class="si">}</span><span class="se">\n</span><span class="s1">'</span>
+    <span class="sa">f</span><span class="s1">'  p_fwd = </span><span class="si">{</span><span class="n">most_imbalanced</span><span class="p">[</span><span class="s2">"p_fwd"</span><span class="p">]</span><span class="si">:</span><span class="s1">.3f</span><span class="si">}</span><span class="s1">   p_rev = </span><span class="si">{</span><span class="n">most_imbalanced</span><span class="p">[</span><span class="s2">"p_rev"</span><span class="p">]</span><span class="si">:</span><span class="s1">.3f</span><span class="si">}</span><span class="s1">'</span>
+<span class="p">)</span>
+
+<span class="c1"># Rank the whole alignment from most forward- to most reverse-strand RIP.</span>
+<span class="c1"># (Sequences with an undefined RSI sort to the end.)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s1">'</span><span class="se">\n</span><span class="s1">Sequences ranked by RSI (forward -&gt; reverse):'</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">rec</span> <span class="ow">in</span> <span class="n">derip_obj</span><span class="o">.</span><span class="n">sort_by_rsi</span><span class="p">(</span><span class="n">descending</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'  </span><span class="si">{</span><span class="n">rec</span><span class="o">.</span><span class="n">id</span><span class="si">}</span><span class="s1">: RSI = </span><span class="si">{</span><span class="n">rec</span><span class="o">.</span><span class="n">annotations</span><span class="p">[</span><span class="s2">"RSI"</span><span class="p">]</span><span class="si">:</span><span class="s1">+.3f</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-30"># Identify the sequence with the greatest strand imbalance (largest |RSI|)
+stats = derip_obj.summarize_stats()
+most_imbalanced = stats.loc[stats['RSI'].abs().idxmax()]
+print(
+    f'Most strand-imbalanced sequence: {most_imbalanced["ID"]}\n'
+    f'  RSI   = {most_imbalanced["RSI"]:+.3f}\n'
+    f'  p_fwd = {most_imbalanced["p_fwd"]:.3f}   p_rev = {most_imbalanced["p_rev"]:.3f}'
+)
+
+# Rank the whole alignment from most forward- to most reverse-strand RIP.
+# (Sequences with an undefined RSI sort to the end.)
+print('\nSequences ranked by RSI (forward -&gt; reverse):')
+for rec in derip_obj.sort_by_rsi(descending=True):
+    print(f'  {rec.id}: RSI = {rec.annotations["RSI"]:+.3f}')</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="12-mutation-spectra-sbs-96-from-the-derip-consensus">12. Mutation spectra (SBS-96) from the deRIP consensus<a class="anchor-link" href="#12-mutation-spectra-sbs-96-from-the-derip-consensus">¶</a></h2><p>deRIP2 can summarise every substitution in the alignment as a <strong>single-base-substitution (SBS-96) mutation spectrum</strong>, using the RIP-corrected consensus (<code>gapped_consensus</code>) as the ancestral reference. Each of the 96 channels is a pyrimidine-folded substitution (<code>C&gt;A/G/T</code>, <code>T&gt;A/C/G</code>) in one of 16 trinucleotide contexts. RIP shows up as a sharp <code>C&gt;T</code> peak concentrated in <code>NCA</code> (CpA) contexts.</p>
+<p>Here we contrast two ancestral references built from the <strong>same</strong> <em>Sahana</em> alignment:</p>
+<ul>
+<li><strong>RIP-like only</strong> (<code>reaminate=False</code>): only RIP-context deamination is reverted in the ancestor, so non-RIP <code>C→T</code> changes remain and are counted as events.</li>
+<li><strong>All deamination</strong> (<code>reaminate=True</code>): every <code>C→T</code> / <code>G→A</code> is reverted in the ancestor, so deamination is treated as ancestral and drops out of the spectrum.</li>
+</ul>
+<p>For the full feature set (SBS-192, strand asymmetry, homoplasy, and the rigorous phylogenetic method) see the <a href="tutorials/mutation-spectra.md">Mutation spectra tutorial</a>.</p>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-31">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="c1"># Build a second deRIP on the SAME filtered Sahana alignment, but revert ALL</span>
+<span class="c1"># deamination (RIP-context and not) when reconstructing the ancestor. The DeRIP</span>
+<span class="c1"># constructor accepts a MultipleSeqAlignment directly, so we reuse sahana.alignment.</span>
+<span class="n">sahana_reaminate</span> <span class="o">=</span> <span class="n">DeRIP</span><span class="p">(</span><span class="n">sahana</span><span class="o">.</span><span class="n">alignment</span><span class="p">,</span> <span class="n">reaminate</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">sahana_reaminate</span><span class="o">.</span><span class="n">calculate_rip</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">'sahana_reaminate'</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'RIP-like correction   corrected columns: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">sahana</span><span class="o">.</span><span class="n">corrected_positions</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span>
+    <span class="sa">f</span><span class="s1">'All-deamination        corrected columns: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">sahana_reaminate</span><span class="o">.</span><span class="n">corrected_positions</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span>
+<span class="p">)</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-31"># Build a second deRIP on the SAME filtered Sahana alignment, but revert ALL
+# deamination (RIP-context and not) when reconstructing the ancestor. The DeRIP
+# constructor accepts a MultipleSeqAlignment directly, so we reuse sahana.alignment.
+sahana_reaminate = DeRIP(sahana.alignment, reaminate=True)
+sahana_reaminate.calculate_rip(label='sahana_reaminate')
+
+print(f'RIP-like correction   corrected columns: {len(sahana.corrected_positions)}')
+print(
+    f'All-deamination        corrected columns: {len(sahana_reaminate.corrected_positions)}'
+)</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-32">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="c1"># Plot both SBS-96 spectra and display them for comparison</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">IPython.display</span><span class="w"> </span><span class="kn">import</span> <span class="n">Image</span><span class="p">,</span> <span class="n">display</span>
+
+<span class="c1"># RIP-like-only ancestor (reaminate=False); ancestor = the RIP-corrected consensus</span>
+<span class="n">riponly_png</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="s1">'sahana_sbs96_riponly.png'</span><span class="p">)</span>
+<span class="n">sahana</span><span class="o">.</span><span class="n">plot_spectra</span><span class="p">(</span>
+    <span class="n">output_file</span><span class="o">=</span><span class="n">riponly_png</span><span class="p">,</span>
+    <span class="n">kind</span><span class="o">=</span><span class="s1">'96'</span><span class="p">,</span>
+    <span class="n">title</span><span class="o">=</span><span class="s1">'Sahana SBS-96 (RIP-like correction)'</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># All-deamination ancestor (reaminate=True)</span>
+<span class="n">reaminate_png</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="s1">'sahana_sbs96_reaminate.png'</span><span class="p">)</span>
+<span class="n">sahana_reaminate</span><span class="o">.</span><span class="n">plot_spectra</span><span class="p">(</span>
+    <span class="n">output_file</span><span class="o">=</span><span class="n">reaminate_png</span><span class="p">,</span>
+    <span class="n">kind</span><span class="o">=</span><span class="s1">'96'</span><span class="p">,</span>
+    <span class="n">title</span><span class="o">=</span><span class="s1">'Sahana SBS-96 (all deamination corrected)'</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s1">'RIP-like correction:'</span><span class="p">)</span>
+<span class="n">display</span><span class="p">(</span><span class="n">Image</span><span class="p">(</span><span class="n">riponly_png</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s1">'All deamination corrected (--reaminate):'</span><span class="p">)</span>
+<span class="n">display</span><span class="p">(</span><span class="n">Image</span><span class="p">(</span><span class="n">reaminate_png</span><span class="p">))</span>
+
+<span class="c1"># The RIP-like spectrum is dominated by the C&gt;T peak in NCA (CpA) contexts.</span>
+<span class="c1"># Reaminating the ancestor removes deamination events from the reference, so the</span>
+<span class="c1"># reaminated spectrum shifts toward the residual, non-deamination substitutions.</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-32"># Plot both SBS-96 spectra and display them for comparison
+from IPython.display import Image, display
+
+# RIP-like-only ancestor (reaminate=False); ancestor = the RIP-corrected consensus
+riponly_png = os.path.join(output_dir, 'sahana_sbs96_riponly.png')
+sahana.plot_spectra(
+    output_file=riponly_png,
+    kind='96',
+    title='Sahana SBS-96 (RIP-like correction)',
+)
+
+# All-deamination ancestor (reaminate=True)
+reaminate_png = os.path.join(output_dir, 'sahana_sbs96_reaminate.png')
+sahana_reaminate.plot_spectra(
+    output_file=reaminate_png,
+    kind='96',
+    title='Sahana SBS-96 (all deamination corrected)',
+)
+
+print('RIP-like correction:')
+display(Image(riponly_png))
+print('All deamination corrected (--reaminate):')
+display(Image(reaminate_png))
+
+# The RIP-like spectrum is dominated by the C&gt;T peak in NCA (CpA) contexts.
+# Reaminating the ancestor removes deamination events from the reference, so the
+# reaminated spectrum shifts toward the residual, non-deamination substitutions.</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
 <h2 id="conclusion">Conclusion<a class="anchor-link" href="#conclusion">¶</a></h2><p>This tutorial demonstrates how to use the <code>DeRIP</code> class directly for programmatic analysis of RIP mutations in DNA alignments. The class-based approach offers more flexibility and integration possibilities compared to the command-line interface.</p>
 <p>Key functionalities covered:</p>
 <ul>
@@ -3701,8 +4009,16 @@ display(Image(plot_file))</div>
 <li>GC content analysis</li>
 <li>Alignment visualization</li>
 <li>Comparing different parameter settings</li>
+<li>Per-sequence strand-imbalance (RSI) statistics</li>
+<li>SBS-96 mutation spectra from the deRIP consensus</li>
 </ul>
-<p>For more information and advanced usage, refer to the <a href="https://github.com/Adamtaranto/deRIP2">deRIP2 GitHub repository</a>.</p>
+<p>For more information and advanced usage, see the other tutorials:</p>
+<ul>
+<li><a href="tutorials/rip-strand-bias.md">RIP strand bias</a></li>
+<li><a href="tutorials/rip-masking-phylogeny.md">RIP masking &amp; phylogeny</a></li>
+<li><a href="tutorials/mutation-spectra.md">Mutation spectra</a></li>
+</ul>
+<p>...or the <a href="https://github.com/adamtaranto/deRIP2">deRIP2 GitHub repository</a>.</p>
 </div>
 </div>
 </div>

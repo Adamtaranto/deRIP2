@@ -104,7 +104,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              Getting Started
             
           </span>
         </div>
@@ -238,7 +238,7 @@
   <span class="md-ellipsis">
     
   
-    Home
+    Getting Started
   
 
     
@@ -256,7 +256,7 @@
   <span class="md-ellipsis">
     
   
-    Home
+    Getting Started
   
 
     
@@ -330,6 +330,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#contributing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contributing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#license" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -362,7 +373,7 @@
   <span class="md-ellipsis">
     
   
-    Getting Started
+    Colab demo notebook
   
 
     
@@ -390,6 +401,33 @@
     
   
     RIP Strand Bias
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="tutorials/rip-masking-phylogeny/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RIP Masking & Phylogeny
   
 
     
@@ -558,6 +596,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#contributing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contributing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#license" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -585,7 +634,7 @@
 
 
 
-  <h1>Home</h1>
+  <h1>Getting Started</h1>
 
 <p><a href="https://www.gnu.org/licenses/gpl-3.0"><img alt="License: GPL v3" src="https://img.shields.io/badge/License-GPLv3-blue.svg" /></a>
 <a href="https://badge.fury.io/py/derip2"><img alt="PyPI version" src="https://badge.fury.io/py/derip2.svg" /></a>
@@ -614,7 +663,7 @@ independently RIP'd.</p>
 <ul>
 <li><a href="#installation">Installation</a></li>
 <li><a href="#algorithm-overview">Algorithm overview</a></li>
-<li><a href="#issues">Report Issues</a></li>
+<li><a href="#contributing">Contributing</a></li>
 <li><a href="#license">License</a></li>
 </ul>
 <h2 id="installation">Installation</h2>
@@ -643,7 +692,7 @@ independently RIP'd.</p>
 <a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>conda<span class="w"> </span>activate<span class="w"> </span>derip2
 <a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
 <a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="c1"># Install package in editable mode</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s1">&#39;.[dev,test,docs]&#39;</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
 </code></pre></div>
 <h2 id="algorithm-overview">Algorithm overview</h2>
 <p>For each column in input alignment:</p>
@@ -656,6 +705,10 @@ independently RIP'd.</p>
 <li>If proportion of positions in column in RIP-like context =&gt; <code>min-rip-like</code> threshold, AND at least one substrate and one product motif (i.e. CpA and TpA) is present, perform RIP correction in output sequence.</li>
 <li>For all remaining positions in output sequence (not filled by gap, reaminate, or RIP-correction) inherit sequence from input sequence with the fewest observed RIP events (or greatest GC content if RIP is not detected or multiple sequences sharing min-RIP count).</li>
 </ul>
+<h2 id="contributing">Contributing</h2>
+<p>Contributions are welcome. Please read the
+<a href="https://github.com/adamtaranto/deRIP2?tab=contributing-ov-file">contribution guidelines</a>
+before opening a pull request.</p>
 <h2 id="license">License</h2>
 <p>Software provided under GPL-3 license.</p>
 
