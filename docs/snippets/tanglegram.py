@@ -8,9 +8,9 @@ entangled crossings -- clades reshaped by RIP homoplasy -- stand out.
 
 from __future__ import annotations
 
+from ete4 import Tree
 import matplotlib.pyplot as plt
 import numpy as np
-from ete4 import Tree
 
 
 def _load(path):
