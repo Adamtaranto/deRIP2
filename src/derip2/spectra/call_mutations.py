@@ -23,9 +23,10 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from derip2.spectra.channels import trinucleotide_context
+from derip2.spectra.channels import downstream_context, trinucleotide_context
 from derip2.stats.mutation_spectra import (
     SpectraResult,
+    assemble_downstream,
     assemble_matrices,
 )
 
@@ -74,29 +75,37 @@ def _resolve_branch_samples(samples_by_child, edges):
 
 class _ParentContext:
     """
-    Cached per-parent sanitised sequence, base codes and trinucleotide flanks.
+    Cached per-parent sanitised sequence, base codes and sequence context.
 
     Parameters
     ----------
     seq : numpy.ndarray
         The parent node's ``(n_cols,)`` ``'S1'`` sequence.
+    context : {'trinucleotide', 'downstream'}, optional
+        Which context to resolve per column (default: ``'trinucleotide'``). For
+        ``'trinucleotide'`` the two codes are the 5'/3' flanks; for ``'downstream'``
+        they are the two pyrimidine-strand downstream bases.
 
     Attributes
     ----------
     code : numpy.ndarray
         ``(n_cols,)`` base codes (``-1`` for gap/ambiguous).
-    five_code, three_code : numpy.ndarray
-        ``(n_cols,)`` 5' and 3' flank base codes from the nearest non-gap bases
-        (``-1`` where unresolved).
+    ctx1_code, ctx2_code : numpy.ndarray
+        ``(n_cols,)`` context base codes from the nearest non-gap bases (``-1``
+        where unresolved): the 5'/3' flanks (trinucleotide) or the two downstream
+        bases (downstream).
     context_ok : numpy.ndarray
-        ``(n_cols,)`` boolean; True where a full trinucleotide context resolved.
+        ``(n_cols,)`` boolean; True where a full context resolved.
     """
 
-    __slots__ = ('code', 'five_code', 'three_code', 'context_ok')
+    __slots__ = ('code', 'ctx1_code', 'ctx2_code', 'context_ok')
 
-    def __init__(self, seq: np.ndarray):
+    def __init__(self, seq: np.ndarray, context: str = 'trinucleotide'):
         from derip2.aln_ops import _nongap_neighbors
 
+        resolve = (
+            downstream_context if context == 'downstream' else trinucleotide_context
+        )
         n_cols = seq.shape[0]
         code = _CODE_LUT[seq.view(np.uint8)]
         sanitized = np.where(code >= 0, seq, b'-')
@@ -105,18 +114,18 @@ class _ParentContext:
         prev_idx = prev_idx[0]
 
         self.code = code.astype(np.int64)
-        self.five_code = np.full(n_cols, -1, dtype=np.int64)
-        self.three_code = np.full(n_cols, -1, dtype=np.int64)
+        self.ctx1_code = np.full(n_cols, -1, dtype=np.int64)
+        self.ctx2_code = np.full(n_cols, -1, dtype=np.int64)
         self.context_ok = np.zeros(n_cols, dtype=bool)
         for col in range(n_cols):
             if code[col] < 0:
                 continue
-            ctx = trinucleotide_context(sanitized, col, next_idx, prev_idx)
+            ctx = resolve(sanitized, col, next_idx, prev_idx)
             if ctx is None:
                 continue
-            five, three = ctx
-            self.five_code[col] = _CODE_LUT[ord(five)]
-            self.three_code[col] = _CODE_LUT[ord(three)]
+            ctx1, ctx2 = ctx
+            self.ctx1_code[col] = _CODE_LUT[ord(ctx1)]
+            self.ctx2_code[col] = _CODE_LUT[ord(ctx2)]
             self.context_ok[col] = True
 
 
@@ -125,6 +134,7 @@ def compute_spectra_from_tree(
     *,
     samples_by_child: Optional[Dict[str, str]] = None,
     min_prob: float = 0.0,
+    context: str = 'trinucleotide',
 ) -> SpectraResult:
     """
     Call substitutions along every branch and assemble the mutation spectra.
@@ -140,6 +150,10 @@ def compute_spectra_from_tree(
     min_prob : float, optional
         Drop events whose combined parent/child state posterior probability is
         below this threshold (default ``0.0``, keep all).
+    context : {'trinucleotide', 'downstream'}, optional
+        Which sequence context to classify substitutions by (default:
+        ``'trinucleotide'``). ``'downstream'`` builds the pyrimidine-folded
+        downstream-triplet matrix and leaves ``sbs192`` ``None``.
 
     Returns
     -------
@@ -147,6 +161,7 @@ def compute_spectra_from_tree(
         The phylogenetic spectra, per-event detail (with parent/child names) and
         the true (per-branch) homoplasy counts.
     """
+    downstream = context == 'downstream'
     edges = reconstruction.edges
     node_seq = reconstruction.node_seq
     node_prob = reconstruction.node_prob
@@ -160,8 +175,8 @@ def compute_spectra_from_tree(
     cols_all: List[np.ndarray] = []
     ref_all: List[np.ndarray] = []
     alt_all: List[np.ndarray] = []
-    five_all: List[np.ndarray] = []
-    three_all: List[np.ndarray] = []
+    ctx1_all: List[np.ndarray] = []
+    ctx2_all: List[np.ndarray] = []
     sample_all: List[np.ndarray] = []
     weight_all: List[np.ndarray] = []
     child_ord_all: List[np.ndarray] = []
@@ -173,7 +188,7 @@ def compute_spectra_from_tree(
 
     for parent, child in edges:
         if parent not in parent_cache:
-            parent_cache[parent] = _ParentContext(node_seq[parent])
+            parent_cache[parent] = _ParentContext(node_seq[parent], context=context)
         pc = parent_cache[parent]
 
         child_seq = node_seq[child]
@@ -202,8 +217,8 @@ def compute_spectra_from_tree(
         cols_all.append(cols)
         ref_all.append(pc.code[cols])
         alt_all.append(child_code[cols])
-        five_all.append(pc.five_code[cols])
-        three_all.append(pc.three_code[cols])
+        ctx1_all.append(pc.ctx1_code[cols])
+        ctx2_all.append(pc.ctx2_code[cols])
         sample_all.append(np.full(cols.size, child_to_sample[child], dtype=np.int64))
         weight_all.append(weight)
         child_ord_all.append(np.full(cols.size, node_index[child], dtype=np.int64))
@@ -214,18 +229,25 @@ def compute_spectra_from_tree(
         cols = np.concatenate(cols_all)
         ref_c = np.concatenate(ref_all)
         alt_c = np.concatenate(alt_all)
-        five_c = np.concatenate(five_all)
-        three_c = np.concatenate(three_all)
+        ctx1_c = np.concatenate(ctx1_all)
+        ctx2_c = np.concatenate(ctx2_all)
         sample_c = np.concatenate(sample_all)
         child_ord = np.concatenate(child_ord_all)
     else:
-        cols = ref_c = alt_c = five_c = three_c = sample_c = child_ord = np.array(
+        cols = ref_c = alt_c = ctx1_c = ctx2_c = sample_c = child_ord = np.array(
             [], dtype=np.int64
         )
 
-    sbs96, sbs192 = assemble_matrices(
-        five_c, ref_c, alt_c, three_c, sample_c, len(sample_names)
-    )
+    if downstream:
+        # Single pyrimidine-folded downstream matrix; no strand-resolved form.
+        sbs96 = assemble_downstream(
+            ctx1_c, ref_c, alt_c, ctx2_c, sample_c, len(sample_names)
+        )
+        sbs192 = None
+    else:
+        sbs96, sbs192 = assemble_matrices(
+            ctx1_c, ref_c, alt_c, ctx2_c, sample_c, len(sample_names)
+        )
 
     # True homoplasy: independent branch events per column per derived base.
     homoplasy_counts = np.zeros((n_cols, 4), dtype=np.int64)
@@ -246,16 +268,22 @@ def compute_spectra_from_tree(
         n_unassignable_context,
     )
 
+    empty = np.array([], dtype='S1')
+    ctx1_bytes = _CODE_TO_BASE[ctx1_c] if cols.size else empty
+    ctx2_bytes = _CODE_TO_BASE[ctx2_c] if cols.size else empty
     return SpectraResult(
         sbs96=sbs96,
         sbs192=sbs192,
         sample_names=sample_names,
         event_rows=child_ord,
         event_cols=cols,
-        event_ref=_CODE_TO_BASE[ref_c] if cols.size else np.array([], dtype='S1'),
-        event_alt=_CODE_TO_BASE[alt_c] if cols.size else np.array([], dtype='S1'),
-        event_five=_CODE_TO_BASE[five_c] if cols.size else np.array([], dtype='S1'),
-        event_three=_CODE_TO_BASE[three_c] if cols.size else np.array([], dtype='S1'),
+        event_ref=_CODE_TO_BASE[ref_c] if cols.size else empty,
+        event_alt=_CODE_TO_BASE[alt_c] if cols.size else empty,
+        event_five=None if downstream else ctx1_bytes,
+        event_three=None if downstream else ctx2_bytes,
+        event_down1=ctx1_bytes if downstream else None,
+        event_down2=ctx2_bytes if downstream else None,
+        context=context,
         event_sample=sample_c,
         homoplasy_counts=homoplasy_counts,
         ancestor_ref=ancestor_ref,
