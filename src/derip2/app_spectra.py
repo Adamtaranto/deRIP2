@@ -369,9 +369,9 @@ def _write_downstream_outputs(
         return
     fig_path = path.join(out_dir, f'{prefix}_SBSdownstream.png')
     logger.info(f'Plotting downstream spectrum to: \033[0m{fig_path}')
-    spectra_plots.plot_downstream(
-        result, fig_path, title=f'{prefix} downstream-triplet', percentage=percentage
-    )
+    # The caption already names the downstream-triplet context, so the title is
+    # just the prefix to avoid repeating "downstream-triplet" in the heading.
+    spectra_plots.plot_downstream(result, fig_path, title=prefix, percentage=percentage)
     hom_fig = path.join(out_dir, f'{prefix}_homoplasy.png')
     logger.info(f'Plotting homoplasy to: \033[0m{hom_fig}')
     spectra_plots.plot_homoplasy(

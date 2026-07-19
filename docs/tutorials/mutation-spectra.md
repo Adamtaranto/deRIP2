@@ -19,6 +19,9 @@ The matrices are written in SigProfiler-compliant format, so they drop straight
 into `SigProfilerPlotting` / `SigProfilerAssignment` if you want to decompose them
 against COSMIC signatures later.
 
+There is also a third, CHG-aware context — the **downstream-triplet** — described
+in [its own section](#downstream-triplet-context-chg-methylation) below.
+
 ## Quick start
 
 ```bash
@@ -356,6 +359,68 @@ model, the rooting method and the root node, node/edge counts, and — with
 `--root-sensitivity` — the fraction of edges whose direction flips under midpoint
 rooting. Directionality depends on the root, so record it.
 
+## Downstream-triplet context (CHG methylation)
+
+The trinucleotide context sees only **one** base downstream of the mutated base.
+But in ascomycete fungi, cytosine methylation targets the **CHG** context — a `C`
+followed by `H` (any of A/C/T) then a `G` — and methyl-cytosine deaminates to `T`.
+If methylation is driving `C>T`, the signal lives **two** bases downstream (the
+`G` of `CHG`), which the trinucleotide model cannot resolve.
+
+The downstream-triplet context fixes this. Each substitution is classified by the
+mutated base plus its **two downstream bases** (motif `ref d1 d2`, read 5′→3′),
+giving a pyrimidine-folded 96-channel matrix. Turn it on with `--context
+downstream`:
+
+```bash
+derip2-spectra -i family.fasta -d out -p family --context downstream
+```
+
+This writes a distinct set of files (no SBS-192 or strand-asymmetry — see below):
+
+| File | Contents |
+|---|---|
+| `family.SBSdownstream.txt` | 96-channel downstream count matrix |
+| `family.SBSdownstream.meta.json` | provenance sidecar (context, method, kind) |
+| `family_SBSdownstream.png` | downstream spectrum bar plot |
+| `family_homoplasy.png`, `family_homoplasy.tsv`, `family_events.tsv` | as usual |
+
+![Downstream-triplet spectrum of the Sahana transposon](../img/spectra_downstream.png)
+
+In both plots the **mutated base is bold** in every x-axis motif — the *middle*
+base for the trinucleotide plot, the *first* base for the downstream plot — and the
+heading names the context so the two are never confused. To read the CHG signal,
+look along the `C>T` block for the channels whose **second** downstream base is `G`
+(`[C>T]AG`, `[C>T]CG`, `[C>T]TG`).
+
+Two design points worth knowing:
+
+- **Orientation invariance.** Reading two bases downstream is not symmetric under
+  reverse-complement, so the counts are always taken on the *pyrimidine* strand: a
+  purine-reference event contributes the reverse-complement of its two *upstream*
+  bases. The result is identical whichever strand your alignment happens to be in.
+- **No strand-resolved form.** Because "downstream" is already defined relative to
+  the pyrimidine strand, a strand-resolved (192-channel) downstream matrix would be
+  orientation-dependent and misleading, so it is not produced. `--sbs 192`/`both`
+  are rejected in this mode, and there is no strand-asymmetry plot.
+
+The channel labels use a distinct `[REF>ALT]d1d2` form (e.g. `[C>T]AG`) so a
+downstream matrix can never be mistaken for — or compared against — an SBS-96 one.
+Everything else (baseline vs `--method phylo`, `--groups`, `--partition-by`,
+homoplasy, the statistical comparisons below) works identically.
+
+From Python:
+
+```python
+from derip2.derip import DeRIP
+
+d = DeRIP('family.fasta')
+d.calculate_rip()
+res = d.calculate_spectra(context='downstream')
+d.write_spectra_matrix('family.SBSdownstream.txt', kind='downstream')
+d.plot_spectra('family_SBSdownstream.png', kind='downstream')
+```
+
 ## Comparing spectra statistically
 
 Once you have spectra for two or more groups — or two matrices from separate runs
@@ -418,7 +483,7 @@ methylation-deficient pair, by contrast, would show a lower cosine, a small p an
 
 Comparing SigProfiler-format matrices from separate runs (or external tools) is
 the same call — read each file and pass one column from each. Both must be the
-same context (both SBS-96 or both SBS-192):
+same context (both SBS-96, both SBS-192, or both downstream):
 
 ```python
 from derip2.spectra import read_sbs_matrix
@@ -432,6 +497,17 @@ res = compare_spectra(mat_a[:, 0], mat_b[:, 0], ch_a)
 print(res['cosine_similarity'], res['pvalue'], res['cramers_v'])
 ```
 
+`compare_matrix_files` does the read-and-guard for you, refusing to compare
+matrices whose channel sets differ (so a trinucleotide matrix can never be
+compared against a downstream one):
+
+```python
+from derip2.stats import compare_matrix_files
+
+res = compare_matrix_files('speciesA.SBSdownstream.txt', 'speciesB.SBSdownstream.txt')
+print(res['cosine_similarity'], res['pvalue'])
+```
+
 !!! tip "For a robustness check"
     The chi-squared test assumes each event is independent. Recurrent RIP breaks
     that assumption mildly, so treat borderline p-values as a screen. When a call
@@ -443,7 +519,8 @@ print(res['cosine_similarity'], res['pvalue'], res['cramers_v'])
 
 | Option | Purpose |
 |---|---|
-| `--sbs {96,192,both}` | which matrices/plots to produce |
+| `--context {trinucleotide,downstream}` | sequence context: 5′/3′ flanks (SBS-96/192) or the mutated base + its two downstream bases (CHG-aware, 96 folded channels) |
+| `--sbs {96,192,both}` | which matrices/plots to produce (trinucleotide context only) |
 | `--rooting {midpoint,outgroup,none}` | how to root (sets substitution direction) |
 | `--outgroup NAME[,NAME…]` | outgroup tip(s) for `--rooting outgroup` |
 | `--iqtree-model` | IQ-TREE model (default `MFP`) |

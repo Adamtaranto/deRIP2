@@ -200,6 +200,11 @@ derip2-spectra -i tests/data/mintest.fa -d results -p family
 derip2-spectra -i family_with_deRIPseq.fasta -d results -p family
 derip2-spectra -i family.fasta --ancestor ancestor.fasta -d results -p family
 
+# CHG-aware downstream-triplet context: classify each substitution by the mutated
+# base plus its two downstream bases (motif ref-d1-d2), so methylation-driven C>T
+# in the fungal CHG context becomes visible (writes family.SBSdownstream.txt).
+derip2-spectra -i family.fasta --context downstream -d results -p family
+
 # Phylogenetic path (requires IQ-TREE on PATH)
 derip2-spectra -i family.fasta --method phylo -d results -p family
 
@@ -214,9 +219,13 @@ derip2-spectra -i family.fasta --method phylo --tree results/family_masked.treef
 
 ![SBS-96 mutation spectrum of a RIP-affected transposon](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/spectra_sbs96.png)
 
+![Downstream-triplet spectrum of a RIP-affected transposon](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/spectra_downstream.png)
+
 Spectra can be reported per sequence, per clade, or per user-defined group
 (`--groups`, e.g. species), and the SigProfiler-compliant matrices can be
-decomposed against reference signatures. Input alignments must be unambiguous
+decomposed against reference signatures. The `--context downstream` mode adds a
+CHG-aware view (mutated base + two downstream bases, pyrimidine-folded and
+orientation-invariant) alongside the standard trinucleotide SBS-96/192. Input alignments must be unambiguous
 DNA (`A/C/G/T/-`, case-insensitive); degenerate IUPAC characters (`N`, `R`, `Y`,
 …) are rejected with a clear error rather than being silently coerced to gaps.
 
