@@ -40,6 +40,18 @@ def result_multi():
     return d.calculate_spectra(partition_by='row')
 
 
+@pytest.fixture(scope='module')
+def result_downstream():
+    """A downstream-context SpectraResult over mintest."""
+    from derip2.stats import compute_spectra
+
+    d = DeRIP(MINTEST)
+    d.calculate_rip()
+    return compute_spectra(
+        d.column_classes, str(d.gapped_consensus.seq), context='downstream'
+    )
+
+
 @pytest.mark.parametrize(
     'plotter,kwargs',
     [
@@ -112,6 +124,48 @@ def test_multi_sample_sbs192_has_one_panel_per_sample(result_multi):
     fig = sp.plot_sbs192(result_multi)
     assert len(fig.axes) == len(result_multi.sample_names)
     plt.close(fig)
+
+
+def test_mono_bold_marks_one_character():
+    """_mono_bold bolds exactly the requested character and typesets the rest mono."""
+    assert sp._mono_bold('ACG', 0) == r'$\mathbf{A}\mathtt{C}\mathtt{G}$'
+    assert sp._mono_bold('ACG', 1) == r'$\mathtt{A}\mathbf{C}\mathtt{G}$'
+
+
+def test_plot_downstream_writes_file(tmp_path, result_downstream):
+    """The downstream plotter returns a figure and writes a non-empty PNG."""
+    out = tmp_path / 'ds.png'
+    fig = sp.plot_downstream(result_downstream, str(out), title='mintest')
+    assert fig is not None
+    assert out.exists() and out.stat().st_size > 0
+    plt.close(fig)
+
+
+def test_downstream_ticks_bold_first_base(result_downstream):
+    """Downstream motif ticks bold the first (mutated) base via mathtext."""
+    fig = sp.plot_downstream(result_downstream)
+    labels = [t.get_text() for t in fig.axes[0].get_xticklabels()]
+    # Every tick is a mathtext motif whose first base is bolded.
+    assert labels and all(lab.startswith(r'$\mathbf{') for lab in labels)
+    plt.close(fig)
+
+
+def test_sbs96_ticks_bold_middle_base(result):
+    """Trinucleotide motif ticks bold the middle (mutated) base via mathtext."""
+    fig = sp.plot_sbs96(result)
+    labels = [t.get_text() for t in fig.axes[0].get_xticklabels()]
+    assert labels and all(
+        lab.startswith(r'$\mathtt{') and r'\mathbf{' in lab for lab in labels
+    )
+    plt.close(fig)
+
+
+def test_downstream_result_has_no_strand_plots(result_downstream):
+    """SBS-192 and strand-asymmetry plots reject a downstream result."""
+    with pytest.raises(ValueError):
+        sp.plot_sbs192(result_downstream)
+    with pytest.raises(ValueError):
+        sp.strand_asymmetry(result_downstream)
 
 
 def test_strand_asymmetry_stars_biased_class():

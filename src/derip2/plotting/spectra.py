@@ -38,11 +38,24 @@ from derip2.plotting.strandbias import (
 )
 from derip2.spectra.channels import (
     BASES,
+    DOWNSTREAM_SUBSTITUTIONS,
     SBS96_SUBSTITUTIONS,
     SBS192_SUBSTITUTIONS,
 )
 
 logger = logging.getLogger(__name__)
+
+# Short captions distinguishing the sequence-context model in figure headings.
+_CONTEXT_CAPTION = {
+    'trinucleotide': r'trinucleotide context (5$^\prime$-N[R>A]N-3$^\prime$)',
+    'trinucleotide_192': (
+        r'trinucleotide context, strand-resolved (5$^\prime$-N[R>A]N-3$^\prime$)'
+    ),
+    'downstream': (
+        r'downstream-triplet context '
+        r'(5$^\prime$-[R>A]$d_1 d_2$-3$^\prime$; CHG methylation)'
+    ),
+}
 
 # The six substitution classes, coloured from the validated deRIP2 palette so the
 # spectrum figures share the package's colourblind-safe hues rather than the
@@ -64,6 +77,57 @@ STRAND_COLORS = {
 }
 
 RASTER_EXTS = ('.png', '.jpg', '.jpeg', '.tif', '.tiff')
+
+
+def _mono_bold(chars: str, bold_index: int) -> str:
+    """
+    Render a short motif as mathtext with one character emphasised in bold.
+
+    matplotlib cannot bold a single character of an ordinary tick label, so the
+    motif is built as a mathtext string: every base is typeset in the monospace
+    math font (``\\mathtt``) except the mutated base at ``bold_index``, which is
+    typeset bold (``\\mathbf``) to mark it as the substitution site.
+
+    Parameters
+    ----------
+    chars : str
+        The motif characters (e.g. ``'ACG'``); all must be plain ``A``/``C``/``G``/
+        ``T`` so no mathtext escaping is needed.
+    bold_index : int
+        Index of the character to render bold.
+
+    Returns
+    -------
+    str
+        A mathtext string, e.g. ``r'$\\mathtt{A}\\mathbf{C}\\mathtt{G}$'``.
+    """
+    parts = [
+        (r'\mathbf{%s}' if i == bold_index else r'\mathtt{%s}') % ch
+        for i, ch in enumerate(chars)
+    ]
+    return '$' + ''.join(parts) + '$'
+
+
+def _caption_suptitle(fig, title: Optional[str], caption: str) -> None:
+    """
+    Set the figure heading, distinguishing the context model via a caption line.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        The figure to title.
+    title : str or None
+        The caller-supplied heading, or ``None`` for the caption alone.
+    caption : str
+        The context-model caption (see :data:`_CONTEXT_CAPTION`).
+
+    Returns
+    -------
+    None
+        The suptitle is set in place.
+    """
+    heading = f'{title}\n{caption}' if title else caption
+    fig.suptitle(heading, fontsize=TITLE_SIZE, color=INK_PRIMARY)
 
 
 def _substitution_label(ref: str, alt: str) -> str:
@@ -209,6 +273,7 @@ def _draw_spectrum_panel(
     *,
     percentage: bool,
     show_context_ticks: bool,
+    context: str = 'trinucleotide',
 ) -> None:
     """
     Draw one spectrum panel: contiguous 16-wide blocks, one per substitution type.
@@ -224,7 +289,12 @@ def _draw_spectrum_panel(
     percentage : bool
         Whether the y-axis is a percentage.
     show_context_ticks : bool
-        Whether to letter every bar with its trinucleotide context.
+        Whether to letter every bar with its sequence-context motif.
+    context : {'trinucleotide', 'downstream'}, optional
+        Which context the motif ticks describe (default: ``'trinucleotide'``). For
+        ``'trinucleotide'`` the motif is ``5' ref 3'`` with the middle (mutated)
+        base bold; for ``'downstream'`` it is ``ref d1 d2`` with the first
+        (mutated) base bold.
 
     Returns
     -------
@@ -266,15 +336,21 @@ def _draw_spectrum_panel(
         )
 
     if show_context_ticks:
+        # The mutated base is bolded in every motif: the middle base for the
+        # trinucleotide context, the first base for the downstream context. The
+        # two inner bases follow the canonical channel ordering (b1 outer, b2
+        # inner), matching SBS96_CHANNELS / DOWNSTREAM_CHANNELS.
+        downstream = context == 'downstream'
         labels = []
         for ref, _alt in substitutions:
-            for five in BASES:
-                for three in BASES:
-                    labels.append(f'{five}{ref}{three}')
+            for b1 in BASES:
+                for b2 in BASES:
+                    if downstream:
+                        labels.append(_mono_bold(f'{ref}{b1}{b2}', 0))
+                    else:
+                        labels.append(_mono_bold(f'{b1}{ref}{b2}', 1))
         ax.set_xticks(x)
-        ax.set_xticklabels(
-            labels, rotation=90, fontsize=4.5, family='monospace', color=INK_SECONDARY
-        )
+        ax.set_xticklabels(labels, rotation=90, fontsize=4.5, color=INK_SECONDARY)
     else:
         ax.set_xticks([block * 16 + 7.5 for block in range(n_blocks)])
         ax.set_xticklabels(
@@ -359,8 +435,69 @@ def plot_sbs96(
                     loc='left',
                     pad=16,
                 )
-        if title:
-            fig.suptitle(title, fontsize=TITLE_SIZE, color=INK_PRIMARY)
+        _caption_suptitle(fig, title, _CONTEXT_CAPTION['trinucleotide'])
+        fig.tight_layout()
+        _save(fig, outfile, dpi)
+    return fig
+
+
+def plot_downstream(
+    result,
+    outfile: Optional[str] = None,
+    *,
+    title: Optional[str] = None,
+    percentage: bool = False,
+    dpi: int = 300,
+):
+    """
+    Draw the pyrimidine-folded downstream-triplet spectrum, one panel per sample.
+
+    The six substitution blocks mirror the SBS-96 layout, but each bar is
+    classified by the mutated base plus its two downstream bases (motif
+    ``ref d1 d2``, first base bold). The downstream counts are read from
+    ``result.sbs96`` (which holds the 96-channel matrix for the downstream context).
+
+    Parameters
+    ----------
+    result : derip2.stats.mutation_spectra.SpectraResult
+        The computed spectra (``result.context`` should be ``'downstream'``).
+    outfile : str or None, optional
+        Output path; when ``None`` the figure is returned unsaved.
+    title : str or None, optional
+        Figure title.
+    percentage : bool, optional
+        Plot each sample as a percentage of its total (default: counts).
+    dpi : int, optional
+        Raster resolution (default: 300).
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The rendered figure.
+    """
+    with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
+        n = len(result.sample_names)
+        fig, axes = _figure(n, width=7.4, panel_height=2.2)
+        for s, ax in enumerate(axes):
+            counts = _counts_for_sample(result.sbs96, s, percentage)
+            _draw_spectrum_panel(
+                ax,
+                counts,
+                DOWNSTREAM_SUBSTITUTIONS,
+                percentage=percentage,
+                show_context_ticks=True,
+                context='downstream',
+            )
+            if n > 1:
+                # pad lifts the sample name clear of the class-block labels.
+                ax.set_title(
+                    result.sample_names[s],
+                    fontsize=AXIS_LABEL_SIZE,
+                    color=INK_PRIMARY,
+                    loc='left',
+                    pad=16,
+                )
+        _caption_suptitle(fig, title, _CONTEXT_CAPTION['downstream'])
         fig.tight_layout()
         _save(fig, outfile, dpi)
     return fig
@@ -395,6 +532,11 @@ def plot_sbs192(
     matplotlib.figure.Figure
         The rendered figure.
     """
+    if result.sbs192 is None:
+        raise ValueError(
+            'This result has no SBS-192 matrix (the downstream context has no '
+            'orientation-invariant strand-resolved form); use plot_downstream.'
+        )
     with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
         n = len(result.sample_names)
         fig, axes = _figure(n, width=11.0, panel_height=2.2)
@@ -416,8 +558,7 @@ def plot_sbs192(
                     loc='left',
                     pad=16,
                 )
-        if title:
-            fig.suptitle(title, fontsize=TITLE_SIZE, color=INK_PRIMARY)
+        _caption_suptitle(fig, title, _CONTEXT_CAPTION['trinucleotide_192'])
         fig.tight_layout()
         _save(fig, outfile, dpi)
     return fig
@@ -481,7 +622,17 @@ def strand_asymmetry(result, sample: int = 0) -> List[dict]:
         One dict per pyrimidine class with keys ``class``, ``coding``,
         ``template``, ``ratio`` (coding / template, ``inf`` if template is zero)
         and ``pvalue``.
+
+    Raises
+    ------
+    ValueError
+        If the result has no SBS-192 matrix (the downstream context).
     """
+    if result.sbs192 is None:
+        raise ValueError(
+            'Strand asymmetry needs an SBS-192 matrix, which the downstream '
+            'context does not produce.'
+        )
     counts = result.sbs192[:, sample]
     rows: List[dict] = []
     for i, (ref, alt) in enumerate(SBS96_SUBSTITUTIONS):
