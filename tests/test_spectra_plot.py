@@ -40,6 +40,18 @@ def result_multi():
     return d.calculate_spectra(partition_by='row')
 
 
+@pytest.fixture(scope='module')
+def result_downstream():
+    """A downstream-context SpectraResult over mintest."""
+    from derip2.stats import compute_spectra
+
+    d = DeRIP(MINTEST)
+    d.calculate_rip()
+    return compute_spectra(
+        d.column_classes, str(d.gapped_consensus.seq), context='downstream'
+    )
+
+
 @pytest.mark.parametrize(
     'plotter,kwargs',
     [
@@ -112,6 +124,68 @@ def test_multi_sample_sbs192_has_one_panel_per_sample(result_multi):
     fig = sp.plot_sbs192(result_multi)
     assert len(fig.axes) == len(result_multi.sample_names)
     plt.close(fig)
+
+
+def _bold_overlays(ax):
+    """Return the bold monospace overlay Text objects drawn for motif ticks."""
+    return [
+        t
+        for t in ax.texts
+        if t.get_fontweight() == 'bold'
+        and t.get_family() == ['monospace']
+        and t.get_text().strip()
+    ]
+
+
+def test_plot_downstream_writes_file(tmp_path, result_downstream):
+    """The downstream plotter returns a figure and writes a non-empty PNG."""
+    out = tmp_path / 'ds.png'
+    fig = sp.plot_downstream(result_downstream, str(out), title='mintest')
+    assert fig is not None
+    assert out.exists() and out.stat().st_size > 0
+    plt.close(fig)
+
+
+def test_downstream_ticks_bold_first_base(result_downstream):
+    """Downstream motif ticks bold the first (mutated) base with monospace bold."""
+    fig = sp.plot_downstream(result_downstream)
+    ax = fig.axes[0]
+    # One regular monospace flank label and one bold overlay per channel (96).
+    flanks = [t.get_text() for t in ax.get_xticklabels()]
+    overlays = _bold_overlays(ax)
+    assert len(overlays) == 96
+    # The bold overlay carries only the mutated base at index 0 (first base).
+    for t in overlays:
+        text = t.get_text()
+        assert text[0] != ' ' and text[1:] == '  '
+    # The regular tick labels keep monospace (equal width) and blank the mutated
+    # base, so the flanks + overlay together spell the motif.
+    assert flanks and all(f[0] == ' ' for f in flanks)
+    plt.close(fig)
+
+
+def test_sbs96_ticks_bold_middle_base(result):
+    """Trinucleotide motif ticks bold the middle (mutated) base with mono bold."""
+    fig = sp.plot_sbs96(result)
+    ax = fig.axes[0]
+    overlays = _bold_overlays(ax)
+    assert len(overlays) == 96
+    # The bold overlay carries only the mutated base at index 1 (middle base).
+    for t in overlays:
+        text = t.get_text()
+        assert text[1] != ' ' and text[0] == ' ' and text[2] == ' '
+    # The real tick labels are equal-width monospace with the middle base blanked.
+    flanks = [t.get_text() for t in ax.get_xticklabels()]
+    assert flanks and all(f[1] == ' ' and len(f) == 3 for f in flanks)
+    plt.close(fig)
+
+
+def test_downstream_result_has_no_strand_plots(result_downstream):
+    """SBS-192 and strand-asymmetry plots reject a downstream result."""
+    with pytest.raises(ValueError):
+        sp.plot_sbs192(result_downstream)
+    with pytest.raises(ValueError):
+        sp.strand_asymmetry(result_downstream)
 
 
 def test_strand_asymmetry_stars_biased_class():

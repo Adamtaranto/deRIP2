@@ -23,6 +23,7 @@ Channel label form is the SigProfiler convention ``5[REF>ALT]3`` (e.g.
 order used by the matrix files and plots.
 """
 
+import re
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -268,3 +269,210 @@ def trinucleotide_context(
     five = seq[left].decode('ascii').upper()
     three = seq[right].decode('ascii').upper()
     return five, three
+
+
+# ---------------------------------------------------------------------------
+# Downstream-triplet context (5'-[REF>ALT]d1d2-3')
+#
+# An alternative context that classifies each substitution by the mutated base
+# plus its **two downstream** bases (read 5'->3'), rather than the one 5' and one
+# 3' flank of the trinucleotide model. The biological motivation is CHG cytosine
+# methylation in ascomycete fungi: methyl-C in a ``C-H-G`` context (H = A/C/T)
+# deaminates to T, so methylation-driven C>T shows up as an excess of C>T where
+# the mutated C is followed by H then G -- a two-base-downstream signal the
+# trinucleotide context cannot resolve.
+#
+# The two downstream bases are always read on the **pyrimidine strand** so the
+# counts are invariant to the orientation of the input alignment (see
+# :func:`downstream_context`): for a pyrimidine reference the bases are read
+# directly downstream, and for a purine reference they are the reverse-complement
+# of the two upstream bases (which are the physical downstream bases of the
+# equivalent pyrimidine event on the opposite strand).
+# ---------------------------------------------------------------------------
+
+# The downstream model folds onto the same six pyrimidine substitution classes as
+# SBS-96; only the flank context differs.
+DOWNSTREAM_SUBSTITUTIONS: Tuple[Tuple[str, str], ...] = SBS96_SUBSTITUTIONS
+
+# Parses a downstream channel label back into ``(ref, alt, d1, d2)``. The absence
+# of a leading flank base (unlike SBS-96's ``N[N>N]N``) makes the two label forms
+# unambiguous.
+_DOWNSTREAM_LABEL_RE = re.compile(r'^\[([ACGT])>([ACGT])\]([ACGT])([ACGT])$')
+
+
+def _downstream_label(ref: str, alt: str, d1: str, d2: str) -> str:
+    """
+    Build a downstream-triplet ``[REF>ALT]d1d2`` channel label.
+
+    Parameters
+    ----------
+    ref : str
+        The reference (mutated) base.
+    alt : str
+        The derived base.
+    d1 : str
+        The first downstream base (immediately 3' on the pyrimidine strand).
+    d2 : str
+        The second downstream base.
+
+    Returns
+    -------
+    str
+        The channel label, e.g. ``[C>T]AG``.
+    """
+    return f'[{ref}>{alt}]{d1}{d2}'
+
+
+def _build_downstream_channels() -> List[str]:
+    """
+    Enumerate downstream-triplet channel labels in canonical order.
+
+    The substitution type varies in the outer loop, the first downstream base in
+    the middle loop and the second downstream base in the inner loop, so the
+    sixteen ``(d1, d2)`` contexts of each substitution type are contiguous -- the
+    same block layout SBS-96 uses for its flanks.
+
+    Returns
+    -------
+    list of str
+        The 96 downstream channel labels.
+    """
+    channels: List[str] = []
+    for ref, alt in DOWNSTREAM_SUBSTITUTIONS:
+        for d1 in BASES:
+            for d2 in BASES:
+                channels.append(_downstream_label(ref, alt, d1, d2))
+    return channels
+
+
+# Canonical downstream channel ordering and its reverse lookup.
+DOWNSTREAM_CHANNELS: List[str] = _build_downstream_channels()
+DOWNSTREAM_INDEX = {label: i for i, label in enumerate(DOWNSTREAM_CHANNELS)}
+
+
+def downstream_channel(ref: str, alt: str, d1: str, d2: str) -> str:
+    """
+    Return the downstream-triplet channel label for a pyrimidine-folded event.
+
+    This is a pure label builder: ``ref``/``alt`` are expected to already be on
+    the pyrimidine strand (``ref`` in ``C``/``T``) and ``d1``/``d2`` to already be
+    the pyrimidine-strand downstream bases, exactly as :func:`downstream_context`
+    resolves them. Folding of a purine-reference event is the caller's
+    responsibility (mirroring how :func:`sbs96_channel` is composed via
+    :func:`fold_to_pyrimidine`), because the two downstream bases are selected from
+    different physical neighbours depending on the reference strand.
+
+    Parameters
+    ----------
+    ref : str
+        The pyrimidine reference base (``C`` or ``T``).
+    alt : str
+        The derived base on the pyrimidine strand.
+    d1 : str
+        The first downstream base on the pyrimidine strand.
+    d2 : str
+        The second downstream base on the pyrimidine strand.
+
+    Returns
+    -------
+    str
+        The channel label, e.g. ``[C>T]AG``.
+    """
+    return _downstream_label(ref, alt, d1, d2)
+
+
+def parse_downstream_channel(label: str) -> Tuple[str, str, str, str]:
+    """
+    Parse a downstream channel label into its ``(ref, alt, d1, d2)`` components.
+
+    Parameters
+    ----------
+    label : str
+        A channel label of the form ``[REF>ALT]d1d2`` (e.g. ``[C>T]AG``).
+
+    Returns
+    -------
+    tuple of str
+        ``(ref, alt, d1, d2)``.
+
+    Raises
+    ------
+    ValueError
+        If ``label`` is not a valid downstream channel label.
+    """
+    match = _DOWNSTREAM_LABEL_RE.match(label)
+    if match is None:
+        raise ValueError(f'Not a downstream channel label: {label!r}')
+    ref, alt, d1, d2 = match.groups()
+    return ref, alt, d1, d2
+
+
+def downstream_context(
+    seq: np.ndarray,
+    col: int,
+    next_idx: np.ndarray,
+    prev_idx: np.ndarray,
+) -> Optional[Tuple[str, str]]:
+    """
+    Resolve the two pyrimidine-strand downstream bases of a column.
+
+    The reference base at ``col`` sets the strand on which "downstream" is read so
+    that the result is invariant to the orientation of the input alignment:
+
+    - **Pyrimidine reference (C/T)**: the two downstream bases are read directly
+      from the nearest non-gap neighbours to the right (``next_idx`` chained once
+      to reach the second base).
+    - **Purine reference (A/G)**: the equivalent pyrimidine event lives on the
+      opposite strand, whose two downstream bases are the reverse-complement of the
+      two **upstream** bases here. So the two nearest non-gap neighbours to the
+      left (``prev_idx`` chained once) are complemented and returned.
+
+    Non-ACGT positions must already be normalised to gaps in ``seq`` so the
+    neighbour indices skip over them (as for :func:`trinucleotide_context`). When
+    either required second neighbour is absent (a terminal column, or -- for a
+    purine reference -- a column too close to the 5' end) the event has no full
+    downstream context and ``None`` is returned. This 5'/3' asymmetry is inherent
+    to reading a fixed two-base window on the pyrimidine strand.
+
+    Parameters
+    ----------
+    seq : numpy.ndarray
+        1-D byte array (dtype ``'S1'``) of the reference/ancestral sequence, with
+        every non-``ACGT`` position already normalised to a gap.
+    col : int
+        The column of the mutated (reference) base.
+    next_idx : numpy.ndarray
+        1-D int array; the column index of the nearest non-gap base to the right
+        of each column, or ``-1``.
+    prev_idx : numpy.ndarray
+        1-D int array; the column index of the nearest non-gap base to the left of
+        each column, or ``-1``.
+
+    Returns
+    -------
+    tuple of str or None
+        ``(d1, d2)`` uppercase pyrimidine-strand downstream bases, or ``None`` if
+        the full two-base context is unresolvable.
+    """
+    ref = seq[col].decode('ascii').upper()
+    if ref in PYRIMIDINES:
+        first = int(next_idx[col])
+        if first == -1:
+            return None
+        second = int(next_idx[first])
+        if second == -1:
+            return None
+        d1 = seq[first].decode('ascii').upper()
+        d2 = seq[second].decode('ascii').upper()
+        return d1, d2
+    # Purine reference: the pyrimidine-strand downstream bases are the
+    # reverse-complement of the two nearest non-gap upstream bases.
+    first = int(prev_idx[col])
+    if first == -1:
+        return None
+    second = int(prev_idx[first])
+    if second == -1:
+        return None
+    u1 = seq[first].decode('ascii').upper()
+    u2 = seq[second].decode('ascii').upper()
+    return COMPLEMENT[u1], COMPLEMENT[u2]

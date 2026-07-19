@@ -50,6 +50,64 @@ def test_cli_produces_all_outputs(tmp_path):
     assert matrix.shape == (96, 1)
 
 
+def test_cli_downstream_context_outputs(tmp_path):
+    """--context downstream writes the downstream matrix, sidecar and plot only."""
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ['-i', MINTEST, '-d', str(tmp_path), '-p', 'ds', '--context', 'downstream'],
+    )
+    assert result.exit_code == 0, result.output
+    produced = set(os.listdir(tmp_path))
+    for name in (
+        'ds.SBSdownstream.txt',
+        'ds.SBSdownstream.meta.json',
+        'ds_events.tsv',
+        'ds_homoplasy.tsv',
+        'ds_SBSdownstream.png',
+        'ds_homoplasy.png',
+    ):
+        assert name in produced, f'missing {name}'
+    # No SBS-96/192 or strand-asymmetry outputs in the downstream context.
+    assert not any(n.startswith('ds.SBS96') for n in produced)
+    assert not any(n.startswith('ds.SBS192') for n in produced)
+    assert 'ds_strand_asymmetry.png' not in produced
+
+    channels, samples, matrix = read_sbs_matrix(str(tmp_path / 'ds.SBSdownstream.txt'))
+    assert len(channels) == 96
+    assert channels[0].startswith('[')  # distinct downstream label form
+    assert matrix.shape == (96, 1)
+
+    import json
+
+    with open(tmp_path / 'ds.SBSdownstream.meta.json') as handle:
+        meta = json.load(handle)
+    assert meta['context'] == 'downstream'
+    assert meta['kind'] == 'downstream'
+
+
+def test_cli_downstream_rejects_explicit_sbs192(tmp_path):
+    """--context downstream with an explicit --sbs 192/both is a clear error."""
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            '-i',
+            MINTEST,
+            '-d',
+            str(tmp_path),
+            '-p',
+            'ds',
+            '--context',
+            'downstream',
+            '--sbs',
+            '192',
+        ],
+    )
+    assert result.exit_code != 0
+    assert 'not applicable' in result.output
+
+
 def test_cli_no_plots_skips_figures(tmp_path):
     """--no-plots writes matrices and tables but no PNGs."""
     runner = CliRunner()

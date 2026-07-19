@@ -14,6 +14,7 @@ import pytest
 from derip2.stats.spectra_compare import (
     chi2_homogeneity,
     chi2_sf,
+    compare_matrix_files,
     compare_spectra,
     cosine_similarity,
     pairwise_compare,
@@ -111,3 +112,57 @@ def test_pairwise_compare_bonferroni():
         if not math.isnan(r['pvalue_adjusted']):
             assert r['pvalue_adjusted'] >= r['pvalue'] - 1e-12
             assert r['pvalue_adjusted'] <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# File-level comparison with a context guard.
+# ---------------------------------------------------------------------------
+
+
+def _classes(seqs):
+    """Wrap sequence strings as an object exposing ``arr`` like a classification."""
+    from types import SimpleNamespace
+
+    from Bio.Align import MultipleSeqAlignment
+    from Bio.Seq import Seq
+    from Bio.SeqRecord import SeqRecord
+
+    from derip2.aln_ops import alignment_to_array
+
+    aln = MultipleSeqAlignment(
+        [SeqRecord(Seq(s), id=f'seq{i}') for i, s in enumerate(seqs)]
+    )
+    return SimpleNamespace(arr=alignment_to_array(aln))
+
+
+def _write(result, tmp_path, name, kind):
+    """Write a spectra result to a matrix file and return its path."""
+    from derip2.spectra.matrix_io import write_sbs_matrix
+
+    path = str(tmp_path / name)
+    write_sbs_matrix(result, path, kind=kind)
+    return path
+
+
+def test_compare_matrix_files_same_context(tmp_path):
+    """Two downstream matrices with matching channels compare successfully."""
+    from derip2.stats import compute_spectra
+
+    a = compute_spectra(_classes(['TCAGT', 'TTAGT']), 'TCAGT', context='downstream')
+    b = compute_spectra(_classes(['TCAGT', 'TTAGT']), 'TCAGT', context='downstream')
+    path_a = _write(a, tmp_path, 'a.DSC96.txt', 'downstream')
+    path_b = _write(b, tmp_path, 'b.DSC96.txt', 'downstream')
+    res = compare_matrix_files(path_a, path_b)
+    assert res['cosine_similarity'] == pytest.approx(1.0)
+
+
+def test_compare_matrix_files_cross_context_raises(tmp_path):
+    """Comparing a trinucleotide matrix with a downstream one is rejected."""
+    from derip2.stats import compute_spectra
+
+    tri = compute_spectra(_classes(['ACGTA', 'ATGTA']), 'ACGTA')
+    ds = compute_spectra(_classes(['TCAGT', 'TTAGT']), 'TCAGT', context='downstream')
+    path_tri = _write(tri, tmp_path, 'tri.SBS96.txt', '96')
+    path_ds = _write(ds, tmp_path, 'ds.DSC96.txt', 'downstream')
+    with pytest.raises(ValueError):
+        compare_matrix_files(path_tri, path_ds)

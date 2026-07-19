@@ -1116,7 +1116,11 @@ class DeRIP:
         )
 
     def calculate_spectra(
-        self, partition_by: str = 'none', ancestor=None, samples=None
+        self,
+        partition_by: str = 'none',
+        ancestor=None,
+        samples=None,
+        context: str = 'trinucleotide',
     ):
         """
         Compute the SBS-96 and SBS-192 trinucleotide mutation spectra.
@@ -1145,6 +1149,10 @@ class DeRIP:
             An explicit per-row sample label (length equal to the number of
             sequences), e.g. species or group names. Overrides ``partition_by``
             when provided.
+        context : {'trinucleotide', 'downstream'}, optional
+            Which sequence context to classify substitutions by (default:
+            ``'trinucleotide'``). ``'downstream'`` builds the pyrimidine-folded
+            downstream-triplet matrix (CHG-aware) with no strand-resolved form.
 
         Returns
         -------
@@ -1184,7 +1192,7 @@ class DeRIP:
             )
 
         self.spectra_result = compute_spectra(
-            self.column_classes, ancestor_seq, samples=samples
+            self.column_classes, ancestor_seq, samples=samples, context=context
         )
         logger.info(
             'Computed mutation spectra: %d events across %d sample(s)',
@@ -1229,10 +1237,11 @@ class DeRIP:
         output_file : str, optional
             Path to write the figure to. Use ``.svg`` or ``.pdf`` for
             publication output.
-        kind : {'96', '192', 'strand', 'homoplasy'}, optional
+        kind : {'96', '192', 'downstream', 'strand', 'homoplasy'}, optional
             Which figure to draw: the SBS-96 spectrum (default), the SBS-192
-            strand-resolved spectrum, the strand-asymmetry panel, or the
-            homoplasy (recurrence) plot.
+            strand-resolved spectrum, the pyrimidine-folded downstream-triplet
+            spectrum, the strand-asymmetry panel, or the homoplasy (recurrence)
+            plot.
         **kwargs
             Forwarded to the underlying plotting function (e.g. ``title``,
             ``percentage``, ``min_hits``), except any that
@@ -1256,6 +1265,7 @@ class DeRIP:
         plotters = {
             '96': spectra_plots.plot_sbs96,
             '192': spectra_plots.plot_sbs192,
+            'downstream': spectra_plots.plot_downstream,
             'strand': spectra_plots.plot_strand_asymmetry,
             'homoplasy': spectra_plots.plot_homoplasy,
         }

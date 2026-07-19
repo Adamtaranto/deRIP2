@@ -318,6 +318,91 @@ def compare_spectra(
     }
 
 
+def _assert_same_context(channels_a: Sequence[str], channels_b: Sequence[str]) -> None:
+    """
+    Verify two spectra share the same channel set (hence the same context).
+
+    Two matrices are only comparable if their channel labels match exactly in both
+    membership and order: a trinucleotide SBS-96 matrix (``A[C>T]G`` labels) and a
+    downstream matrix (``[C>T]AG`` labels) describe different quantities and must
+    never be compared.
+
+    Parameters
+    ----------
+    channels_a, channels_b : sequence of str
+        The channel-label lists of the two matrices.
+
+    Raises
+    ------
+    ValueError
+        If the two channel lists differ in length or content/order.
+    """
+    if list(channels_a) != list(channels_b):
+        raise ValueError(
+            'Cannot compare spectra with different channel sets: the two matrices '
+            'use different sequence contexts (e.g. trinucleotide vs downstream) or '
+            'channel orderings.'
+        )
+
+
+def compare_matrix_files(
+    path_a: str,
+    path_b: str,
+    *,
+    sample_a: int = 0,
+    sample_b: int = 0,
+    top: int = 8,
+) -> Dict:
+    """
+    Compare two spectra matrix files, guarding that they share a context.
+
+    Each file is read with :func:`derip2.spectra.matrix_io.read_sbs_matrix`; the
+    two channel-label lists must match exactly (same membership and order), which
+    guarantees the matrices describe the same sequence context. One sample column
+    from each file is then compared with :func:`compare_spectra`.
+
+    Parameters
+    ----------
+    path_a, path_b : str
+        Paths to two ``MutationType`` tab-separated matrix files.
+    sample_a, sample_b : int, optional
+        Which sample column of each file to compare (default: ``0``).
+    top : int, optional
+        How many top differentiating channels to return (default: ``8``).
+
+    Returns
+    -------
+    dict
+        The :func:`compare_spectra` result (cosine similarity, chi-squared summary
+        and top differentiating channels).
+
+    Raises
+    ------
+    ValueError
+        If the two files use different channel sets (contexts), or if a requested
+        sample column is out of range.
+    """
+    from derip2.spectra.matrix_io import read_sbs_matrix
+
+    channels_a, names_a, matrix_a = read_sbs_matrix(path_a)
+    channels_b, names_b, matrix_b = read_sbs_matrix(path_b)
+    _assert_same_context(channels_a, channels_b)
+    if not 0 <= sample_a < matrix_a.shape[1]:
+        raise ValueError(f'sample_a index {sample_a} out of range for {path_a}')
+    if not 0 <= sample_b < matrix_b.shape[1]:
+        raise ValueError(f'sample_b index {sample_b} out of range for {path_b}')
+    logger.debug(
+        'Comparing %s[%s] vs %s[%s]',
+        path_a,
+        names_a[sample_a],
+        path_b,
+        names_b[sample_b],
+    )
+    return compare_spectra(
+        matrix_a[:, sample_a], matrix_b[:, sample_b], channels_a, top=top
+    )
+
+
 def pairwise_compare(
     matrix: np.ndarray,
     sample_names: Sequence[str],

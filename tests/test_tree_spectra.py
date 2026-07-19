@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 from derip2.spectra.call_mutations import compute_spectra_from_tree
-from derip2.spectra.channels import SBS96_INDEX, SBS192_INDEX
+from derip2.spectra.channels import DOWNSTREAM_INDEX, SBS96_INDEX, SBS192_INDEX
 from derip2.spectra.tree_asr import (
     TreeReconstruction,
     build_reconstruction,
@@ -78,6 +78,40 @@ def test_single_branch_event():
     assert res.sbs96[SBS96_INDEX['A[C>T]G'], 0] == 1
     assert res.event_parent_names == ['root']
     assert res.event_child_names == ['child']
+
+
+def test_downstream_single_branch_event():
+    """One C>T on a branch lands in the [C>T]GT downstream channel."""
+    # Parent col 1 is C; downstream bases G (col2) then T (col3). Child mutates
+    # col 1 C>T, so the event is the downstream channel [C>T]GT and sbs192 is None.
+    rec = _reconstruction(
+        {'root': 'ACGTA', 'child': 'ATGTA'}, [('root', 'child')], 'root'
+    )
+    res = compute_spectra_from_tree(rec, context='downstream')
+    assert res.context == 'downstream'
+    assert res.sbs192 is None
+    assert res.sbs96.sum() == 1
+    assert res.sbs96[DOWNSTREAM_INDEX['[C>T]GT'], 0] == 1
+
+
+def test_downstream_orientation_invariance_on_tree():
+    """Reverse-complementing every node's sequence preserves downstream counts."""
+    rc_table = str.maketrans('ACGTacgt-', 'TGCAtgca-')
+
+    def rc(seq):
+        return seq.translate(rc_table)[::-1]
+
+    node_seqs = {'root': 'ACGTACGTAC', 'a': 'ACGTATGTAC', 'b': 'ATGTACGTAC'}
+    edges = [('root', 'a'), ('root', 'b')]
+    forward = compute_spectra_from_tree(
+        _reconstruction(node_seqs, edges, 'root'), context='downstream'
+    )
+    reverse = compute_spectra_from_tree(
+        _reconstruction({k: rc(v) for k, v in node_seqs.items()}, edges, 'root'),
+        context='downstream',
+    )
+    assert forward.sbs96.sum() > 0
+    assert np.array_equal(forward.sbs96, reverse.sbs96)
 
 
 def test_direction_follows_polarity():

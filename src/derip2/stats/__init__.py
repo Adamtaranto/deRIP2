@@ -3,6 +3,7 @@
 from derip2.stats.mutation_spectra import SpectraResult, compute_spectra
 from derip2.stats.spectra_compare import (
     chi2_homogeneity,
+    compare_matrix_files,
     compare_spectra,
     cosine_similarity,
     pairwise_compare,
@@ -13,6 +14,7 @@ __all__ = [
     'RSIResult',
     'SpectraResult',
     'chi2_homogeneity',
+    'compare_matrix_files',
     'compare_spectra',
     'compute_rsi',
     'compute_spectra',

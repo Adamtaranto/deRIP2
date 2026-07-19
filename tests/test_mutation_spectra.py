@@ -22,7 +22,7 @@ import pytest
 
 from derip2.aln_ops import alignment_to_array
 from derip2.derip import DeRIP
-from derip2.spectra.channels import SBS96_INDEX, SBS192_INDEX
+from derip2.spectra.channels import DOWNSTREAM_INDEX, SBS96_INDEX, SBS192_INDEX
 from derip2.stats import compute_spectra
 from derip2.stats.mutation_spectra import SpectraResult
 
@@ -144,6 +144,96 @@ def test_mintest_matches_golden():
     d.calculate_rip()
     result = d.calculate_spectra().as_dict()
     golden_path = os.path.join(GOLDEN_DIR, 'mintest_spectra.json')
+
+    if os.environ.get('DERIP_REGEN') or not os.path.exists(golden_path):
+        os.makedirs(GOLDEN_DIR, exist_ok=True)
+        with open(golden_path, 'w') as fh:
+            json.dump(result, fh, indent=2, sort_keys=True)
+        pytest.skip(f'Regenerated golden file: {golden_path}')
+
+    with open(golden_path) as fh:
+        golden = json.load(fh)
+    result = json.loads(json.dumps(result))
+    assert result == golden
+
+
+# ---------------------------------------------------------------------------
+# Downstream-triplet context.
+# ---------------------------------------------------------------------------
+
+# Reverse-complement translation preserving gaps, for orientation-invariance.
+_RC_TABLE = str.maketrans('ACGTacgt-', 'TGCAtgca-')
+
+
+def _rc(seq):
+    """Reverse-complement a gapped sequence string."""
+    return seq.translate(_RC_TABLE)[::-1]
+
+
+def test_invalid_context_raises():
+    """An unknown context is rejected."""
+    with pytest.raises(ValueError):
+        compute_spectra(_classes(['ACGT', 'ACGT']), 'ACGT', context='bogus')
+
+
+def test_downstream_single_event_channel():
+    """A C>T with downstream A then G lands in the [C>T]AG downstream channel."""
+    ancestor = 'TCAGT'
+    cls = _classes(['TCAGT', 'TTAGT'])  # col 1 C>T; downstream A (col2), G (col3)
+    res = compute_spectra(cls, ancestor, context='downstream')
+    assert res.context == 'downstream'
+    assert res.sbs192 is None
+    assert res.sbs96.shape == (96, 1)
+    assert res.event_rows.size == 1
+    assert res.sbs96[DOWNSTREAM_INDEX['[C>T]AG'], 0] == 1
+
+
+def test_downstream_purine_event_uses_complemented_upstream():
+    """A G>A event folds to a C>T downstream channel via complemented upstream."""
+    # col 3 ancestor G (purine); upstream bases A (col2) then C (col1). Their
+    # complements T, G are the pyrimidine-strand downstream bases -> [C>T]TG.
+    ancestor = 'TCAGT'
+    cls = _classes(['TCAGT', 'TCAAT'])  # col 3 G>A
+    res = compute_spectra(cls, ancestor, context='downstream')
+    assert res.event_rows.size == 1
+    assert res.sbs96[DOWNSTREAM_INDEX['[C>T]TG'], 0] == 1
+
+
+def test_downstream_end_of_sequence_is_unassignable():
+    """A pyrimidine ref lacking a second downstream base is unassignable."""
+    ancestor = 'ACT'
+    cls = _classes(['ACT', 'ATT'])  # col 1 C>T but only one downstream base
+    res = compute_spectra(cls, ancestor, context='downstream')
+    assert res.event_rows.size == 0
+    assert res.n_unassignable_context == 1
+    assert res.sbs96.sum() == 0
+
+
+def test_downstream_orientation_invariance():
+    """The downstream matrix is identical whichever strand the input is given in.
+
+    This is the load-bearing correctness property: reverse-complementing the
+    ancestor and every row (and reversing the column order) must not change any
+    downstream channel count.
+    """
+    anc = 'ACGTACGTAC'
+    seqs = ['ACGTACGTAC', 'ACGTATGTAC', 'ATGTACGTGC']
+    forward = compute_spectra(_classes(seqs), anc, context='downstream')
+    reverse = compute_spectra(
+        _classes([_rc(s) for s in seqs]), _rc(anc), context='downstream'
+    )
+    assert forward.sbs96.sum() > 0
+    assert np.array_equal(forward.sbs96, reverse.sbs96)
+
+
+def test_downstream_matches_golden():
+    """The assembled mintest downstream spectra match the committed golden."""
+    d = DeRIP(MINTEST)
+    d.calculate_rip()
+    result = compute_spectra(
+        d.column_classes, str(d.gapped_consensus.seq), context='downstream'
+    ).as_dict()
+    golden_path = os.path.join(GOLDEN_DIR, 'mintest_spectra_downstream.json')
 
     if os.environ.get('DERIP_REGEN') or not os.path.exists(golden_path):
         os.makedirs(GOLDEN_DIR, exist_ok=True)

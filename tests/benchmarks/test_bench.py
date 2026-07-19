@@ -155,6 +155,16 @@ def test_bench_compute_spectra(benchmark, sahana_alignment_small):
     benchmark(lambda: compute_spectra(cls, ancestor))
 
 
+def test_bench_compute_spectra_downstream(benchmark, sahana_alignment_small):
+    """Benchmark the tree-free downstream-triplet assembly against a reference."""
+    from derip2.stats.mutation_spectra import compute_spectra
+
+    cls = ao.classify_alignment(sahana_alignment_small, progress=False)
+    # Use the first sequence as the ancestral reference for the benchmark.
+    ancestor = str(sahana_alignment_small[0].seq)
+    benchmark(lambda: compute_spectra(cls, ancestor, context='downstream'))
+
+
 def test_bench_compute_spectra_from_tree(benchmark, sahana_alignment_small):
     """Benchmark per-branch substitution calling over a star topology."""
     import numpy as np

@@ -148,8 +148,9 @@ derip2 -i tests/data/mintest.fa \
 ## Mutation spectra (`derip2-spectra`)
 
 `derip2-spectra` builds trinucleotide-context SBS-96 and SBS-192 mutation spectra
-from an alignment. See the [Mutation Spectra tutorial](../tutorials/mutation-spectra.md)
-for a full walkthrough; the essentials are below.
+from an alignment (or a CHG-aware downstream-triplet context, see below). See the
+[Mutation Spectra tutorial](../tutorials/mutation-spectra.md) for a full
+walkthrough; the essentials are below.
 
 ### Baseline (no tree, no external tools)
 
@@ -162,6 +163,22 @@ the spectrum/strand-asymmetry/homoplasy plots, and `family_events.tsv`.
 
 By default the baseline reconstructs the deRIP consensus internally and calls
 every sequence against it.
+
+### Downstream-triplet context (CHG methylation)
+
+`--context downstream` classifies each substitution by the mutated base plus its
+**two downstream bases** (motif `ref-d1-d2`) instead of the 5′/3′ flanks, exposing
+methylation-driven `C>T` in the fungal **CHG** context. It produces a single
+pyrimidine-folded, orientation-invariant 96-channel matrix — no SBS-192 or
+strand-asymmetry — with distinct `[REF>ALT]d1d2` labels and a JSON provenance
+sidecar. `--sbs 192`/`both` are rejected in this mode. It composes with everything
+else (`--method phylo`, `--groups`, `--partition-by`).
+
+```bash
+derip2-spectra -i family.fasta --context downstream -d results -p family
+# writes family.SBSdownstream.txt, family.SBSdownstream.meta.json,
+# family_SBSdownstream.png, family_events.tsv, family_homoplasy.{tsv,png}
+```
 
 ### Reusing a precomputed ancestral reference
 

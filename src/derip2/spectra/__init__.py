@@ -18,22 +18,35 @@ alongside the other per-alignment statistics.
 # them here would create a circular import, so callers import them directly, e.g.
 # ``from derip2.spectra.tree_asr import reconstruct``.
 from derip2.spectra.channels import (
+    DOWNSTREAM_CHANNELS,
     SBS96_CHANNELS,
     SBS192_CHANNELS,
+    downstream_channel,
+    downstream_context,
     fold_to_pyrimidine,
+    parse_downstream_channel,
     sbs96_channel,
     sbs192_channel,
     trinucleotide_context,
 )
-from derip2.spectra.matrix_io import read_sbs_matrix, write_sbs_matrix
+from derip2.spectra.matrix_io import (
+    read_sbs_matrix,
+    write_matrix_metadata,
+    write_sbs_matrix,
+)
 
 __all__ = [
+    'DOWNSTREAM_CHANNELS',
     'SBS96_CHANNELS',
     'SBS192_CHANNELS',
+    'downstream_channel',
+    'downstream_context',
     'fold_to_pyrimidine',
+    'parse_downstream_channel',
     'sbs192_channel',
     'sbs96_channel',
     'trinucleotide_context',
     'read_sbs_matrix',
+    'write_matrix_metadata',
     'write_sbs_matrix',
 ]
