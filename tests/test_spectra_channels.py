@@ -14,11 +14,16 @@ import numpy as np
 
 from derip2.spectra.channels import (
     BASES,
+    DOWNSTREAM_CHANNELS,
+    DOWNSTREAM_INDEX,
     SBS96_CHANNELS,
     SBS96_INDEX,
     SBS192_CHANNELS,
     SBS192_INDEX,
+    downstream_channel,
+    downstream_context,
     fold_to_pyrimidine,
+    parse_downstream_channel,
     sbs96_channel,
     sbs192_channel,
     trinucleotide_context,
@@ -106,3 +111,79 @@ def test_context_adjacent_bases():
     """With no gaps the flanks are simply the neighbouring columns."""
     seq, nxt, prv = _neighbors('ACGTA')
     assert trinucleotide_context(seq, 2, nxt, prv) == ('C', 'T')
+
+
+# ---------------------------------------------------------------------------
+# Downstream-triplet context.
+# ---------------------------------------------------------------------------
+
+
+def test_downstream_channel_counts_and_uniqueness():
+    """There are exactly 96 unique downstream channels with a bijective index."""
+    assert len(DOWNSTREAM_CHANNELS) == 96
+    assert len(set(DOWNSTREAM_CHANNELS)) == 96
+    assert DOWNSTREAM_INDEX[DOWNSTREAM_CHANNELS[0]] == 0
+    assert DOWNSTREAM_INDEX[DOWNSTREAM_CHANNELS[-1]] == 95
+
+
+def test_downstream_channels_are_pyrimidine():
+    """Every downstream channel's reference base is a pyrimidine (C or T)."""
+    refs = {parse_downstream_channel(label)[0] for label in DOWNSTREAM_CHANNELS}
+    assert refs == {'C', 'T'}
+
+
+def test_downstream_label_form_is_distinct_from_sbs96():
+    """Downstream labels start with '[' so an SBS-96 parser cannot mistake them."""
+    assert downstream_channel('C', 'T', 'A', 'G') == '[C>T]AG'
+    assert all(label.startswith('[') for label in DOWNSTREAM_CHANNELS)
+
+
+def test_parse_downstream_channel_round_trip():
+    """Every canonical label parses back to its (ref, alt, d1, d2) components."""
+    for label in DOWNSTREAM_CHANNELS:
+        ref, alt, d1, d2 = parse_downstream_channel(label)
+        assert downstream_channel(ref, alt, d1, d2) == label
+
+
+def test_parse_downstream_channel_rejects_sbs96():
+    """A trinucleotide (SBS-96) label is not a valid downstream label."""
+    import pytest
+
+    with pytest.raises(ValueError):
+        parse_downstream_channel('A[C>T]G')
+
+
+def test_downstream_context_pyrimidine_native():
+    """A pyrimidine reference reads its two bases directly downstream."""
+    seq, nxt, prv = _neighbors('ACGTA')
+    # Column 1 is C (pyrimidine); the two downstream bases are G then T.
+    assert downstream_context(seq, 1, nxt, prv) == ('G', 'T')
+
+
+def test_downstream_context_skips_gaps_by_chaining():
+    """The two downstream bases are the nearest non-gap neighbours, chained."""
+    seq, nxt, prv = _neighbors('C--G--T')
+    # Column 0 is C; nearest downstream non-gaps are G (col 3) then T (col 6).
+    assert downstream_context(seq, 0, nxt, prv) == ('G', 'T')
+
+
+def test_downstream_context_purine_uses_complemented_upstream():
+    """A purine reference reads the reverse-complement of its two upstream bases."""
+    seq, nxt, prv = _neighbors('TCAG')
+    # Column 3 is G (purine); upstream bases are A (col 2) then C (col 1).
+    # Their complements T and G are the pyrimidine-strand downstream bases.
+    assert downstream_context(seq, 3, nxt, prv) == ('T', 'G')
+
+
+def test_downstream_context_none_when_second_downstream_missing():
+    """A pyrimidine reference with only one downstream base is unassignable."""
+    seq, nxt, prv = _neighbors('ACT')
+    # Column 1 is C; there is a downstream T but no second downstream base.
+    assert downstream_context(seq, 1, nxt, prv) is None
+
+
+def test_downstream_context_none_for_purine_near_five_prime_end():
+    """A purine reference too close to the 5' end has no full upstream context."""
+    seq, nxt, prv = _neighbors('AGCT')
+    # Column 1 is G (purine) but only one upstream base (A) exists.
+    assert downstream_context(seq, 1, nxt, prv) is None
