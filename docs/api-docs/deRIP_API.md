@@ -13,6 +13,9 @@
         - summarize_cri
         - summarize_stats
         - stats_summary
+        - calculate_spectra
+        - write_spectra_matrix
+        - plot_spectra
         - write_alignment
         - write_consensus
         - write_stats
