@@ -23,13 +23,15 @@ Use deRIP2 to:
 
 - Mask RIP or deamination events as ambiguous bases to remove RIP signal from phylogenetic analyses.
 
+- Analyse mutation spectra in aligned sequences for evidence of RIP or other mutational processes.
+
 ## Table of contents
 
 - [Installation](#installation)
 - [Example usage](#example-usage)
 - [Standard Options](#standard-options)
+- [Spectra Options](#spectra-options)
 - [Algorithm overview](#algorithm-overview)
-- [Report Issues](#issues)
 - [License](#license)
 
 ## Installation
@@ -40,55 +42,26 @@ Install from PyPi.
 pip install derip2
 ```
 
+Install from Bioconda.
+
+```bash
+#iqtree is an optional dependency for 'derip2-spectra'
+conda install -c bioconda derip2 iqtree
+```
+
 Pip install latest development version from GitHub.
 
 ```bash
 pip install git+https://github.com/Adamtaranto/deRIP2.git
 ```
 
-Test installation.
-
-```bash
-# Print version number and exit.
-derip2 --version
-
-# Get usage information
-derip2 --help
-```
-
-### Setup Development Environment
-
-If you want to contribute to the project or run the latest development version, you can clone the repository and install the package in editable mode.
-
-```bash
-# Clone repository
-git clone https://github.com/Adamtaranto/deRIP2.git && cd deRIP2
-
-# Create virtual environment
-conda env create -f environment.yml
-
-# Activate environment
-conda activate derip2
-
-# Install package in editable mode
-pip install -e '.[dev,test,docs]'
-
-# Set up pre-commit hooks
-pre-commit install
-```
-
-### Running tests and benchmarks
-
-```bash
-# Run the test suite
-pytest
-
-# Run the performance benchmarks (uses a 40x500 subset of the tests/data/sahana.fasta.gz alignment)
-pip install -e '.[test]'
-pytest tests/benchmarks --codspeed
-```
-
 ## Example usage
+
+See the [DeRIP2 tutorials pages](https://adamtaranto.github.io/deRIP2) for full usage documentation.
+
+### Basic usage with masking
+
+The `--mask` option outputs an alignment with all RIP-like C/T positions masked as 'Y'. Use this to generate phylogenies free of RIP influence.
 
 For aligned sequences in 'mintest.fa':
 
@@ -97,8 +70,6 @@ For aligned sequences in 'mintest.fa':
 - At least 50% bases in a column must be in RIP dinucleotide context (C/T as CpA / TpA) for correction.
 - Default: Inherit all remaining uncorrected positions from the least RIP'd sequence.
 - Mask all substrate and product motifs from corrected columns as ambiguous bases (i.e. CpA to TpA --> YpA)
-
-### Basic usage with masking
 
 ```bash
 derip2 -i tests/data/mintest.fa \
@@ -113,7 +84,6 @@ derip2 -i tests/data/mintest.fa \
 **Output:**
 
 - `results/derip_output.fasta` - Corrected sequence
-- `results/derip_output_alignment.fasta` - Alignment with masked corrections
 - `results/derip_output_masked_alignment.fasta` - Alignment with masked corrections
 
 ### With vizualization
@@ -192,50 +162,30 @@ that counts recurrent deamination correctly.
 # Tree-free baseline (no external tools)
 derip2-spectra -i tests/data/mintest.fa -d results -p family
 
-# Reuse an ancestor you already deRIP'd: if the input alignment already contains
-# a consensus row (default id "deRIPseq", e.g. from `derip2`), it is used as the
-# reference and excluded from the counted sequences instead of being recomputed.
-# Use --reference-tag to point at a differently-named row, or --ancestor FILE to
-# supply a separate single-sequence FASTA (validated to match the alignment width).
-derip2-spectra -i family_with_deRIPseq.fasta -d results -p family
-derip2-spectra -i family.fasta --ancestor ancestor.fasta -d results -p family
-
 # CHG-aware downstream-triplet context: classify each substitution by the mutated
 # base plus its two downstream bases (motif ref-d1-d2), so methylation-driven C>T
 # in the fungal CHG context becomes visible (writes family.SBSdownstream.txt).
 derip2-spectra -i family.fasta --context downstream -d results -p family
-
-# Phylogenetic path (requires IQ-TREE on PATH)
-derip2-spectra -i family.fasta --method phylo -d results -p family
-
-# Recommended: infer topology from a RIP-masked alignment, then reconstruct
-# ancestral states for the unmasked sequences on that topology
-derip2 -i family.fasta --mask --no-append -d results -p family
-iqtree3 -s results/family_masked_alignment.fasta -m MFP -B 1000 -T AUTO \
-  --prefix results/family_masked
-derip2-spectra -i family.fasta --method phylo --tree results/family_masked.treefile \
-  -d results -p family_spectrum
 ```
 
 ![SBS-96 mutation spectrum of a RIP-affected transposon](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/spectra_sbs96.png)
 
 ![Downstream-triplet spectrum of a RIP-affected transposon](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/spectra_downstream.png)
 
-Spectra can be reported per sequence, per clade, or per user-defined group
-(`--groups`, e.g. species), and the SigProfiler-compliant matrices can be
-decomposed against reference signatures. The `--context downstream` mode adds a
-CHG-aware view (mutated base + two downstream bases, pyrimidine-folded and
-orientation-invariant) alongside the standard trinucleotide SBS-96/192. Input alignments must be unambiguous
-DNA (`A/C/G/T/-`, case-insensitive); degenerate IUPAC characters (`N`, `R`, `Y`,
-…) are rejected with a clear error rather than being silently coerced to gaps.
-
 See the [Mutation Spectra tutorial](https://adamtaranto.github.io/deRIP2/tutorials/mutation-spectra/)
 for the full walkthrough, including supplying your own phylogeny and per-group
 spectra.
 
-## Standard Options
+## Standard options
 
 ```code
+Usage: derip2 [OPTIONS]
+
+  Predict ancestral sequence of fungal repeat elements by correcting for RIP-
+  like mutations or cytosine deamination in multi-sequence DNA alignments.
+  Optionally, mask mutated positions in alignment.
+
+Options:
   --version                       Show the version and exit.
   -i, --input TEXT                Multiple sequence alignment.  [required]
   -g, --max-gaps FLOAT            Maximum proportion of gapped positions in
@@ -280,6 +230,143 @@ spectra.
                                   Specify the type of RIP events to be
                                   displayed in the alignment visualization.
                                   [default: both]
+  --plot-strand-bias              Create a diverging stacked-bar chart of per-
+                                  column RIP strand bias.
+  --strand-bias-scale [column|alignment|counts]
+                                  Bar height normalisation: each column to its
+                                  own depth, to the number of sequences (so
+                                  gappy columns are short), or raw counts.
+                                  [default: column]
+  --strand-bias-xaxis [none|logo|derip]
+                                  Draw a sequence logo or the deRIP'd
+                                  consensus along the zero line.  [default:
+                                  none]
+  --strand-bias-columns [rip|substrate|all]
+                                  Which positions are lettered along the zero
+                                  line: RIP-like columns and their
+                                  dinucleotide partners, untouched substrate
+                                  columns and their partners, or every
+                                  position. Every column is drawn as a bar
+                                  regardless. Only has an effect with
+                                  --strand-bias-xaxis logo or derip.
+                                  [default: all]
+  --strand-bias-stack [signal|product|all]
+                                  Which bases each bar is made of: the RIP
+                                  product and its unmutated substrate, the
+                                  product alone, or every base with the
+                                  remainder drawn translucent. Bars are never
+                                  rescaled, so the missing height shows what
+                                  was excluded.  [default: signal]
+  --rsi-ambiguous [split|exclude|weight|both]
+                                  How to attribute a TA dinucleotide that
+                                  could have arisen from RIP on either strand
+                                  when calculating RSI.  [default: split]
+  --sort-by-rsi                   Sort the output alignment from most forward-
+                                  to most reverse-strand RIP.
+  --stats-out                     Write the per-sequence statistics table to
+                                  prefix_stats.tsv.
+  --html-report                   Write a self-contained HTML report to
+                                  prefix_report.html.
+  --loglevel [DEBUG|INFO|WARNING|ERROR|CRITICAL]
+                                  Set logging level.  [default: INFO]
+  --logfile TEXT                  Log file path.
+  -h, --help                      Show this message and exit.
+  ```
+
+## Spectra Options
+
+```code
+ Usage: derip2-spectra [OPTIONS]
+
+  Build SBS-96 and SBS-192 trinucleotide mutation spectra from a DNA alignment
+  by calling substitutions against the deRIP'd ancestral consensus, or via IQ-
+  TREE ancestral reconstruction (--method phylo).
+
+Options:
+  --version                       Show the version and exit.
+  -i, --input TEXT                Multiple sequence alignment (FASTA,
+                                  optionally gzipped).  [required]
+  -d, --out-dir TEXT              Directory for spectrum output files.
+  -p, --prefix TEXT               Prefix for output files.  [default:
+                                  deRIPspectra]
+  --ancestor TEXT                 Optional FASTA of a hypothetical ancestor to
+                                  call against instead of the reconstructed
+                                  deRIP consensus. Must be the same length as
+                                  the alignment.
+  --reference-tag TEXT            Exact sequence ID of a pre-computed
+                                  ancestral reference already present in the
+                                  input alignment (e.g. a deRIP consensus you
+                                  appended with derip2). When found (baseline
+                                  method), that row is used as the ancestor
+                                  and excluded from the counted sequences
+                                  instead of re-running deRIP. Overridden by
+                                  --ancestor.  [default: deRIPseq]
+  --context [trinucleotide|downstream]
+                                  Sequence context to classify substitutions
+                                  by: the 5'/3' trinucleotide flanks
+                                  (SBS-96/192), or the mutated base plus its
+                                  two downstream bases (pyrimidine-folded
+                                  96-channel, CHG-aware). The downstream
+                                  context produces a single folded matrix, so
+                                  --sbs 192/both do not apply.  [default:
+                                  trinucleotide]
+  --sbs [96|192|both]             Which SBS matrices/plots to produce
+                                  (trinucleotide context only).  [default:
+                                  both]
+  --partition-by [none|row|clade]
+                                  Split spectra into one pooled sample, one
+                                  per sequence (baseline) or one per root
+                                  clade (phylo).  [default: none]
+  --groups TEXT                   Path to a two-column (name, group) file
+                                  mapping sequences to group labels (e.g.
+                                  species). Reports one spectrum per group;
+                                  works for both methods and tolerates IQ-TREE
+                                  name reformatting. Overrides --partition-by.
+  --percentage                    Plot spectra as a percentage of each sample
+                                  total.
+  --min-hits INTEGER              Minimum independent hits for a site in the
+                                  homoplasy report.  [default: 2]
+  --no-plots                      Write matrices and tables only; skip
+                                  figures.
+  --method [baseline|phylo]       Spectrum method: tree-free single-reference
+                                  baseline, or phylogenetic branch-by-branch
+                                  calling via IQ-TREE ancestral
+                                  reconstruction.  [default: baseline]
+  --tree TEXT                     Fixed Newick tree for the phylo path; IQ-
+                                  TREE reconstructs ancestral states on this
+                                  topology instead of inferring a new tree.
+  --iqtree-model TEXT             Substitution model passed to IQ-TREE (-m)
+                                  for the phylo path.  [default: MFP]
+  --threads TEXT                  IQ-TREE thread count (-T). AUTO benchmarks
+                                  the best value; pass an integer to skip the
+                                  benchmark (faster on small alignments).
+                                  [default: AUTO]
+  --rooting [midpoint|outgroup|none]
+                                  How to root the tree for the phylo path
+                                  (sets substitution direction).  [default:
+                                  midpoint]
+  --outgroup TEXT                 Outgroup tip name(s) for --rooting outgroup;
+                                  comma-separate a clade.
+  --min-prob FLOAT                Drop phylo events whose parent x child
+                                  ancestral posterior is below this threshold.
+                                  [default: 0.0]
+  --root-sensitivity              Also report the fraction of edges whose
+                                  direction flips under midpoint rooting
+                                  (phylo path).
+  -g, --max-gaps FLOAT            Maximum gap proportion in a column before it
+                                  is gapped in the consensus.  [default: 0.7]
+  -a, --reaminate                 Correct all deamination events regardless of
+                                  RIP context when building the ancestor.
+  --max-snp-noise FLOAT           Maximum proportion of conflicting SNPs
+                                  before a column is excluded from RIP
+                                  assessment.  [default: 0.5]
+  --min-rip-like FLOAT            Minimum proportion of RIP-context
+                                  deamination for a column to be corrected.
+                                  [default: 0.1]
+  --fill-max-gc                   Fill uncorrected positions from the highest-
+                                  GC sequence rather than the least-RIP'd one.
+  --fill-index INTEGER            Force the fill row by index (overrides
+                                  --fill-max-gc).
   --loglevel [DEBUG|INFO|WARNING|ERROR|CRITICAL]
                                   Set logging level.  [default: INFO]
   --logfile TEXT                  Log file path.

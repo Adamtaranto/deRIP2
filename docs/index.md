@@ -26,7 +26,7 @@ Use deRIP2 to:
 
 - [Installation](#installation)
 - [Algorithm overview](#algorithm-overview)
-- [Report Issues](#issues)
+- [Contributing](#contributing)
 - [License](#license)
 
 ## Installation
@@ -68,7 +68,7 @@ conda env create -f environment.yml
 conda activate derip2
 
 # Install package in editable mode
-pip install -e '.[dev,test,docs]'
+pip install -e .
 ```
 
 ## Algorithm overview
@@ -82,6 +82,12 @@ For each column in input alignment:
 - If reaminate is not set then check for number of positions in RIP dinucleotide context (C/TpA or TpG/A).
 - If proportion of positions in column in RIP-like context => `min-rip-like` threshold, AND at least one substrate and one product motif (i.e. CpA and TpA) is present, perform RIP correction in output sequence.
 - For all remaining positions in output sequence (not filled by gap, reaminate, or RIP-correction) inherit sequence from input sequence with the fewest observed RIP events (or greatest GC content if RIP is not detected or multiple sequences sharing min-RIP count).
+
+## Contributing
+
+Contributions are welcome. Please read the
+[contribution guidelines](https://github.com/adamtaranto/deRIP2?tab=contributing-ov-file)
+before opening a pull request.
 
 ## License
 
