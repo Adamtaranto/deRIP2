@@ -49,17 +49,22 @@ def _write_events_tsv(result, out_path: str) -> None:
         The file is written as a side effect.
     """
     records = result.event_records()
-    fields = [
-        'sample',
-        'row',
-        'col',
-        'ref',
-        'alt',
-        'five_prime',
-        'three_prime',
-        'sbs96',
-        'sbs192',
-    ]
+    if getattr(result, 'context', 'trinucleotide') == 'downstream':
+        # Downstream events report the mutated base plus its two downstream bases
+        # and the folded channel label, not the 5'/3' flanks or SBS labels.
+        fields = ['sample', 'row', 'col', 'ref', 'alt', 'down1', 'down2', 'downstream']
+    else:
+        fields = [
+            'sample',
+            'row',
+            'col',
+            'ref',
+            'alt',
+            'five_prime',
+            'three_prime',
+            'sbs96',
+            'sbs192',
+        ]
     # Phylogenetic events additionally carry the edge's parent/child node names.
     if result.event_child_names is not None:
         fields += ['parent', 'child']
@@ -168,6 +173,7 @@ def _run_phylo(
     groups,
     min_prob,
     root_sensitivity,
+    context,
 ):
     """
     Run the phylogenetic path: QC, IQ-TREE reconstruction and branch traversal.
@@ -200,6 +206,8 @@ def _run_phylo(
         Minimum parent x child posterior for an event to be kept.
     root_sensitivity : bool
         Whether to report the direction-flip fraction under midpoint rooting.
+    context : {'trinucleotide', 'downstream'}
+        The sequence context to classify substitutions by.
 
     Returns
     -------
@@ -260,7 +268,7 @@ def _run_phylo(
     else:
         samples_by_child = None
     result = compute_spectra_from_tree(
-        rec, samples_by_child=samples_by_child, min_prob=min_prob
+        rec, samples_by_child=samples_by_child, min_prob=min_prob, context=context
     )
 
     manifest = dict(rec.manifest)
@@ -288,11 +296,97 @@ def _run_phylo(
     return result
 
 
-def _write_outputs(result, out_dir, prefix, *, sbs, min_hits, percentage, no_plots):
+def _write_common_outputs(result, out_dir, prefix, *, min_hits):
+    """
+    Write the event and homoplasy tables shared by every context.
+
+    Parameters
+    ----------
+    result : derip2.stats.mutation_spectra.SpectraResult
+        The computed spectra.
+    out_dir : str
+        Output directory.
+    prefix : str
+        Output file prefix.
+    min_hits : int
+        Minimum independent hits for the homoplasy report.
+
+    Returns
+    -------
+    None
+        Files are written as a side effect.
+    """
+    events_path = path.join(out_dir, f'{prefix}_events.tsv')
+    homoplasy_path = path.join(out_dir, f'{prefix}_homoplasy.tsv')
+    logger.info(f'Writing event table to: \033[0m{events_path}')
+    _write_events_tsv(result, events_path)
+    logger.info(f'Writing homoplasy report to: \033[0m{homoplasy_path}')
+    _write_homoplasy_tsv(result, homoplasy_path, min_hits=min_hits)
+
+
+def _write_downstream_outputs(
+    result, out_dir, prefix, *, min_hits, percentage, no_plots
+):
+    """
+    Write the downstream-triplet matrix, sidecar, tables and figures.
+
+    The downstream context yields a single pyrimidine-folded 96-channel matrix, so
+    there is no SBS-192 matrix or strand-asymmetry plot.
+
+    Parameters
+    ----------
+    result : derip2.stats.mutation_spectra.SpectraResult
+        The computed downstream spectra.
+    out_dir : str
+        Output directory.
+    prefix : str
+        Output file prefix.
+    min_hits : int
+        Minimum independent hits for the homoplasy report/plot.
+    percentage : bool
+        Plot the spectrum as percentages.
+    no_plots : bool
+        Skip figures if True.
+
+    Returns
+    -------
+    None
+        Files are written as a side effect.
+    """
+    from derip2.plotting import spectra as spectra_plots
+    from derip2.spectra import write_matrix_metadata, write_sbs_matrix
+
+    matrix_path = path.join(out_dir, f'{prefix}.SBSdownstream.txt')
+    logger.info(f'Writing downstream matrix to: \033[0m{matrix_path}')
+    write_sbs_matrix(result, matrix_path, kind='downstream')
+    meta_path = path.join(out_dir, f'{prefix}.SBSdownstream.meta.json')
+    logger.info(f'Writing downstream matrix metadata to: \033[0m{meta_path}')
+    write_matrix_metadata(result, meta_path, kind='downstream')
+
+    _write_common_outputs(result, out_dir, prefix, min_hits=min_hits)
+
+    if no_plots:
+        return
+    fig_path = path.join(out_dir, f'{prefix}_SBSdownstream.png')
+    logger.info(f'Plotting downstream spectrum to: \033[0m{fig_path}')
+    spectra_plots.plot_downstream(
+        result, fig_path, title=f'{prefix} downstream-triplet', percentage=percentage
+    )
+    hom_fig = path.join(out_dir, f'{prefix}_homoplasy.png')
+    logger.info(f'Plotting homoplasy to: \033[0m{hom_fig}')
+    spectra_plots.plot_homoplasy(
+        result, hom_fig, min_hits=min_hits, title=f'{prefix} recurrent sites'
+    )
+
+
+def _write_outputs(
+    result, out_dir, prefix, *, sbs, min_hits, percentage, no_plots, context
+):
     """
     Write matrices, tables and figures for a computed spectra result.
 
-    Method-agnostic: works for both the baseline and phylogenetic results.
+    Method-agnostic: works for both the baseline and phylogenetic results, and
+    dispatches on the sequence context (trinucleotide vs downstream).
 
     Parameters
     ----------
@@ -303,19 +397,32 @@ def _write_outputs(result, out_dir, prefix, *, sbs, min_hits, percentage, no_plo
     prefix : str
         Output file prefix.
     sbs : {'96', '192', 'both'}
-        Which matrices/plots to produce.
+        Which matrices/plots to produce (trinucleotide context only).
     min_hits : int
         Minimum independent hits for the homoplasy report/plot.
     percentage : bool
         Plot spectra as percentages.
     no_plots : bool
         Skip figures if True.
+    context : {'trinucleotide', 'downstream'}
+        The sequence context of ``result``.
 
     Returns
     -------
     None
         Files are written as a side effect.
     """
+    if context == 'downstream':
+        _write_downstream_outputs(
+            result,
+            out_dir,
+            prefix,
+            min_hits=min_hits,
+            percentage=percentage,
+            no_plots=no_plots,
+        )
+        return
+
     from derip2.plotting import spectra as spectra_plots
     from derip2.spectra import write_sbs_matrix
 
@@ -326,12 +433,7 @@ def _write_outputs(result, out_dir, prefix, *, sbs, min_hits, percentage, no_plo
         logger.info(f'Writing SBS-{kind} matrix to: \033[0m{matrix_path}')
         write_sbs_matrix(result, matrix_path, kind=kind)
 
-    events_path = path.join(out_dir, f'{prefix}_events.tsv')
-    homoplasy_path = path.join(out_dir, f'{prefix}_homoplasy.tsv')
-    logger.info(f'Writing event table to: \033[0m{events_path}')
-    _write_events_tsv(result, events_path)
-    logger.info(f'Writing homoplasy report to: \033[0m{homoplasy_path}')
-    _write_homoplasy_tsv(result, homoplasy_path, min_hits=min_hits)
+    _write_common_outputs(result, out_dir, prefix, min_hits=min_hits)
 
     if no_plots:
         return
@@ -404,11 +506,21 @@ def _write_outputs(result, out_dir, prefix, *, sbs, min_hits, percentage, no_plo
 )
 # Spectrum options
 @click.option(
+    '--context',
+    type=click.Choice(['trinucleotide', 'downstream']),
+    default='trinucleotide',
+    show_default=True,
+    help='Sequence context to classify substitutions by: the 5'
+    "'/3' trinucleotide flanks (SBS-96/192), or the mutated base plus its two "
+    'downstream bases (pyrimidine-folded 96-channel, CHG-aware). The downstream '
+    'context produces a single folded matrix, so --sbs 192/both do not apply.',
+)
+@click.option(
     '--sbs',
     type=click.Choice(['96', '192', 'both']),
     default='both',
     show_default=True,
-    help='Which SBS matrices/plots to produce.',
+    help='Which SBS matrices/plots to produce (trinucleotide context only).',
 )
 @click.option(
     '--partition-by',
@@ -566,6 +678,7 @@ def main(
     prefix,
     ancestor,
     reference_tag,
+    context,
     sbs,
     partition_by,
     groups,
@@ -612,8 +725,10 @@ def main(
         the input alignment. When matched (baseline method) that row is used as
         the ancestor and excluded from the counted sequences. Overridden by
         ``ancestor``.
+    context : {'trinucleotide', 'downstream'}
+        Sequence context to classify substitutions by.
     sbs : {'96', '192', 'both'}
-        Which SBS matrices and plots to produce.
+        Which SBS matrices and plots to produce (trinucleotide context only).
     partition_by : {'none', 'row', 'clade'}
         Whether to pool sequences into one sample, split per sequence (baseline)
         or per root clade (phylo).
@@ -669,6 +784,21 @@ def main(
 
     out_dir, logfile = dochecks(out_dir, logfile)
     init_logging(loglevel=loglevel, logfile=logfile)
+
+    # The downstream context yields a single pyrimidine-folded 96-channel matrix,
+    # so an explicit --sbs 192/both makes no sense; reject it rather than silently
+    # ignore it. Leaving --sbs at its default is fine (downstream is emitted).
+    if context == 'downstream':
+        sbs_source = click.get_current_context().get_parameter_source('sbs')
+        if (
+            sbs_source is not None
+            and sbs_source.name != 'DEFAULT'
+            and sbs in ('192', 'both')
+        ):
+            raise click.UsageError(
+                '--context downstream produces a single pyrimidine-folded '
+                '96-channel matrix; --sbs 192/both is not applicable.'
+            )
 
     logger.info(f'Processing alignment file: \033[0m{input}')
     alignment = ao.loadAlign(input, alnFormat='fasta')
@@ -743,11 +873,11 @@ def main(
                 (lookup(record.id) or 'ungrouped') for record in derip_obj.alignment
             ]
             result = derip_obj.calculate_spectra(
-                samples=row_labels, ancestor=ancestor_seq
+                samples=row_labels, ancestor=ancestor_seq, context=context
             )
         else:
             result = derip_obj.calculate_spectra(
-                partition_by=partition_by, ancestor=ancestor_seq
+                partition_by=partition_by, ancestor=ancestor_seq, context=context
             )
     else:
         result = _run_phylo(
@@ -763,6 +893,7 @@ def main(
             groups=groups,
             min_prob=min_prob,
             root_sensitivity=root_sensitivity,
+            context=context,
         )
 
     logger.info(
@@ -779,6 +910,7 @@ def main(
         min_hits=min_hits,
         percentage=percentage,
         no_plots=no_plots,
+        context=context,
     )
     logger.info('Mutation spectrum analysis complete.')
 
