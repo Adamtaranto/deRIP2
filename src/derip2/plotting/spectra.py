@@ -88,11 +88,12 @@ def _mono_bold(chars: str, bold_index: int) -> str:
     Render a short motif as mathtext with one character emphasised in bold.
 
     matplotlib cannot bold a single character of an ordinary tick label, so the
-    motif is built as a mathtext string: the flanking bases are typeset in the
-    light roman math font (``\\mathrm``) and the mutated base at ``bold_index`` in
-    the bold font (``\\mathbf``). Pairing thin roman flanks with a bold centre
-    maximises the weight contrast, so the mutated (substituted) base stands out
-    clearly -- a monospace flank font is itself heavy and would mute the emphasis.
+    motif is built as a mathtext string. Every base is typeset in the **monospace**
+    math font so all three characters share one fixed advance width (and every
+    3 bp label is therefore the same length); the mutated base at ``bold_index`` is
+    additionally set bold via ``\\mathbf{\\mathtt{...}}``. Monospace bold keeps the
+    same advance width as monospace regular, so the emphasis does not disturb the
+    label alignment.
 
     Parameters
     ----------
@@ -105,10 +106,10 @@ def _mono_bold(chars: str, bold_index: int) -> str:
     Returns
     -------
     str
-        A mathtext string, e.g. ``r'$\\mathrm{A}\\mathbf{C}\\mathrm{G}$'``.
+        A mathtext string, e.g. ``r'$\\mathtt{A}\\mathbf{\\mathtt{C}}\\mathtt{G}$'``.
     """
     parts = [
-        (r'\mathbf{%s}' if i == bold_index else r'\mathrm{%s}') % ch
+        (r'\mathbf{\mathtt{%s}}' if i == bold_index else r'\mathtt{%s}') % ch
         for i, ch in enumerate(chars)
     ]
     return '$' + ''.join(parts) + '$'

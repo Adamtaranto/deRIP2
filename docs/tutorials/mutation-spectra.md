@@ -346,8 +346,9 @@ sample.
 ![Per-group spectra](../img/spectra_groups.png)
 
 !!! note "Grouping in the example"
-    The Sahana copies have no species labels, so this figure bins them by genomic
-    scaffold purely to illustrate the mechanic. In practice the labels would be
+    The Sahana copies have no species labels, so this figure simply splits the
+    alignment into a few **arbitrary subsets** purely to illustrate the mechanic —
+    the groups carry no biological meaning here. In practice the labels would be
     your species or population names, and the panels would let you compare, say,
     RIP intensity between a methylation-competent and a methylation-deficient
     lineage.
