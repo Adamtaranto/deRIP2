@@ -126,10 +126,15 @@ def test_multi_sample_sbs192_has_one_panel_per_sample(result_multi):
     plt.close(fig)
 
 
-def test_mono_bold_marks_one_character():
-    """_mono_bold bolds one char and keeps every char equal-width monospace."""
-    assert sp._mono_bold('ACG', 0) == r'$\mathbf{\mathtt{A}}\mathtt{C}\mathtt{G}$'
-    assert sp._mono_bold('ACG', 1) == r'$\mathtt{A}\mathbf{\mathtt{C}}\mathtt{G}$'
+def _bold_overlays(ax):
+    """Return the bold monospace overlay Text objects drawn for motif ticks."""
+    return [
+        t
+        for t in ax.texts
+        if t.get_fontweight() == 'bold'
+        and t.get_family() == ['monospace']
+        and t.get_text().strip()
+    ]
 
 
 def test_plot_downstream_writes_file(tmp_path, result_downstream):
@@ -142,22 +147,36 @@ def test_plot_downstream_writes_file(tmp_path, result_downstream):
 
 
 def test_downstream_ticks_bold_first_base(result_downstream):
-    """Downstream motif ticks bold the first (mutated) base via mathtext."""
+    """Downstream motif ticks bold the first (mutated) base with monospace bold."""
     fig = sp.plot_downstream(result_downstream)
-    labels = [t.get_text() for t in fig.axes[0].get_xticklabels()]
-    # Every tick is a mathtext motif whose first base is bolded.
-    assert labels and all(lab.startswith(r'$\mathbf{') for lab in labels)
+    ax = fig.axes[0]
+    # One regular monospace flank label and one bold overlay per channel (96).
+    flanks = [t.get_text() for t in ax.get_xticklabels()]
+    overlays = _bold_overlays(ax)
+    assert len(overlays) == 96
+    # The bold overlay carries only the mutated base at index 0 (first base).
+    for t in overlays:
+        text = t.get_text()
+        assert text[0] != ' ' and text[1:] == '  '
+    # The regular tick labels keep monospace (equal width) and blank the mutated
+    # base, so the flanks + overlay together spell the motif.
+    assert flanks and all(f[0] == ' ' for f in flanks)
     plt.close(fig)
 
 
 def test_sbs96_ticks_bold_middle_base(result):
-    """Trinucleotide motif ticks bold the middle (mutated) base via mathtext."""
+    """Trinucleotide motif ticks bold the middle (mutated) base with mono bold."""
     fig = sp.plot_sbs96(result)
-    labels = [t.get_text() for t in fig.axes[0].get_xticklabels()]
-    # Middle base bold: monospace first flank, then a bold-monospace group.
-    assert labels and all(
-        lab.startswith(r'$\mathtt{') and r'\mathbf{\mathtt{' in lab for lab in labels
-    )
+    ax = fig.axes[0]
+    overlays = _bold_overlays(ax)
+    assert len(overlays) == 96
+    # The bold overlay carries only the mutated base at index 1 (middle base).
+    for t in overlays:
+        text = t.get_text()
+        assert text[1] != ' ' and text[0] == ' ' and text[2] == ' '
+    # The real tick labels are equal-width monospace with the middle base blanked.
+    flanks = [t.get_text() for t in ax.get_xticklabels()]
+    assert flanks and all(f[1] == ' ' and len(f) == 3 for f in flanks)
     plt.close(fig)
 
 

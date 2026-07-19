@@ -83,36 +83,66 @@ RASTER_EXTS = ('.png', '.jpg', '.jpeg', '.tif', '.tiff')
 CONTEXT_TICK_SIZE = 6.0
 
 
-def _mono_bold(chars: str, bold_index: int) -> str:
+def _draw_motif_ticks(ax, x, motifs, bold_index: int) -> None:
     """
-    Render a short motif as mathtext with one character emphasised in bold.
+    Draw equal-width monospace motif tick labels with the mutated base bolded.
 
-    matplotlib cannot bold a single character of an ordinary tick label, so the
-    motif is built as a mathtext string. Every base is typeset in the **monospace**
-    math font so all three characters share one fixed advance width (and every
-    3 bp label is therefore the same length); the mutated base at ``bold_index`` is
-    additionally set bold via ``\\mathbf{\\mathtt{...}}``. Monospace bold keeps the
-    same advance width as monospace regular, so the emphasis does not disturb the
-    label alignment.
+    matplotlib mathtext has no bold-monospace font, so a single tick-label string
+    cannot mix a bold character with regular ones at a fixed width. Instead each
+    motif is drawn as two overlaid **real monospace** labels: a regular-weight
+    label carrying the two flanking bases (the mutated position blanked to a
+    space), and a bold-weight label carrying only the mutated base (the flanks
+    blanked). Because the font is monospace, the space-padded strings occupy the
+    same cells, so the bold base lands exactly in its slot and every 3 bp label is
+    the same length. Monospace bold shares the advance width of monospace regular,
+    so the emphasis does not disturb the alignment.
 
     Parameters
     ----------
-    chars : str
-        The motif characters (e.g. ``'ACG'``); all must be plain ``A``/``C``/``G``/
-        ``T`` so no mathtext escaping is needed.
+    ax : matplotlib.axes.Axes
+        The axes to label.
+    x : numpy.ndarray
+        The bar x positions, one per motif.
+    motifs : list of str
+        The 3-character motifs in bar order (e.g. ``'ACG'``).
     bold_index : int
-        Index of the character to render bold.
+        Index of the mutated base within each motif (0 for the downstream context,
+        1 for the trinucleotide context).
 
     Returns
     -------
-    str
-        A mathtext string, e.g. ``r'$\\mathtt{A}\\mathbf{\\mathtt{C}}\\mathtt{G}$'``.
+    None
+        The labels are drawn in place.
     """
-    parts = [
-        (r'\mathbf{\mathtt{%s}}' if i == bold_index else r'\mathtt{%s}') % ch
-        for i, ch in enumerate(chars)
-    ]
-    return '$' + ''.join(parts) + '$'
+
+    def _blank(motif: str, keep_mutated: bool) -> str:
+        # Keep either the mutated base (bold layer) or the two flanks (regular
+        # layer), blanking the rest to spaces so both layers stay column-aligned.
+        return ''.join(
+            ch if (i == bold_index) == keep_mutated else ' '
+            for i, ch in enumerate(motif)
+        )
+
+    flanks = [_blank(m, keep_mutated=False) for m in motifs]
+    ax.set_xticks(x)
+    # The regular flank labels are the real tick labels, so matplotlib reserves
+    # the correct vertical space (and tight_layout accounts for them).
+    labels = ax.set_xticklabels(
+        flanks,
+        rotation=90,
+        fontsize=CONTEXT_TICK_SIZE,
+        family='monospace',
+        color=INK_SECONDARY,
+    )
+    # Overlay the bold mutated base, copying each tick label's exact placement so
+    # the two layers register precisely; the darker ink adds to the emphasis.
+    for label, motif in zip(labels, motifs):
+        overlay = ax.text(0, 0, _blank(motif, keep_mutated=True))
+        overlay.update_from(label)
+        overlay.set_position(label.get_position())
+        overlay.set_transform(label.get_transform())
+        overlay.set_fontweight('bold')
+        overlay.set_color(INK_PRIMARY)
 
 
 def _caption_suptitle(fig, title: Optional[str], caption: str) -> None:
@@ -343,23 +373,17 @@ def _draw_spectrum_panel(
         )
 
     if show_context_ticks:
-        # The mutated base is bolded in every motif: the middle base for the
-        # trinucleotide context, the first base for the downstream context. The
-        # two inner bases follow the canonical channel ordering (b1 outer, b2
+        # Build each bar's 3 bp motif and bold the mutated base: the middle base
+        # for the trinucleotide context, the first base for the downstream context.
+        # The two inner bases follow the canonical channel ordering (b1 outer, b2
         # inner), matching SBS96_CHANNELS / DOWNSTREAM_CHANNELS.
         downstream = context == 'downstream'
-        labels = []
+        motifs = []
         for ref, _alt in substitutions:
             for b1 in BASES:
                 for b2 in BASES:
-                    if downstream:
-                        labels.append(_mono_bold(f'{ref}{b1}{b2}', 0))
-                    else:
-                        labels.append(_mono_bold(f'{b1}{ref}{b2}', 1))
-        ax.set_xticks(x)
-        ax.set_xticklabels(
-            labels, rotation=90, fontsize=CONTEXT_TICK_SIZE, color=INK_SECONDARY
-        )
+                    motifs.append(f'{ref}{b1}{b2}' if downstream else f'{b1}{ref}{b2}')
+        _draw_motif_ticks(ax, x, motifs, bold_index=0 if downstream else 1)
     else:
         ax.set_xticks([block * 16 + 7.5 for block in range(n_blocks)])
         ax.set_xticklabels(

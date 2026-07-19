@@ -134,6 +134,7 @@ exclude = [ # don't report on checks for these
     '\._merge$',    # local strand-merge helper in build_markupdict
     '\._sort_key$', # local sort key in sort_by_rsi
     '\._lookup$',   # local group-name resolver in _load_group_lookup
+    '\._blank$',    # local motif-layer helper in _draw_motif_ticks
 ]
 override_SS05 = [ # allow docstrings to start with these words
     '^Process ',
