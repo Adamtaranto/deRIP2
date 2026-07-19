@@ -127,9 +127,9 @@ def test_multi_sample_sbs192_has_one_panel_per_sample(result_multi):
 
 
 def test_mono_bold_marks_one_character():
-    """_mono_bold bolds exactly the requested character and typesets the rest mono."""
-    assert sp._mono_bold('ACG', 0) == r'$\mathbf{A}\mathtt{C}\mathtt{G}$'
-    assert sp._mono_bold('ACG', 1) == r'$\mathtt{A}\mathbf{C}\mathtt{G}$'
+    """_mono_bold bolds exactly the requested char and sets the rest thin roman."""
+    assert sp._mono_bold('ACG', 0) == r'$\mathbf{A}\mathrm{C}\mathrm{G}$'
+    assert sp._mono_bold('ACG', 1) == r'$\mathrm{A}\mathbf{C}\mathrm{G}$'
 
 
 def test_plot_downstream_writes_file(tmp_path, result_downstream):
@@ -154,8 +154,9 @@ def test_sbs96_ticks_bold_middle_base(result):
     """Trinucleotide motif ticks bold the middle (mutated) base via mathtext."""
     fig = sp.plot_sbs96(result)
     labels = [t.get_text() for t in fig.axes[0].get_xticklabels()]
+    # Middle base bold: thin roman first flank, then a bold group.
     assert labels and all(
-        lab.startswith(r'$\mathtt{') and r'\mathbf{' in lab for lab in labels
+        lab.startswith(r'$\mathrm{') and r'\mathbf{' in lab for lab in labels
     )
     plt.close(fig)
 

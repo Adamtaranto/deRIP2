@@ -78,15 +78,21 @@ STRAND_COLORS = {
 
 RASTER_EXTS = ('.png', '.jpg', '.jpeg', '.tif', '.tiff')
 
+# Font size for the per-bar context-motif tick labels. Larger than the default
+# tick size so the bolded mutated base is legible at print scale.
+CONTEXT_TICK_SIZE = 6.0
+
 
 def _mono_bold(chars: str, bold_index: int) -> str:
     """
     Render a short motif as mathtext with one character emphasised in bold.
 
     matplotlib cannot bold a single character of an ordinary tick label, so the
-    motif is built as a mathtext string: every base is typeset in the monospace
-    math font (``\\mathtt``) except the mutated base at ``bold_index``, which is
-    typeset bold (``\\mathbf``) to mark it as the substitution site.
+    motif is built as a mathtext string: the flanking bases are typeset in the
+    light roman math font (``\\mathrm``) and the mutated base at ``bold_index`` in
+    the bold font (``\\mathbf``). Pairing thin roman flanks with a bold centre
+    maximises the weight contrast, so the mutated (substituted) base stands out
+    clearly -- a monospace flank font is itself heavy and would mute the emphasis.
 
     Parameters
     ----------
@@ -99,10 +105,10 @@ def _mono_bold(chars: str, bold_index: int) -> str:
     Returns
     -------
     str
-        A mathtext string, e.g. ``r'$\\mathtt{A}\\mathbf{C}\\mathtt{G}$'``.
+        A mathtext string, e.g. ``r'$\\mathrm{A}\\mathbf{C}\\mathrm{G}$'``.
     """
     parts = [
-        (r'\mathbf{%s}' if i == bold_index else r'\mathtt{%s}') % ch
+        (r'\mathbf{%s}' if i == bold_index else r'\mathrm{%s}') % ch
         for i, ch in enumerate(chars)
     ]
     return '$' + ''.join(parts) + '$'
@@ -350,7 +356,9 @@ def _draw_spectrum_panel(
                     else:
                         labels.append(_mono_bold(f'{b1}{ref}{b2}', 1))
         ax.set_xticks(x)
-        ax.set_xticklabels(labels, rotation=90, fontsize=4.5, color=INK_SECONDARY)
+        ax.set_xticklabels(
+            labels, rotation=90, fontsize=CONTEXT_TICK_SIZE, color=INK_SECONDARY
+        )
     else:
         ax.set_xticks([block * 16 + 7.5 for block in range(n_blocks)])
         ax.set_xticklabels(
