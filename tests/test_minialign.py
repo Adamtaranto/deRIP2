@@ -520,8 +520,8 @@ def test_reference_marker_data_coords_track_annotation(mock_close, tmp_path):
     The marker is drawn in data coordinates, so its y-offset must equal
     ``ali_height - reference_seq_index - 1`` regardless of any annotation track.
     """
-    import matplotlib.pyplot as plt
     from matplotlib.collections import PathCollection
+    import matplotlib.pyplot as plt
 
     records = [SeqRecord(Seq('ACGTACGT'), id=f'seq{i}') for i in range(5)]
     aln = MultipleSeqAlignment(records)
