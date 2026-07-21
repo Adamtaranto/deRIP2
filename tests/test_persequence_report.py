@@ -131,15 +131,21 @@ def test_rip_completion_bar_no_sites():
 
 
 def test_gc_content_bar(mintest_derip):
-    """The GC-content bar renders a stacked bar from a stats row."""
+    """The GC-content bar's filled segment matches the sequence's GC percentage."""
     from matplotlib.patches import Rectangle
 
     df = mintest_derip.summarize_stats()
-    fig = gc_content_bar(df.iloc[0])
+    row = df.iloc[0]
+    fig = gc_content_bar(row)
     assert fig is not None
     ax = fig.axes[0]
     assert ax.get_xlim() == (0.0, 100.0)
-    assert any(isinstance(p, Rectangle) and p.get_width() > 0 for p in ax.patches)
+    # The GC segment starts at x=0; its width is the GC percentage itself
+    # (already 0-100 in summarize_stats), not a re-scaled 100%.
+    bars = [p for p in ax.patches if isinstance(p, Rectangle)]
+    gc_seg = min(bars, key=lambda p: p.get_x())
+    assert gc_seg.get_width() == pytest.approx(float(row['GC']), abs=1e-6)
+    assert 0.0 < gc_seg.get_width() < 100.0
 
 
 def test_strand_bias_uses_swapped_role_colours(mintest_derip):

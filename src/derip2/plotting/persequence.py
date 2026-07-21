@@ -583,8 +583,8 @@ def gc_content_bar(
     Parameters
     ----------
     stats : Mapping
-        A per-sequence statistics row exposing ``GC`` (a fraction in ``[0, 1]``),
-        as produced by :meth:`derip2.derip.DeRIP.summarize_stats`.
+        A per-sequence statistics row exposing ``GC`` (a percentage in
+        ``[0, 100]``), as produced by :meth:`derip2.derip.DeRIP.summarize_stats`.
     title : str, optional
         Figure title.
     width, height : float, optional
@@ -599,8 +599,8 @@ def gc_content_bar(
     matplotlib.figure.Figure
         The figure the bar was drawn on.
     """
-    gc_pct = 100.0 * float(stats['GC'])
-    gc_pct = min(100.0, max(0.0, gc_pct))
+    # ``GC`` is already a percentage in [0, 100] (see summarize_stats).
+    gc_pct = min(100.0, max(0.0, float(stats['GC'])))
 
     with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
         fig, ax = plt.subplots(figsize=(width, height))
