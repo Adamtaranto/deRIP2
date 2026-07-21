@@ -224,3 +224,114 @@ def test_phase_trims_leading_bases():
     gene = cds_gene('g', 'S', '+', [(1, 11)], phase=2)
     # After trimming 2 bases: ATGAAATAG -> M K *
     assert translate_cds(gene, seq, ungapped_to_column_map(seq)) == 'MK*'
+
+
+# --- alignment-level orchestration -----------------------------------------
+
+
+@pytest.fixture
+def gff_derip(mintest_path):
+    """A DeRIP object with RIP calculated on the reference alignment."""
+    from derip2.derip import DeRIP
+
+    derip = DeRIP(mintest_path)
+    derip.calculate_rip()
+    return derip
+
+
+def test_compute_effects_for_alignment(gff_derip, gff_path):
+    """Effects are computed for annotated sequences against the ancestor."""
+    from derip2.annotation import compute_effects_for_alignment
+
+    genes = parse_gff3(gff_path)
+    effects = compute_effects_for_alignment(gff_derip, genes)
+    # Seq1 and Seq3 carry RIP-induced coding changes in the fixture.
+    assert 'Seq1' in effects
+    assert all(
+        e.seq_id in {'Seq1', 'Seq3', 'Seq4'} for v in effects.values() for e in v
+    )
+
+
+def test_deripd_translations(gff_derip, gff_path):
+    """Every annotated gene gets a deRIP'd protein translation."""
+    from derip2.annotation import deripd_translations
+
+    genes = parse_gff3(gff_path)
+    aa = deripd_translations(gff_derip, genes)
+    assert set(aa) == {'mRNA1', 'mRNA2', 'mRNA3'}
+    assert all(isinstance(v, str) for v in aa.values())
+
+
+def test_write_snp_effects(gff_derip, gff_path, tmp_path):
+    """The SNP-effect TSV lists effects and restored translations."""
+    from derip2.annotation import (
+        compute_effects_for_alignment,
+        deripd_translations,
+        write_snp_effects,
+    )
+
+    genes = parse_gff3(gff_path)
+    effects = compute_effects_for_alignment(gff_derip, genes)
+    aa = deripd_translations(gff_derip, genes)
+    out = tmp_path / 'snp_effects.txt'
+    write_snp_effects(str(out), effects, aa)
+    text = out.read_text()
+    assert 'seq_id\tgene_id\tkind' in text
+    assert 'deRIP-restored CDS translations' in text
+    assert 'mRNA1' in text
+
+
+def test_build_annotation_spans(gff_derip, gff_path):
+    """Gene exons project onto alignment-column spans, one row per gene."""
+    from derip2.annotation import build_annotation_spans
+
+    genes = parse_gff3(gff_path)
+    row_lookup = {
+        rec.id: gff_derip.column_classes.arr[i]
+        for i, rec in enumerate(gff_derip.alignment)
+    }
+    spans = build_annotation_spans(genes, row_lookup)
+    assert spans, 'expected annotation spans'
+    # Each span is (start, end, color, label, track_row) with start <= end.
+    for start, end, color, _label, track_row in spans:
+        assert start <= end
+        assert color.startswith('#')
+        assert track_row >= 0
+    # The multi-exon gene contributes two spans on one track row.
+    mrna3_rows = {
+        s[4] for s in spans if s[3] == 'mRNA3' or s[4] == max(s[4] for s in spans)
+    }
+    assert mrna3_rows
+
+
+def test_load_annotation_colors(tmp_path):
+    """A colour override file merges over the defaults."""
+    from derip2.annotation import DEFAULT_ANNOTATION_COLORS, load_annotation_colors
+
+    f = tmp_path / 'colors.tsv'
+    f.write_text('# custom\nCDS\t#123456\ngene\t#abcdef\n')
+    colors = load_annotation_colors(str(f))
+    assert colors['CDS'] == '#123456'
+    assert colors['gene'] == '#abcdef'
+    # Untouched types keep their defaults.
+    assert colors['exon'] == DEFAULT_ANNOTATION_COLORS['exon']
+
+
+def test_annotation_track_smoke(gff_derip, gff_path, tmp_path):
+    """drawMiniAlignment renders with an annotation track."""
+    import matplotlib
+
+    matplotlib.use('Agg')
+
+    from derip2.annotation import build_annotation_spans
+
+    genes = parse_gff3(gff_path)
+    row_lookup = {
+        rec.id: gff_derip.column_classes.arr[i]
+        for i, rec in enumerate(gff_derip.alignment)
+    }
+    spans = build_annotation_spans(genes, row_lookup)
+    out = tmp_path / 'aln.png'
+    result = gff_derip.plot_alignment(output_file=str(out), annotation_track=spans)
+    assert result
+    assert out.exists() and out.stat().st_size > 0

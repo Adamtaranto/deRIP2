@@ -43,6 +43,16 @@ _ACCEPTOR = 'AG'
 # Complement used when reading a minus-strand CDS off the forward alignment.
 _COMPLEMENT = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'N': 'N', '-': '-'}
 
+# Default colours for the alignment annotation track, keyed by feature type. A
+# user-supplied two-column file overrides these (:func:`load_annotation_colors`).
+DEFAULT_ANNOTATION_COLORS = {
+    'gene': '#4a3aa7',  # violet
+    'mRNA': '#2a78d6',  # blue
+    'CDS': '#008300',  # green
+    'exon': '#5aa469',  # light green
+}
+_FALLBACK_ANNOTATION_COLOR = '#898781'  # grey for unlisted types
+
 
 @dataclass(frozen=True)
 class Feature:
@@ -306,6 +316,93 @@ def warn_unmatched_seqids(genes_by_seqid: Dict[str, List[Gene]], alignment_ids):
             ', '.join(sorted(unmatched)),
         )
     return unmatched
+
+
+def load_annotation_colors(path: str) -> Dict[str, str]:
+    """
+    Load a two-column ``type<TAB>hex`` annotation-colour override file.
+
+    Parameters
+    ----------
+    path : str
+        Path to a whitespace/tab-separated file of ``feature_type colour`` rows.
+        Blank lines and ``#`` comments are ignored.
+
+    Returns
+    -------
+    dict of str to str
+        Feature type to colour, merged over :data:`DEFAULT_ANNOTATION_COLORS`.
+    """
+    colors = dict(DEFAULT_ANNOTATION_COLORS)
+    with open(path, 'r', encoding='utf-8') as handle:
+        for line in handle:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split()
+            if len(parts) < 2:
+                logger.warning('Ignoring malformed annotation-colour line: %s', line)
+                continue
+            colors[parts[0]] = parts[1]
+    return colors
+
+
+def build_annotation_spans(
+    genes_by_seqid: Dict[str, List[Gene]],
+    row_lookup: Dict[str, np.ndarray],
+    colors: Optional[Dict[str, str]] = None,
+) -> List[Tuple[int, int, str, str, int]]:
+    """
+    Project gene CDS exons onto alignment columns as stacked track spans.
+
+    Each gene occupies its own track row; its CDS exons are drawn as separate
+    coloured spans (gaps split an exon into contiguous column runs). The result
+    is ready to pass to
+    :func:`derip2.plotting.minialign.drawMiniAlignment` as ``annotation_track``.
+
+    Parameters
+    ----------
+    genes_by_seqid : dict of str to list of Gene
+        Parsed genes keyed by sequence identifier.
+    row_lookup : dict of str to numpy.ndarray
+        Maps each sequence identifier to its alignment row (``'S1'`` byte array),
+        used to convert ungapped coordinates to columns.
+    colors : dict of str to str, optional
+        Feature-type colour map; defaults to :data:`DEFAULT_ANNOTATION_COLORS`.
+
+    Returns
+    -------
+    list of tuple
+        ``(start_col, end_col, color, label, track_row)`` spans.
+    """
+    colors = colors or DEFAULT_ANNOTATION_COLORS
+    cds_color = colors.get('CDS', _FALLBACK_ANNOTATION_COLOR)
+    spans: List[Tuple[int, int, str, str, int]] = []
+    track_row = 0
+
+    for seqid, genes in genes_by_seqid.items():
+        row = row_lookup.get(seqid)
+        if row is None:
+            continue  # unmatched seqid, already warned elsewhere
+        ungapped_to_col = ungapped_to_column_map(row)
+        n_ungapped = ungapped_to_col.shape[0]
+        for gene in genes:
+            drew = False
+            for exon in gene.cds:
+                if exon.end > n_ungapped:
+                    continue
+                cols = ungapped_to_col[exon.start - 1 : exon.end]
+                if cols.size:
+                    # Label only the first exon so the gene id is not repeated.
+                    label = gene.gene_id if not drew else ''
+                    spans.append(
+                        (int(cols.min()), int(cols.max()), cds_color, label, track_row)
+                    )
+                    drew = True
+            if drew:
+                track_row += 1
+
+    return spans
 
 
 def _cds_columns_transcription_order(
@@ -687,3 +784,162 @@ def predict_gene_effects(
     )
 
     return effects
+
+
+def compute_effects_for_alignment(
+    derip, genes_by_seqid: Dict[str, List[Gene]], genetic_code: int = 1
+) -> Dict[str, List[EffectRecord]]:
+    """
+    Predict RIP effects for every annotated sequence in a DeRIP alignment.
+
+    Each gene is evaluated against the reconstructed ancestor (deRIP2's gapped
+    consensus). Genes whose sequence identifier is not in the alignment are
+    skipped.
+
+    Parameters
+    ----------
+    derip : derip2.derip.DeRIP
+        A DeRIP object on which ``calculate_rip()`` has run.
+    genes_by_seqid : dict of str to list of Gene
+        Parsed genes keyed by sequence identifier.
+    genetic_code : int, optional
+        NCBI translation table (default: 1).
+
+    Returns
+    -------
+    dict of str to list of EffectRecord
+        Effects keyed by sequence identifier (only sequences with a gene and at
+        least one effect appear).
+    """
+    ref_row = np.frombuffer(
+        str(derip.gapped_consensus.seq).upper().encode('ascii'), dtype='S1'
+    ).copy()
+    id_to_row = {rec.id: i for i, rec in enumerate(derip.alignment)}
+
+    effects_by_seq: Dict[str, List[EffectRecord]] = {}
+    for seqid, genes in genes_by_seqid.items():
+        row_index = id_to_row.get(seqid)
+        if row_index is None:
+            continue
+        target_row = derip.column_classes.arr[row_index]
+        ungapped_to_col = ungapped_to_column_map(target_row)
+        collected: List[EffectRecord] = []
+        for gene in genes:
+            collected.extend(
+                predict_gene_effects(
+                    gene,
+                    target_row,
+                    ref_row,
+                    ungapped_to_col,
+                    seq_id=seqid,
+                    genetic_code=genetic_code,
+                )
+            )
+        if collected:
+            effects_by_seq[seqid] = collected
+    return effects_by_seq
+
+
+def deripd_translations(
+    derip, genes_by_seqid: Dict[str, List[Gene]], genetic_code: int = 1
+) -> Dict[str, str]:
+    """
+    Translate each gene's CDS on the reconstructed deRIP'd sequence.
+
+    Columns are taken from the gene's owning sequence, but the bases are read
+    from the deRIP'd consensus, so the returned protein is what the restored
+    (un-RIP'd) coding sequence encodes.
+
+    Parameters
+    ----------
+    derip : derip2.derip.DeRIP
+        A DeRIP object on which ``calculate_rip()`` has run.
+    genes_by_seqid : dict of str to list of Gene
+        Parsed genes keyed by sequence identifier.
+    genetic_code : int, optional
+        NCBI translation table (default: 1).
+
+    Returns
+    -------
+    dict of str to str
+        Gene identifier to amino-acid string (``'*'`` for stops).
+    """
+    ref_row = np.frombuffer(
+        str(derip.gapped_consensus.seq).upper().encode('ascii'), dtype='S1'
+    ).copy()
+    id_to_row = {rec.id: i for i, rec in enumerate(derip.alignment)}
+
+    translations: Dict[str, str] = {}
+    for seqid, genes in genes_by_seqid.items():
+        row_index = id_to_row.get(seqid)
+        if row_index is None:
+            continue
+        ungapped_to_col = ungapped_to_column_map(derip.column_classes.arr[row_index])
+        for gene in genes:
+            translations[gene.gene_id] = translate_cds(
+                gene, ref_row, ungapped_to_col, genetic_code=genetic_code
+            )
+    return translations
+
+
+def write_snp_effects(
+    output_file: str,
+    effects_by_seq: Dict[str, List[EffectRecord]],
+    deripd_aa: Dict[str, str],
+) -> str:
+    """
+    Write a tab-separated summary of RIP coding effects.
+
+    Parameters
+    ----------
+    output_file : str
+        Destination path.
+    effects_by_seq : dict of str to list of EffectRecord
+        Per-sequence effects (:func:`compute_effects_for_alignment`).
+    deripd_aa : dict of str to str
+        Per-gene deRIP'd translations (:func:`deripd_translations`).
+
+    Returns
+    -------
+    str
+        The path written.
+    """
+    columns = (
+        'seq_id',
+        'gene_id',
+        'kind',
+        'aa_pos',
+        'ref_aa',
+        'alt_aa',
+        'gapped_col',
+        'nt_change',
+    )
+    with open(output_file, 'w', encoding='utf-8') as handle:
+        handle.write('\t'.join(columns) + '\n')
+        for seqid in sorted(effects_by_seq):
+            for effect in effects_by_seq[seqid]:
+                nt_change = (
+                    f'{effect.nt_ref}>{effect.nt_alt}'
+                    if effect.nt_ref is not None or effect.nt_alt is not None
+                    else ''
+                )
+                row = (
+                    effect.seq_id,
+                    effect.gene_id,
+                    effect.kind,
+                    '' if effect.aa_pos is None else str(effect.aa_pos),
+                    effect.ref_aa or '',
+                    effect.alt_aa or '',
+                    '' if effect.gapped_col is None else str(effect.gapped_col),
+                    nt_change,
+                )
+                handle.write('\t'.join(row) + '\n')
+
+        # A trailing block records the restored (deRIP'd) protein per gene.
+        handle.write('\n# deRIP-restored CDS translations\n')
+        handle.write('# gene_id\tprotein\n')
+        for gene_id in sorted(deripd_aa):
+            handle.write(f'# {gene_id}\t{deripd_aa[gene_id]}\n')
+
+    logger.info('SNP-effect summary written to %s', output_file)
+    return output_file

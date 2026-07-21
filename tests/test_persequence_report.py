@@ -208,3 +208,24 @@ def test_single_rip_column():
     ax = fig.axes[0]
     bars = [p for p in ax.patches if isinstance(p, PathPatch)]
     assert len(bars) >= 1
+
+
+# --- GFF integration -------------------------------------------------------
+
+
+def test_report_with_gff_effects(mintest_derip, gff_path, tmp_path):
+    """A GFF adds gene-effect panels and restored translations to the report."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out), gff=str(gff_path))
+    html = out.read_text()
+    assert 'Gene effects' in html
+    assert 'deRIP-restored protein' in html
+    # Panels for annotated sequences show an effect table or the no-change note.
+    assert 'missense' in html or 'No RIP-induced coding change' in html
+
+
+def test_report_without_gff_has_no_effect_panel(mintest_derip, tmp_path):
+    """Without a GFF, no gene-effect section appears."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    assert 'Gene effects' not in out.read_text()

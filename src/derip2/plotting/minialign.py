@@ -275,6 +275,7 @@ def drawMiniAlignment(
     palette: str = 'derip2',
     markupdict: Optional[Dict[str, List[RIPPosition]]] = None,
     column_ranges: Optional[List[Tuple[int, int, str, str]]] = None,
+    annotation_track: Optional[List[Tuple[int, int, str, str, int]]] = None,
     show_chars: bool = False,
     draw_boxes: bool = False,
     consensus_seq: Optional[str] = None,
@@ -319,6 +320,12 @@ def drawMiniAlignment(
         Each position is a named tuple with (colIdx, rowIdx, base, offset).
     column_ranges : List[Tuple[int, int, str, str]], optional
         List of column ranges to mark, each as (start_col, end_col, color, label).
+    annotation_track : List[Tuple[int, int, str, str, int]], optional
+        Stacked gene-annotation spans to draw below the alignment, each as
+        (start_col, end_col, color, label, track_row). Columns are alignment
+        columns (already adjusted for gaps by the caller); ``track_row`` (0 at
+        the top) stacks spans of different annotation types into separate rows
+        (default: None).
     show_chars : bool, optional
         Whether to display sequence characters inside the colored cells (default: False).
     draw_boxes : bool, optional
@@ -581,6 +588,10 @@ def drawMiniAlignment(
     # Add column range markers if provided
     if column_ranges:
         addColumnRangeMarkers(a, column_ranges, ali_height)
+
+    # Add a stacked gene-annotation track below the alignment if provided.
+    if annotation_track:
+        addAnnotationTrack(a, annotation_track)
 
     # Display sequence characters if requested and alignment isn't too large
     if show_chars and ali_width < 500:  # Limit for performance reasons
@@ -1003,6 +1014,70 @@ def addColumnRangeMarkers(
                 fontsize=8,  # font size
                 color='black',  # text color
             )
+
+
+def addAnnotationTrack(
+    a: plt.Axes, spans: List[Tuple[int, int, str, str, int]]
+) -> None:
+    """
+    Draw a stacked gene-annotation track below the alignment.
+
+    Each span is a coloured bar at its ``track_row``; different annotation types
+    occupy different rows so overlapping features (e.g. gene vs CDS vs exon) do
+    not collide. The axes lower limit is extended to make room for the deepest
+    row and its label.
+
+    Parameters
+    ----------
+    a : plt.Axes
+        The axes containing the alignment.
+    spans : List[Tuple[int, int, str, str, int]]
+        Spans to draw, each as ``(start_col, end_col, color, label, track_row)``
+        in alignment-column coordinates (0 at the top of the stack).
+
+    Returns
+    -------
+    None
+        Modifies the plot in-place.
+    """
+    if not spans:
+        return
+
+    # Geometry: the first track sits just below the alignment, each subsequent
+    # track a fixed step lower. Bars are shorter than one row to leave a gap.
+    top = -1.5
+    step = 1.4
+    bar_height = 0.8
+
+    max_row = 0
+    for start_col, end_col, color, label, track_row in spans:
+        max_row = max(max_row, track_row)
+        bar_y = top - track_row * step
+        a.add_patch(
+            matplotlib.patches.Rectangle(
+                (start_col - 0.5, bar_y),
+                end_col - start_col + 1,
+                bar_height,
+                color=color,
+                zorder=90,
+            )
+        )
+        if label:
+            a.text(
+                (start_col + end_col) / 2,
+                bar_y + bar_height / 2,
+                label,
+                ha='center',
+                va='center',
+                fontsize=7,
+                color='black',
+                zorder=91,
+            )
+
+    # Extend the y-axis downward so the whole track (and a little margin) shows.
+    lower = top - max_row * step - 1.0
+    ymin, ymax = a.get_ylim()
+    a.set_ylim(min(ymin, lower), ymax)
 
 
 def getHighlightedPositions(

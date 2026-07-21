@@ -119,7 +119,87 @@ def _select_rows(df, max_seqs):
     return kept, True
 
 
-def _panel_html(derip, df, spectra, row_index, panel_number):
+_EFFECT_COLUMNS = (
+    ('kind', 'Effect'),
+    ('aa_pos', 'AA position'),
+    ('ref_aa', 'Ancestral'),
+    ('alt_aa', 'Observed'),
+    ('gapped_col', 'Column'),
+    ('nt', 'Nucleotide'),
+)
+
+
+def _effects_table_html(effects, deripd_aa):
+    """
+    Render a sequence's gene-effect records and restored translations as HTML.
+
+    Parameters
+    ----------
+    effects : list of derip2.annotation.EffectRecord
+        The effects for one sequence.
+    deripd_aa : dict of str to str
+        Per-gene deRIP'd (restored) protein strings for genes on this sequence.
+
+    Returns
+    -------
+    str
+        A ``<table>`` of effects followed by the restored translations, or a
+        note when the sequence has a gene but no RIP-induced effect.
+    """
+    head = ''.join(
+        f'<th scope="col">{escape(label)}</th>' for _key, label in _EFFECT_COLUMNS
+    )
+
+    rows = []
+    for effect in effects:
+        nt = (
+            f'{effect.nt_ref or ""}&rarr;{effect.nt_alt or ""}'
+            if (effect.nt_ref or effect.nt_alt)
+            else '&ndash;'
+        )
+        values = {
+            'kind': escape(effect.kind),
+            'aa_pos': '&ndash;' if effect.aa_pos is None else str(effect.aa_pos),
+            'ref_aa': escape(effect.ref_aa or '&ndash;'),
+            'alt_aa': escape(effect.alt_aa or '&ndash;'),
+            'gapped_col': '&ndash;'
+            if effect.gapped_col is None
+            else str(effect.gapped_col),
+            'nt': nt,
+        }
+        cells = ''.join(f'<td>{values[key]}</td>' for key, _label in _EFFECT_COLUMNS)
+        rows.append(f'<tr>{cells}</tr>')
+
+    table = ''
+    if rows:
+        table = (
+            '<div class="table-wrap"><table><thead><tr>'
+            + head
+            + '</tr></thead><tbody>'
+            + ''.join(rows)
+            + '</tbody></table></div>'
+        )
+    else:
+        table = '<p class="note">No RIP-induced coding change in this sequence.</p>'
+
+    aa_blocks = ''.join(
+        f'<p class="note"><code>{escape(gene_id)}</code> deRIP-restored protein: '
+        f'<code>{escape(aa)}</code></p>'
+        for gene_id, aa in sorted(deripd_aa.items())
+    )
+    return table + aa_blocks
+
+
+def _panel_html(
+    derip,
+    df,
+    spectra,
+    row_index,
+    panel_number,
+    effects_by_seq,
+    genes_by_seqid,
+    deripd_aa,
+):
     """
     Build the HTML for one sequence's panel.
 
@@ -135,6 +215,12 @@ def _panel_html(derip, df, spectra, row_index, panel_number):
         Alignment row index of the sequence.
     panel_number : int
         1-based position of this panel among those rendered (for the heading).
+    effects_by_seq : dict of str to list of derip2.annotation.EffectRecord
+        Per-sequence gene effects; empty when no GFF was supplied.
+    genes_by_seqid : dict of str to list of derip2.annotation.Gene
+        Genes keyed by sequence identifier; empty when no GFF was supplied.
+    deripd_aa : dict of str to str
+        Per-gene deRIP'd translations, keyed by gene identifier.
 
     Returns
     -------
@@ -172,12 +258,25 @@ def _panel_html(derip, df, spectra, row_index, panel_number):
     figure_html = ''.join(f'<div class="figure">{svg}</div>' for _label, svg in figures)
     stats_html = _stats_table_html(df.iloc[[row_index]])
 
+    # Gene-effect panel: only shown when a GFF annotated this sequence.
+    effect_html = ''
+    if seq_id in genes_by_seqid:
+        genes_here = {
+            gene.gene_id: deripd_aa[gene.gene_id]
+            for gene in genes_by_seqid[seq_id]
+            if gene.gene_id in deripd_aa
+        }
+        effect_html = '<h2>Gene effects</h2>' + _effects_table_html(
+            effects_by_seq.get(seq_id, []), genes_here
+        )
+
     return (
         f'<section class="seq-panel" data-index="{panel_number - 1}" hidden>'
         f'<h2>Sequence {panel_number}: <span class="seqid">{escape(seq_id)}</span></h2>'
         f'{figure_html}'
         f'<h2>Summary statistics</h2>'
         f'<div class="table-wrap">{stats_html}</div>'
+        f'{effect_html}'
         f'</section>'
     )
 
@@ -189,7 +288,8 @@ def write_per_sequence_report(
     title=None,
     ambiguous='split',
     max_seqs=None,
-    **kwargs,
+    gff=None,
+    genetic_code=1,
 ):
     """
     Write a single-file, arrow-key-navigable per-sequence HTML report.
@@ -210,8 +310,11 @@ def write_per_sequence_report(
         than this, the strongest strand-bias sequences (largest ``|RSI|``) are
         kept and a truncation note is shown. ``None`` (default) renders every
         sequence.
-    **kwargs
-        Reserved for later use (e.g. GFF gene-effect panels); ignored for now.
+    gff : str, optional
+        Path to a GFF3 gene model. When given, each annotated sequence's panel
+        gains a gene-effect table and the deRIP-restored protein.
+    genetic_code : int, optional
+        NCBI translation table for the effect prediction (default: 1).
 
     Returns
     -------
@@ -229,10 +332,40 @@ def write_per_sequence_report(
     # ancestor. Computed once and reused across every panel.
     spectra = derip.calculate_spectra(partition_by='row')
 
+    # Optional gene-effect data. Parsed once and shared across panels.
+    genes_by_seqid = {}
+    effects_by_seq = {}
+    deripd_aa = {}
+    if gff is not None:
+        from derip2.annotation import (
+            compute_effects_for_alignment,
+            deripd_translations,
+            parse_gff3,
+            warn_unmatched_seqids,
+        )
+
+        genes_by_seqid = parse_gff3(gff)
+        warn_unmatched_seqids(genes_by_seqid, [rec.id for rec in derip.alignment])
+        effects_by_seq = compute_effects_for_alignment(
+            derip, genes_by_seqid, genetic_code=genetic_code
+        )
+        deripd_aa = deripd_translations(
+            derip, genes_by_seqid, genetic_code=genetic_code
+        )
+
     indices, truncated = _select_rows(df, max_seqs)
 
     panels = [
-        _panel_html(derip, df, spectra, row_index, panel_number)
+        _panel_html(
+            derip,
+            df,
+            spectra,
+            row_index,
+            panel_number,
+            effects_by_seq,
+            genes_by_seqid,
+            deripd_aa,
+        )
         for panel_number, row_index in enumerate(indices, start=1)
     ]
 
