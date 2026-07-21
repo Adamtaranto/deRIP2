@@ -20,6 +20,12 @@ figure's glyphs.
 from html import escape
 import logging
 
+from derip2.plotting.persequence import (
+    NONRIP_COLOR,
+    PRODUCT_COLOR,
+    SUBSTRATE_COLOR,
+)
+from derip2.plotting.strandbias import BASE_COLORS
 from derip2.report import (
     _STYLE,
     _figure_to_svg,
@@ -80,6 +86,36 @@ _STAT_SECTIONS = (
 )
 
 
+def _alignment_row_legend():
+    """
+    Build the HTML colour key for the alignment-row figure.
+
+    Returns
+    -------
+    str
+        A ``<div class="legend">`` naming the base colours and the triangle
+        marker colours (product / substrate / non-RIP).
+    """
+    bases = ''.join(
+        f'<span class="lg"><i style="background:{BASE_COLORS[b]}"></i>{b}</span>'
+        for b in ('A', 'C', 'G', 'T')
+    )
+    markers = (
+        f'<span class="lg"><b style="color:{PRODUCT_COLOR}">&#9660;</b> product</span>'
+        f'<span class="lg"><b style="color:{SUBSTRATE_COLOR}">&#9660;</b> substrate</span>'
+        f'<span class="lg"><b style="color:{NONRIP_COLOR}">&#9660;</b> '
+        'non-RIP</span>'
+    )
+    return (
+        '<div class="legend">'
+        '<span class="lg-title">Bases</span>'
+        + bases
+        + '<span class="lg-title">Markers</span>'
+        + markers
+        + '</div>'
+    )
+
+
 def _stats_sections_html(row):
     """
     Render one sequence's statistics as grouped, transposed cards.
@@ -112,6 +148,9 @@ def _stats_sections_html(row):
             # Flag a positive-RIP CRI (> 1) in green, as the RIP-signal threshold.
             if column == 'CRI' and float(row['CRI']) > 1:
                 css = 'pos'
+            # Bold a significant strand-asymmetry p-value.
+            if column == 'pvalue' and float(row['pvalue']) < 0.05:
+                css = (css + ' sig').strip()
             cls = f' {css}' if css else ''
             rows_html.append(
                 f'<tr><th scope="row">{escape(label)}</th>'
@@ -144,6 +183,15 @@ _PSR_STYLE = """
 .seq-nav button:hover { border-color: var(--muted); }
 .seq-nav .indicator { font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .seq-nav .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
+/* Simultaneous zoom control for the column-aligned figures. */
+.seq-nav .zoom { display: flex; align-items: center; gap: .3rem; }
+.seq-nav .zoom button {
+  width: 1.9rem; text-align: center; padding: .3rem 0; font-weight: 600;
+}
+.seq-nav .zoom .zlabel {
+  min-width: 3.2rem; text-align: center; font-variant-numeric: tabular-nums;
+  color: var(--ink-2); font-size: 12px;
+}
 /* Keep the sequence header (number, name, length) pinned below the nav bar as
    the reader scrolls down a long panel. */
 .seq-panel h2 {
@@ -158,6 +206,21 @@ _PSR_STYLE = """
 }
 .desc { color: var(--ink-2); margin: .1rem 0 .8rem; max-width: 74ch; font-size: 14px; }
 .note { color: var(--muted); font-size: 13px; }
+
+/* Colour key for the alignment-row figure. */
+.legend {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .9rem;
+  margin: 0 0 .6rem; font-size: 12.5px; color: var(--ink-2);
+}
+.legend .lg-title { color: var(--muted); font-weight: 600; }
+.legend .lg { display: inline-flex; align-items: center; gap: .3rem; }
+.legend .lg i {
+  display: inline-block; width: .8rem; height: .8rem; border-radius: 2px;
+}
+.legend .lg b { font-size: 1rem; line-height: 1; }
+
+/* Significant strand-asymmetry p-value. */
+.stat-card td.value.sig { font-weight: 700; }
 
 /* Wide figures (alignment row, strand bias) keep their intrinsic width and
    scroll horizontally rather than being squashed to page width, so bars stay
@@ -263,6 +326,32 @@ _PSR_SCRIPT = """
     if (e.key === 'ArrowLeft') { show(current - 1); e.preventDefault(); }
     else if (e.key === 'ArrowRight') { show(current + 1); e.preventDefault(); }
   });
+
+  // Simultaneous zoom for every column-aligned figure (alignment row + strand
+  // bias) across all panels, so they scale together and stay aligned. The base
+  // pixel width comes from the SVG's own point size (1pt = 4/3 px).
+  var zoom = 1;
+  var allCols = Array.prototype.slice.call(
+    document.querySelectorAll('.col-scroll svg'));
+  function basePx(svg) {
+    var w = parseFloat(svg.getAttribute('width') || '0');
+    return w * 4 / 3;  // pt -> css px
+  }
+  function applyZoom() {
+    allCols.forEach(function (svg) {
+      svg.style.width = (basePx(svg) * zoom) + 'px';
+    });
+    var label = document.getElementById('zoom-label');
+    if (label) { label.textContent = Math.round(zoom * 100) + '%'; }
+  }
+  document.getElementById('zoom-in').addEventListener('click', function () {
+    zoom = Math.min(zoom * 1.25, 8); applyZoom();
+  });
+  document.getElementById('zoom-out').addEventListener('click', function () {
+    zoom = Math.max(zoom / 1.25, 0.25); applyZoom();
+  });
+  applyZoom();
+
   show(0);
 })();
 """
@@ -434,9 +523,10 @@ def _panel_html(
     # Wide figures share one width and identical fixed margins so the column axis
     # lands on the same pixels in both (aligning the alignment row with the bias
     # strip) and on the same pixels on every page (so a horizontal scroll offset
-    # points at the same column across sequences). ~0.06 in/column keeps bars
-    # legible; capped so the inline SVG stays a sane size on long alignments.
-    wide_w = max(6.0, min(280.0, n_cols * 0.06))
+    # points at the same column across sequences). ~0.09 in/column keeps bars and
+    # base cells legible; capped so the inline SVG stays a sane size on long
+    # alignments. The zoom control scales both figures further, together.
+    wide_w = max(6.0, min(360.0, n_cols * 0.09))
 
     strip = sequence_row_strip(
         cls,
@@ -444,9 +534,9 @@ def _panel_html(
         seq_id=seq_id,
         consensus_seq=consensus_seq,
         width=wide_w,
-        height=1.6,
+        height=2.0,
     )
-    _fix_wide_axes(strip, wide_w, n_cols, top_in=0.3, bottom_in=0.42)
+    _fix_wide_axes(strip, wide_w, n_cols, top_in=0.3, bottom_in=0.4)
     strip_svg = _figure_to_svg(strip, f's{row_index}row-', tight=False)
     plt.close(strip)
 
@@ -497,11 +587,12 @@ def _panel_html(
         f'<span class="seqlen">({ungapped_len} nt)</span></h2>'
         '<h3>Alignment row</h3>'
         '<p class="desc">The subject sequence (top) and the reconstructed deRIP’d '
-        'reference (below, drawn fainter), coloured by base identity '
-        '(A green, C blue, G violet, T red; gaps white). RIP-like columns — those '
-        'the whole-alignment strand-bias analysis flags — are shaded grey, as in '
-        'the alignment-wide plot. Scroll horizontally to view the whole '
-        'alignment.</p>'
+        'reference (below, drawn fainter), coloured by base identity. Triangle '
+        'markers above the subject mark its role at each RIP-informative column; '
+        'RIP-like columns — those the whole-alignment strand-bias analysis flags '
+        '— are shaded grey, as in the alignment-wide plot. Use the zoom control '
+        'in the toolbar, or scroll horizontally, to inspect long alignments.</p>'
+        f'{_alignment_row_legend()}'
         f'<div class="col-scroll">{strip_svg}</div>'
         '<h3>Per-sequence strand bias</h3>'
         '<p class="desc">One bar per RIP-like column this sequence takes part in: '
@@ -707,7 +798,11 @@ def write_per_sequence_report(
         '<button id="seq-prev" type="button">&larr; Prev</button>'
         '<button id="seq-next" type="button">Next &rarr;</button>'
         f'<span class="indicator" id="seq-indicator">Sequence 1 / {n_shown}</span>'
-        '<span class="hint">Use the &larr; and &rarr; arrow keys</span>'
+        '<span class="zoom" title="Zoom the alignment row and strand-bias plots">'
+        '<button id="zoom-out" type="button">&minus;</button>'
+        '<span class="zlabel" id="zoom-label">100%</span>'
+        '<button id="zoom-in" type="button">+</button></span>'
+        '<span class="hint">&larr;/&rarr; keys change sequence</span>'
         '</div>'
     )
 

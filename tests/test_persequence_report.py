@@ -99,6 +99,18 @@ def test_row_strip_returns_figure(mintest_derip):
     assert len(ax.get_yticklabels()) == 2
 
 
+def test_row_strip_has_marker_triangles(mintest_derip):
+    """The alignment row draws triangle markers for the subject's RIP roles."""
+    from matplotlib.collections import PathCollection
+
+    cls = mintest_derip.column_classes
+    fig = sequence_row_strip(cls, 0, seq_id='Seq1')
+    ax = fig.axes[0]
+    # scatter() adds PathCollection artists — one per role that has any column.
+    collections = [c for c in ax.collections if isinstance(c, PathCollection)]
+    assert collections, 'expected triangle marker collections'
+
+
 def test_plot_sbs96_single_sample(mintest_derip):
     """``sample=`` selects exactly one SBS-96 panel."""
     spectra = mintest_derip.calculate_spectra(partition_by='row')
@@ -373,6 +385,28 @@ def test_report_total_rip_events(mintest_derip, tmp_path):
     expected = int(df.iloc[0]['RIP_fwd']) + int(df.iloc[0]['RIP_rev'])
     # The first panel's total appears as a table cell value.
     assert f'>{expected}<' in html
+
+
+def test_report_has_legend_and_zoom(mintest_derip, tmp_path):
+    """The report carries the alignment-row colour key and the zoom control."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    assert 'class="legend"' in html
+    assert 'zoom-in' in html and 'zoom-out' in html and 'applyZoom' in html
+
+
+def test_report_pvalue_bold_when_significant(mintest_path):
+    """A strand-asymmetry p-value below 0.05 gets the bold .sig class."""
+    from derip2.persequence_report import _stats_sections_html
+
+    derip = DeRIP(mintest_path)
+    derip.calculate_rip()
+    row = derip.summarize_stats().iloc[0].copy()
+    row['pvalue'] = 0.01
+    assert 'sig">' in _stats_sections_html(row)
+    row['pvalue'] = 0.5
+    assert 'sig">' not in _stats_sections_html(row)
 
 
 def test_report_cri_highlighted_when_above_one(mintest_path, tmp_path):

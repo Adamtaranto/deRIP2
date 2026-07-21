@@ -64,6 +64,7 @@ STRIP_GAP = '#ffffff'
 # strand-bias strip and RIP-completion bar all agree.
 PRODUCT_COLOR = ROLE_COLORS['substrate']  # orange: the RIP product base (T / A)
 SUBSTRATE_COLOR = ROLE_COLORS['product']  # blue: the surviving substrate
+NONRIP_COLOR = '#a05fb4'  # violet: deamination outside RIP dinucleotide context
 
 
 def _hex_to_rgb(color: str):
@@ -364,36 +365,70 @@ def sequence_row_strip(
         rgba[gap, 3] = 1.0  # gaps stay opaque white on both rows
         return rgba
 
-    # Row 0 (top) = subject at full opacity; row 1 = deRIP'd reference, fainter.
-    rows = [_base_rgba(row, 1.0)]
-    row_labels = [seq_id or f'row {i}']
-    if consensus_seq is not None:
-        cons = np.frombuffer(consensus_seq.upper().encode('ascii'), dtype='S1')
-        rows.append(_base_rgba(cons, 0.55))
-        row_labels.append('deRIP')
-    base_rgba = np.stack(rows, axis=0)  # (n_rows, n_cols, 4)
-    n_rows = base_rgba.shape[0]
+    # y-layout (data coords, axis inverted so smaller y is higher on the page):
+    #   markers  at  y = MARKER_Y  (above the subject row)
+    #   subject  in  [0, 1]
+    #   gap      in  [1, 1 + GAP]  (narrow whitespace)
+    #   deRIP    in  [1 + GAP, 2 + GAP]
+    GAP = 0.22
+    MARKER_Y = -0.5
+    subject_rgba = _base_rgba(row, 1.0)[np.newaxis, :, :]
 
     # Columns the whole-MSA strand-bias plot would shade: a RIP product observed
     # on either strand anywhere in the column (same rule as plot_strand_bias).
     mutated = np.where((cls.prod_fwd.sum(axis=0) + cls.prod_rev.sum(axis=0)) > 0)[0]
+
+    # This sequence's own role at each column, for the triangle markers.
+    marker_sets = (
+        (np.where(cls.prod_fwd[i] | cls.prod_rev[i])[0], PRODUCT_COLOR),
+        (np.where(cls.sub_fwd[i] | cls.sub_rev[i])[0], SUBSTRATE_COLOR),
+        (np.where(cls.nonrip_fwd[i] | cls.nonrip_rev[i])[0], NONRIP_COLOR),
+    )
 
     with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
         fig, ax = plt.subplots(figsize=(width or _figure_width(n_cols), height))
         fig.patch.set_facecolor(SURFACE)
         ax.set_facecolor(SURFACE)
 
-        # Bases occupy y in [-0.5, n_rows-0.5]; leave head/foot room so the
-        # RIP-like column wash reads as vertical bands above and below the rows.
         ax.imshow(
-            base_rgba,
+            subject_rgba,
             aspect='auto',
             interpolation='nearest',
-            extent=(-0.5, n_cols - 0.5, n_rows - 0.5, -0.5),
+            extent=(-0.5, n_cols - 0.5, 1.0, 0.0),
             zorder=2,
         )
-        pad = 0.55
-        ax.set_ylim(n_rows - 0.5 + pad, -0.5 - pad)  # inverted: row 0 on top
+        yticks, row_labels = [0.5], [seq_id or f'row {i}']
+        ref_bottom = 2.0 + GAP
+        if consensus_seq is not None:
+            cons = np.frombuffer(consensus_seq.upper().encode('ascii'), dtype='S1')
+            ax.imshow(
+                _base_rgba(cons, 0.55)[np.newaxis, :, :],
+                aspect='auto',
+                interpolation='nearest',
+                extent=(-0.5, n_cols - 0.5, ref_bottom, 1.0 + GAP),
+                zorder=2,
+            )
+            yticks.append(1.5 + GAP)
+            row_labels.append('deRIP')
+        else:
+            ref_bottom = 1.0
+
+        # Triangle markers above the subject row, coloured by this sequence's role.
+        for cols, colour in marker_sets:
+            if cols.size:
+                ax.scatter(
+                    cols,
+                    np.full(cols.shape, MARKER_Y),
+                    marker='v',
+                    s=14,
+                    c=colour,
+                    edgecolors='none',
+                    zorder=3,
+                    clip_on=False,
+                )
+
+        bottom_pad = 0.35
+        ax.set_ylim(ref_bottom + bottom_pad, MARKER_Y - 0.35)  # inverted
         for x in mutated:
             ax.axvspan(
                 x - 0.5,
@@ -405,7 +440,7 @@ def sequence_row_strip(
             )
 
         ax.set_xlim(-0.5, n_cols - 0.5)
-        ax.set_yticks(range(n_rows))
+        ax.set_yticks(yticks)
         ax.set_yticklabels(row_labels, fontsize=TICK_LABEL_SIZE, color=INK_MUTED)
         ax.set_xlabel('Alignment column', color=INK_SECONDARY, fontsize=AXIS_LABEL_SIZE)
         ax.tick_params(
