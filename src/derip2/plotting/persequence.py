@@ -300,11 +300,12 @@ def sequence_row_strip(
 
     Both aligned sequences are drawn base-by-base, coloured by nucleotide
     identity with the shared palette (A green, C blue, G violet, T red; gaps
-    white). The reconstructed deRIP'd reference is drawn slightly more
-    transparent than the subject so the two are easy to tell apart. Columns that
-    the whole-alignment strand-bias analysis marks as RIP-like — those carrying a
-    RIP product on either strand anywhere in the alignment — are shaded with the
-    same hueless wash used by :func:`derip2.plotting.strandbias.plot_strand_bias`.
+    white). The subject is drawn on top and the reconstructed deRIP'd reference
+    below it, separated by a narrow gap. Triangle markers above the subject flag
+    its role at each column, and columns the whole-alignment strand-bias analysis
+    marks as RIP-like — those carrying a RIP product on either strand anywhere in
+    the alignment — are shaded with the same hueless wash used by
+    :func:`derip2.plotting.strandbias.plot_strand_bias`.
 
     Parameters
     ----------
@@ -402,7 +403,7 @@ def sequence_row_strip(
         if consensus_seq is not None:
             cons = np.frombuffer(consensus_seq.upper().encode('ascii'), dtype='S1')
             ax.imshow(
-                _base_rgba(cons, 0.55)[np.newaxis, :, :],
+                _base_rgba(cons, 1.0)[np.newaxis, :, :],
                 aspect='auto',
                 interpolation='nearest',
                 extent=(-0.5, n_cols - 0.5, ref_bottom, 1.0 + GAP),

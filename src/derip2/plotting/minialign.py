@@ -516,38 +516,24 @@ def drawMiniAlignment(
         zorder=100,
     )
 
-    # Mark reference sequence with a black circle at the end of the row if provided
+    # Mark the reference (fill) sequence with a black circle just past the end of
+    # its row. Drawn in *data* coordinates (not baked figure coordinates) so it
+    # tracks the axes transform: an annotation track that extends the y-limits
+    # then no longer knocks the marker out of alignment with its row.
     if reference_seq_index is not None and 0 <= reference_seq_index < ali_height:
-        # Convert row index to matplotlib coordinates (flipped)
-        ref_y = ali_height - reference_seq_index - 1
-
-        # First, convert data coordinates to display coordinates
-        # This finds where in the figure the end of the reference row is
-        display_coords = a.transData.transform((ali_width - 0.5, ref_y))
-
-        # Convert display coordinates to figure coordinates
-        fig_coords = f.transFigure.inverted().transform(display_coords)
-
-        # Add a smaller offset to place the circle closer to the alignment
-        circle_x = fig_coords[0] + 0.015  # Reduced offset for closer positioning
-        circle_y = fig_coords[1]  # Same vertical position
-
-        # Get figure dimensions to calculate aspect ratio
-        fig_width_inches, fig_height_inches = f.get_size_inches()
-        aspect_ratio = fig_width_inches / fig_height_inches
-
-        # Create a smaller ellipse that will appear as a circle by accounting for aspect ratio
-        circle = matplotlib.patches.Ellipse(
-            (circle_x, circle_y),  # Position in figure coordinates
-            width=0.0075,  # X radius (horizontal)
-            height=0.0075 * aspect_ratio,  # Y radius adjusted for aspect ratio
-            facecolor='black',  # Black fill
-            edgecolor='white',  # White border
-            linewidth=1.5,  # Border thickness
-            transform=f.transFigure,  # Use figure coordinates
-            zorder=1000,  # Ensure it's on top
+        ref_y = ali_height - reference_seq_index - 1  # rows drawn top-to-bottom
+        marker_x = ali_width - 0.5 + max(0.6, 0.01 * ali_width)
+        a.scatter(
+            [marker_x],
+            [ref_y],
+            s=48,
+            marker='o',
+            facecolor='black',
+            edgecolor='white',
+            linewidth=1.5,
+            clip_on=False,  # allowed to sit in the right-hand margin
+            zorder=1000,
         )
-        f.patches.append(circle)  # Add to figure patches
 
     # Remove unnecessary spines
     a.spines['right'].set_visible(False)

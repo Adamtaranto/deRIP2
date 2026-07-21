@@ -587,7 +587,7 @@ def _panel_html(
         f'<span class="seqlen">({ungapped_len} nt)</span></h2>'
         '<h3>Alignment row</h3>'
         '<p class="desc">The subject sequence (top) and the reconstructed deRIP’d '
-        'reference (below, drawn fainter), coloured by base identity. Triangle '
+        'reference (below), coloured by base identity. Triangle '
         'markers above the subject mark its role at each RIP-informative column; '
         'RIP-like columns — those the whole-alignment strand-bias analysis flags '
         '— are shaded grey, as in the alignment-wide plot. Use the zoom control '

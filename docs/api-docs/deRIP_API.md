@@ -71,6 +71,8 @@
       members:
         - per_sequence_strand_bias
         - sequence_row_strip
+        - rip_completion_bar
+        - gc_content_bar
 
 ::: derip2.persequence_report
     options:

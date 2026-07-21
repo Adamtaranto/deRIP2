@@ -509,3 +509,51 @@ def test_addColumnRangeMarkers_single_column():
     # Should add 2 patches and 2 text labels
     assert mock_ax.add_patch.call_count == 2
     assert mock_ax.text.call_count == 2
+
+
+@patch('matplotlib.pyplot.close')
+def test_reference_marker_data_coords_track_annotation(mock_close, tmp_path):
+    """
+    The reference (fill) circle marker stays on its row when an annotation track
+    extends the y-limits.
+
+    The marker is drawn in data coordinates, so its y-offset must equal
+    ``ali_height - reference_seq_index - 1`` regardless of any annotation track.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import PathCollection
+
+    records = [SeqRecord(Seq('ACGTACGT'), id=f'seq{i}') for i in range(5)]
+    aln = MultipleSeqAlignment(records)
+    ali_height = len(aln)
+    ref_index = 2
+    expected_y = ali_height - ref_index - 1
+    out = str(tmp_path / 'aln.png')
+
+    def marker_offset_y():
+        # The reference marker is the single-point scatter on the alignment axes.
+        for ax in plt.gcf().axes:
+            for coll in ax.collections:
+                if isinstance(coll, PathCollection):
+                    offs = coll.get_offsets()
+                    if len(offs) == 1:
+                        return float(offs[0][1])
+        return None
+
+    # Without an annotation track (plt.close is a no-op so the figure survives).
+    drawMiniAlignment(aln, out, reference_seq_index=ref_index)
+    y_plain = marker_offset_y()
+    plt.close('all')
+
+    # With an annotation track that extends the y-limits downward.
+    drawMiniAlignment(
+        aln,
+        out,
+        reference_seq_index=ref_index,
+        annotation_track=[(1, 4, '#008300', 'gene', 0)],
+    )
+    y_track = marker_offset_y()
+    plt.close('all')
+
+    assert y_plain == expected_y
+    assert y_track == expected_y
