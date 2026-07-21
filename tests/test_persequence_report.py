@@ -24,11 +24,14 @@ import pytest  # noqa: E402
 
 from derip2.derip import DeRIP  # noqa: E402
 from derip2.plotting.persequence import (  # noqa: E402
+    PRODUCT_COLOR,
+    SUBSTRATE_COLOR,
+    gc_content_bar,
     per_sequence_strand_bias,
     rip_completion_bar,
     sequence_row_strip,
 )
-from derip2.plotting.spectra import plot_sbs96  # noqa: E402
+from derip2.plotting.spectra import plot_downstream, plot_sbs96  # noqa: E402
 
 logging.disable(logging.CRITICAL)
 
@@ -127,6 +130,54 @@ def test_rip_completion_bar_no_sites():
     assert fig is not None
 
 
+def test_gc_content_bar(mintest_derip):
+    """The GC-content bar renders a stacked bar from a stats row."""
+    from matplotlib.patches import Rectangle
+
+    df = mintest_derip.summarize_stats()
+    fig = gc_content_bar(df.iloc[0])
+    assert fig is not None
+    ax = fig.axes[0]
+    assert ax.get_xlim() == (0.0, 100.0)
+    assert any(isinstance(p, Rectangle) and p.get_width() > 0 for p in ax.patches)
+
+
+def test_strand_bias_uses_swapped_role_colours(mintest_derip):
+    """Product bars are orange and substrate bars blue (swapped convention)."""
+    from matplotlib.colors import to_hex
+
+    fig = per_sequence_strand_bias(mintest_derip.column_classes, 0, seq_id='Seq1')
+    ax = fig.axes[0]
+    bar_colours = {
+        to_hex(p.get_facecolor()) for p in ax.patches if isinstance(p, PathPatch)
+    }
+    # Every bar is one of the two role colours; product is orange, not blue.
+    assert bar_colours <= {to_hex(PRODUCT_COLOR), to_hex(SUBSTRATE_COLOR)}
+    assert to_hex(PRODUCT_COLOR) != to_hex(SUBSTRATE_COLOR)
+
+
+def test_plot_downstream_single_sample(mintest_derip):
+    """``sample=`` selects one downstream-context panel."""
+    ds = mintest_derip.calculate_spectra(partition_by='row', context='downstream')
+    fig = plot_downstream(ds, sample=0)
+    assert len(fig.axes) == 1
+
+
+def test_plot_downstream_out_of_range(mintest_derip):
+    """An out-of-range downstream sample index is rejected."""
+    ds = mintest_derip.calculate_spectra(partition_by='row', context='downstream')
+    with pytest.raises(IndexError):
+        plot_downstream(ds, sample=999)
+
+
+def test_plot_sbs96_bare_has_no_suptitle(mintest_derip):
+    """``bare=True`` omits the caption suptitle and per-sample title."""
+    spectra = mintest_derip.calculate_spectra(partition_by='row')
+    fig = plot_sbs96(spectra, sample=0, bare=True)
+    assert fig._suptitle is None
+    assert not fig.axes[0].get_title()
+
+
 def test_plot_sbs96_out_of_range(mintest_derip):
     """An out-of-range sample index is rejected."""
     spectra = mintest_derip.calculate_spectra(partition_by='row')
@@ -199,13 +250,18 @@ def test_report_section_headings_and_scroll(mintest_derip, tmp_path):
         'Alignment row',
         'Per-sequence strand bias',
         'RIP completion',
+        'GC content',
         'Mutation spectrum (SBS-96)',
+        'Mutation spectrum (downstream context)',
         'Summary statistics',
     ):
         assert f'<h3>{heading}</h3>' in html, heading
     # Wide figures scroll; the alignment row and bias each get a scroll box.
     n = len(mintest_derip.alignment)
     assert html.count('col-scroll') >= 2 * n
+    # Ungapped length is shown in each panel header.
+    assert html.count('class="seqlen"') == n
+    assert 'nt)' in html
 
 
 def test_report_transposed_stat_cards(mintest_derip, tmp_path):

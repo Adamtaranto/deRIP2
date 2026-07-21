@@ -136,6 +136,7 @@ _PSR_STYLE = """
 .seq-nav .indicator { font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .seq-nav .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
 .seq-panel h2 .seqid { color: var(--ink-2); font-weight: 400; }
+.seq-panel h2 .seqlen { color: var(--muted); font-weight: 400; font-size: 1rem; }
 .seq-panel h3 {
   font-size: 1rem; font-weight: 600; margin: 1.6rem 0 .2rem;
   padding-top: .8rem; border-top: 1px solid var(--rule);
@@ -151,10 +152,17 @@ _PSR_STYLE = """
 }
 .col-scroll svg { display: block; max-width: none; height: auto; }
 
-/* The spectrum and completion figures are fixed-width; centre them and cap to
-   the page so they stay aligned across sequences. */
+/* The completion and GC bars are fixed-width; centre them and cap to the page
+   so they stay aligned across sequences. */
 .figure-fixed { overflow-x: auto; background: #fcfcfb; border-radius: 6px; padding: .5rem; }
 .figure-fixed svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+
+/* The spectra are wide (96 trinucleotide ticks). They keep their intrinsic
+   width and scroll horizontally on their own, so the ticks never overlap; a
+   fixed figure geometry keeps the plot body aligned across sequences. This
+   scroll is independent of the alignment column figures. */
+.spectrum-scroll { overflow-x: auto; background: #fcfcfb; border-radius: 6px; padding: .5rem; }
+.spectrum-scroll svg { display: block; max-width: none; height: auto; }
 
 /* Transposed, grouped statistics: a responsive grid of small sections, each a
    two-column stat/value table with a short description. */
@@ -354,6 +362,7 @@ def _panel_html(
     derip,
     df,
     spectra,
+    downstream,
     row_index,
     panel_number,
     effects_by_seq,
@@ -370,7 +379,9 @@ def _panel_html(
     df : pandas.DataFrame
         The per-sequence statistics table.
     spectra : derip2.stats.mutation_spectra.SpectraResult
-        Per-row spectra (one sample column per sequence).
+        Per-row trinucleotide SBS-96 spectra (one sample column per sequence).
+    downstream : derip2.stats.mutation_spectra.SpectraResult
+        Per-row downstream-triplet spectra (one sample column per sequence).
     row_index : int
         Alignment row index of the sequence.
     panel_number : int
@@ -390,17 +401,20 @@ def _panel_html(
     import matplotlib.pyplot as plt
 
     from derip2.plotting.persequence import (
+        gc_content_bar,
         per_sequence_strand_bias,
         rip_completion_bar,
         sequence_row_strip,
     )
-    from derip2.plotting.spectra import plot_sbs96
+    from derip2.plotting.spectra import plot_downstream, plot_sbs96
 
     cls = derip.column_classes
     seq_id = derip.alignment[row_index].id
     consensus_seq = str(derip.gapped_consensus.seq)
     row_stats = df.iloc[row_index]
     n_cols = cls.arr.shape[1]
+    # Ungapped length: the count of non-gap bases in this row.
+    ungapped_len = int((cls.arr[row_index] != b'-').sum())
 
     # Wide figures share one width and identical fixed margins so the column axis
     # lands on the same pixels in both (aligning the alignment row with the bias
@@ -425,10 +439,21 @@ def _panel_html(
     completion_svg = _figure_to_svg(completion, f's{row_index}rip-', tight=False)
     plt.close(completion)
 
-    sbs = plot_sbs96(spectra, sample=row_index, title=f'SBS-96: {seq_id}')
+    gc = gc_content_bar(row_stats)
+    gc_svg = _figure_to_svg(gc, f's{row_index}gc-', tight=False)
+    plt.close(gc)
+
+    # Wide, bare spectra (no redundant sample title / caption); fixed geometry so
+    # the plot body aligns across pages, scrolled independently of the columns.
+    sbs = plot_sbs96(spectra, sample=row_index, width=12.0, bare=True)
     _fix_spectrum_axes(sbs)
     sbs_svg = _figure_to_svg(sbs, f's{row_index}sbs-', tight=False)
     plt.close(sbs)
+
+    ds = plot_downstream(downstream, sample=row_index, width=12.0, bare=True)
+    _fix_spectrum_axes(ds)
+    ds_svg = _figure_to_svg(ds, f's{row_index}ds-', tight=False)
+    plt.close(ds)
 
     # Gene-effect panel: only shown when a GFF annotated this sequence.
     effect_html = ''
@@ -444,29 +469,41 @@ def _panel_html(
 
     return (
         f'<section class="seq-panel" data-index="{panel_number - 1}" hidden>'
-        f'<h2>Sequence {panel_number}: <span class="seqid">{escape(seq_id)}</span></h2>'
+        f'<h2>Sequence {panel_number}: <span class="seqid">{escape(seq_id)}</span> '
+        f'<span class="seqlen">({ungapped_len} nt)</span></h2>'
         '<h3>Alignment row</h3>'
         '<p class="desc">This sequence aligned to the family, with RIP products '
-        '(blue), surviving substrates (orange) and non-RIP deaminations '
+        '(orange), surviving substrates (blue) and non-RIP deaminations '
         'highlighted; the reconstructed deRIP’d base is shown beneath. Scroll '
         'horizontally to view the whole alignment.</p>'
         f'<div class="col-scroll">{strip_svg}</div>'
         '<h3>Per-sequence strand bias</h3>'
         '<p class="desc">One bar per RIP-like column this sequence takes part in: '
-        'forward-strand events above the axis, reverse-strand events below, '
-        'coloured by whether the base is the RIP product (TA) or the surviving '
-        'substrate (CA/TG). Scroll horizontally to follow long alignments.</p>'
+        'forward-strand events above the axis, reverse-strand events below. Bars '
+        'are coloured by role — orange for the RIP product (TA), blue for the '
+        'surviving substrate (CA on the forward strand, TG on the reverse). '
+        'Scroll horizontally to follow long alignments.</p>'
         f'<div class="col-scroll">{bias_svg}</div>'
         '<h3>RIP completion</h3>'
         '<p class="desc">The fraction of this sequence’s available RIP-like sites '
         '(surviving substrate plus product) that have been converted to product, '
         'per strand and combined.</p>'
         f'<div class="figure-fixed">{completion_svg}</div>'
+        '<h3>GC content</h3>'
+        '<p class="desc">Base composition of this sequence. RIP lowers GC by '
+        'converting C to T, so a low bar is consistent with heavy RIP.</p>'
+        f'<div class="figure-fixed">{gc_svg}</div>'
         '<h3>Mutation spectrum (SBS-96)</h3>'
         '<p class="desc">The single-base-substitution spectrum of this sequence '
-        'measured against the reconstructed ancestor. RIP shows up as a C&gt;T '
-        'peak in CpA context.</p>'
-        f'<div class="figure-fixed">{sbs_svg}</div>'
+        'measured against the reconstructed ancestor, in trinucleotide context '
+        '(5′-N[R&gt;A]N-3′). RIP shows up as a C&gt;T peak in CpA context. Scroll '
+        'horizontally if the 96 channels do not fit.</p>'
+        f'<div class="spectrum-scroll">{sbs_svg}</div>'
+        '<h3>Mutation spectrum (downstream context)</h3>'
+        '<p class="desc">The same substitutions classified by the mutated base '
+        'plus its two downstream bases (pyrimidine-folded), which resolves the '
+        'CHG-methylation signal C&gt;T in CpNpG context.</p>'
+        f'<div class="spectrum-scroll">{ds_svg}</div>'
         '<h3>Summary statistics</h3>'
         f'{_stats_sections_html(row_stats)}'
         f'{effect_html}'
@@ -533,7 +570,8 @@ def _fix_spectrum_axes(fig):
     """
     ax = fig.axes[0]
     ax.yaxis.labelpad = 12
-    ax.set_position([0.16, 0.30, 0.80, 0.46])
+    # Fixed rect sized for the wide (96-tick) spectrum; identical on every page.
+    ax.set_position([0.09, 0.30, 0.88, 0.46])
 
 
 def write_per_sequence_report(
@@ -583,9 +621,10 @@ def write_per_sequence_report(
     large alignments.
     """
     df = derip.summarize_stats(ambiguous=ambiguous)
-    # One SBS-96 sample column per sequence, measured against the reconstructed
-    # ancestor. Computed once and reused across every panel.
+    # One sample column per sequence, measured against the reconstructed
+    # ancestor, in each context. Computed once and reused across every panel.
     spectra = derip.calculate_spectra(partition_by='row')
+    downstream = derip.calculate_spectra(partition_by='row', context='downstream')
 
     # Optional gene-effect data. Parsed once and shared across panels.
     genes_by_seqid = {}
@@ -615,6 +654,7 @@ def write_per_sequence_report(
             derip,
             df,
             spectra,
+            downstream,
             row_index,
             panel_number,
             effects_by_seq,

@@ -53,12 +53,18 @@ logger = logging.getLogger(__name__)
 STRIP_BASE = '#c7d1d0'
 STRIP_GAP = '#ffffff'
 
-# Highlight colours for the alignment-row strip, drawn over the grey bases. These
-# reuse the role palette so product/substrate read the same as in the bar strip,
-# plus a third hue for non-RIP deamination (only shown when reaminate is on).
+# Per-sequence role palette. The report deliberately swaps the alignment-wide
+# convention so that in these figures the RIP *product* is orange and the
+# surviving *substrate* is blue; kept as named constants so the alignment row,
+# strand-bias strip and RIP-completion bar all agree.
+PRODUCT_COLOR = ROLE_COLORS['substrate']  # orange: the RIP product base (T / A)
+SUBSTRATE_COLOR = ROLE_COLORS['product']  # blue: the surviving substrate
+
+# Highlight colours for the alignment-row strip, drawn over the grey bases, plus
+# a third hue for non-RIP deamination (only shown when reaminate is on).
 HIGHLIGHT_COLORS = {
-    'product': ROLE_COLORS['product'],  # blue: the RIP product base (T / A)
-    'substrate': ROLE_COLORS['substrate'],  # orange: the surviving substrate
+    'product': PRODUCT_COLOR,  # orange
+    'substrate': SUBSTRATE_COLOR,  # blue
     'non_rip': '#a05fb4',  # violet: deamination outside RIP context
 }
 
@@ -158,14 +164,13 @@ def per_sequence_strand_bias(
 
         bar_width = 0.82
         radius = 0.18
-        # (columns, direction, role) -> one call to the rounded-bar helper each.
-        for cols, direction, role in (
-            (above_prod, +1, 'product'),
-            (above_sub, +1, 'substrate'),
-            (below_prod, -1, 'product'),
-            (below_sub, -1, 'substrate'),
+        # (columns, direction, colour) -> one call to the rounded-bar helper each.
+        for cols, direction, color in (
+            (above_prod, +1, PRODUCT_COLOR),
+            (above_sub, +1, SUBSTRATE_COLOR),
+            (below_prod, -1, PRODUCT_COLOR),
+            (below_sub, -1, SUBSTRATE_COLOR),
         ):
-            color = ROLE_COLORS[role]
             for x in cols:
                 path = _bar_path(x, 0.0, bar_width, 1.0, direction, radius)
                 ax.add_patch(
@@ -189,18 +194,12 @@ def per_sequence_strand_bias(
         ax.set_ylabel('RIP-like site', color=INK_SECONDARY, fontsize=AXIS_LABEL_SIZE)
         ax.set_xlabel('Alignment column', color=INK_SECONDARY, fontsize=AXIS_LABEL_SIZE)
 
-        default_title = (
-            f'Per-sequence strand bias: {seq_id}'
-            if seq_id
-            else ('Per-sequence strand bias')
-        )
-        ax.set_title(
-            title or default_title,
-            color=INK_PRIMARY,
-            fontsize=TITLE_SIZE,
-            pad=8,
-            loc='center',
-        )
+        # A title is only drawn when explicitly requested; the HTML report names
+        # each section with its own heading, so the default is untitled.
+        if title:
+            ax.set_title(
+                title, color=INK_PRIMARY, fontsize=TITLE_SIZE, pad=8, loc='center'
+            )
 
         ax.grid(False)
         ax.set_axisbelow(True)
@@ -225,13 +224,13 @@ def per_sequence_strand_bias(
 
         handles = [
             Patch(
-                facecolor=ROLE_COLORS['product'],
+                facecolor=PRODUCT_COLOR,
                 edgecolor=SURFACE,
                 linewidth=0.6,
                 label='RIP product (TA)',
             ),
             Patch(
-                facecolor=ROLE_COLORS['substrate'],
+                facecolor=SUBSTRATE_COLOR,
                 edgecolor=SURFACE,
                 linewidth=0.6,
                 label='substrate (CA / TG)',
@@ -381,14 +380,11 @@ def sequence_row_strip(
         ax.spines['bottom'].set_color(AXIS_INK)
         ax.spines['bottom'].set_linewidth(0.6)
 
-        default_title = f'Alignment row: {seq_id}' if seq_id else 'Alignment row'
-        ax.set_title(
-            title or default_title,
-            color=INK_PRIMARY,
-            fontsize=TITLE_SIZE,
-            pad=6,
-            loc='center',
-        )
+        # Untitled by default; the HTML report supplies its own section heading.
+        if title:
+            ax.set_title(
+                title, color=INK_PRIMARY, fontsize=TITLE_SIZE, pad=6, loc='center'
+            )
 
         if outfile is not None:
             fig.savefig(outfile, dpi=dpi, bbox_inches='tight', facecolor=SURFACE)
@@ -477,7 +473,7 @@ def rip_completion_bar(
                     yi,
                     pct,
                     height=bar_h,
-                    color=ROLE_COLORS['product'],
+                    color=PRODUCT_COLOR,
                     edgecolor=SURFACE,
                     linewidth=0.4,
                     zorder=2,
@@ -487,7 +483,7 @@ def rip_completion_bar(
                     100.0 - pct,
                     left=pct,
                     height=bar_h,
-                    color=ROLE_COLORS['substrate'],
+                    color=SUBSTRATE_COLOR,
                     edgecolor=SURFACE,
                     linewidth=0.4,
                     zorder=2,
@@ -529,13 +525,13 @@ def rip_completion_bar(
         ax.legend(
             handles=[
                 Patch(
-                    facecolor=ROLE_COLORS['product'],
+                    facecolor=PRODUCT_COLOR,
                     edgecolor=SURFACE,
                     linewidth=0.6,
                     label="RIP'd (product)",
                 ),
                 Patch(
-                    facecolor=ROLE_COLORS['substrate'],
+                    facecolor=SUBSTRATE_COLOR,
                     edgecolor=SURFACE,
                     linewidth=0.6,
                     label='intact (substrate)',
@@ -559,5 +555,134 @@ def rip_completion_bar(
         if outfile is not None:
             fig.savefig(outfile, dpi=dpi, facecolor=SURFACE)
             logger.info('RIP completion bar saved to %s', outfile)
+
+    return fig
+
+
+# GC-content bar palette: a single hue split for the two base-pair classes.
+GC_COLOR = '#3a8fb7'  # teal for G+C
+AT_COLOR = '#c7d1d0'  # grey for A+T
+
+
+def gc_content_bar(
+    stats,
+    *,
+    title: Optional[str] = None,
+    width: float = 6.6,
+    height: float = 1.0,
+    dpi: int = 300,
+    outfile: Optional[str] = None,
+):
+    """
+    Draw a horizontal stacked bar of this sequence's GC content.
+
+    The bar is split into the G+C fraction (filled) and the A+T remainder, with
+    the percentage labelled. RIP lowers GC by converting C to T, so a low bar is
+    consistent with heavy RIP.
+
+    Parameters
+    ----------
+    stats : Mapping
+        A per-sequence statistics row exposing ``GC`` (a fraction in ``[0, 1]``),
+        as produced by :meth:`derip2.derip.DeRIP.summarize_stats`.
+    title : str, optional
+        Figure title.
+    width, height : float, optional
+        Figure size in inches. Fixed by default so the bar lines up across pages.
+    dpi : int, optional
+        Raster resolution when ``outfile`` is a raster path (default: 300).
+    outfile : str, optional
+        Path to write the figure to. When ``None`` the figure is returned unsaved.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure the bar was drawn on.
+    """
+    gc_pct = 100.0 * float(stats['GC'])
+    gc_pct = min(100.0, max(0.0, gc_pct))
+
+    with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
+        fig, ax = plt.subplots(figsize=(width, height))
+        fig.patch.set_facecolor(SURFACE)
+        ax.set_facecolor(SURFACE)
+
+        ax.barh(
+            0,
+            gc_pct,
+            height=0.6,
+            color=GC_COLOR,
+            edgecolor=SURFACE,
+            linewidth=0.4,
+            zorder=2,
+        )
+        ax.barh(
+            0,
+            100.0 - gc_pct,
+            left=gc_pct,
+            height=0.6,
+            color=AT_COLOR,
+            edgecolor=SURFACE,
+            linewidth=0.4,
+            zorder=2,
+        )
+        ax.text(
+            101,
+            0,
+            f'{gc_pct:.0f}%',
+            ha='left',
+            va='center',
+            fontsize=TICK_LABEL_SIZE,
+            color=INK_SECONDARY,
+        )
+
+        ax.set_xlim(0, 100)
+        ax.set_ylim(-0.6, 0.6)
+        ax.set_yticks([0])
+        ax.set_yticklabels(['GC'], fontsize=TICK_LABEL_SIZE)
+        ax.set_xlabel(
+            'Base composition (%)', color=INK_SECONDARY, fontsize=AXIS_LABEL_SIZE
+        )
+        ax.set_xticks([0, 25, 50, 75, 100])
+        ax.tick_params(
+            colors=AXIS_INK,
+            labelcolor=INK_MUTED,
+            labelsize=TICK_LABEL_SIZE,
+            length=2.5,
+            width=0.6,
+        )
+        for side in ('top', 'right', 'left'):
+            ax.spines[side].set_visible(False)
+        ax.spines['bottom'].set_color(AXIS_INK)
+        ax.spines['bottom'].set_linewidth(0.6)
+
+        from matplotlib.patches import Patch
+
+        ax.legend(
+            handles=[
+                Patch(
+                    facecolor=GC_COLOR, edgecolor=SURFACE, linewidth=0.6, label='G+C'
+                ),
+                Patch(
+                    facecolor=AT_COLOR, edgecolor=SURFACE, linewidth=0.6, label='A+T'
+                ),
+            ],
+            loc='lower center',
+            bbox_to_anchor=(0.5, 1.0),
+            ncol=2,
+            fontsize=LEGEND_SIZE,
+            frameon=False,
+        )
+
+        if title:
+            ax.set_title(
+                title, color=INK_PRIMARY, fontsize=TITLE_SIZE, pad=22, loc='center'
+            )
+
+        fig.subplots_adjust(left=0.12, right=0.9, top=0.66, bottom=0.42)
+
+        if outfile is not None:
+            fig.savefig(outfile, dpi=dpi, facecolor=SURFACE)
+            logger.info('GC content bar saved to %s', outfile)
 
     return fig
