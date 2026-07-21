@@ -23,14 +23,103 @@ import logging
 from derip2.report import (
     _STYLE,
     _figure_to_svg,
-    _stats_table_html,
+    _format_cell,
 )
 
 logger = logging.getLogger(__name__)
 
+# Grouped, transposed statistics layout: (section title, description, [(column,
+# row label), ...]). Each group becomes a small card with a stat/value table.
+_STAT_SECTIONS = (
+    (
+        'RIP events',
+        'Counts of RIP-attributable deamination in this sequence, split by the '
+        'strand the C→T product was read on, plus deaminations outside RIP '
+        'dinucleotide context.',
+        (
+            ('RIP_fwd', 'Forward RIP events'),
+            ('RIP_rev', 'Reverse RIP events'),
+            ('non_RIP', 'Non-RIP deaminations'),
+        ),
+    ),
+    (
+        'Strand bias (RSI)',
+        'The RIP Strandedness Imbalance: p_fwd and p_rev are the fraction of each '
+        'strand’s substrate converted to product; RSI = p_fwd − p_rev '
+        '(positive = forward-biased). The p-value tests strand asymmetry; '
+        'ambiguous TpA sites could derive from either strand.',
+        (
+            ('RSI', 'RSI'),
+            ('p_fwd', 'p_fwd (forward)'),
+            ('p_rev', 'p_rev (reverse)'),
+            ('pvalue', 'p-value'),
+            ('fwd_product', 'Forward product'),
+            ('fwd_substrate', 'Forward substrate'),
+            ('rev_product', 'Reverse product'),
+            ('rev_substrate', 'Reverse substrate'),
+            ('n_ambiguous', 'Ambiguous TpA'),
+        ),
+    ),
+    (
+        'Composite RIP Index (CRI)',
+        'The classical CRI and its components: the product index (PI, TpA/ApT) '
+        'minus the substrate index (SI, (CpA+TpG)/(ApC+GpT)). A positive CRI is '
+        'the hallmark of RIP.',
+        (
+            ('CRI', 'CRI'),
+            ('PI', 'Product index (PI)'),
+            ('SI', 'Substrate index (SI)'),
+        ),
+    ),
+    (
+        'Composition',
+        'Base composition of this sequence.',
+        (('GC', 'GC content'),),
+    ),
+)
+
+
+def _stats_sections_html(row):
+    """
+    Render one sequence's statistics as grouped, transposed cards.
+
+    Rather than a single wide row, the statistics are split into related
+    sections (RIP events, strand bias, CRI, composition), each a small
+    stat/value table with a short description of what the numbers mean.
+
+    Parameters
+    ----------
+    row : pandas.Series
+        One row of :meth:`derip2.derip.DeRIP.summarize_stats` (i.e.
+        ``df.iloc[row_index]``).
+
+    Returns
+    -------
+    str
+        A ``<div class="stat-grid">`` of cards.
+    """
+    cards = []
+    for title, description, fields in _STAT_SECTIONS:
+        rows_html = []
+        for column, label in fields:
+            text, css = _format_cell(column, row[column])
+            cls = f' {css}' if css else ''
+            rows_html.append(
+                f'<tr><th scope="row">{escape(label)}</th>'
+                f'<td class="value{cls}">{text}</td></tr>'
+            )
+        cards.append(
+            f'<div class="stat-card"><h4>{escape(title)}</h4>'
+            f'<p class="desc">{escape(description)}</p>'
+            f'<table><tbody>{"".join(rows_html)}</tbody></table></div>'
+        )
+    return '<div class="stat-grid">' + ''.join(cards) + '</div>'
+
+
 # Extra CSS layered on top of the shared report style: the panel show/hide
-# mechanism and the navigation bar. Kept minimal and theme-agnostic (it inherits
-# the light/dark variables from ``_STYLE``).
+# mechanism, the navigation bar, the horizontally-scrolling wide figures, and
+# the transposed statistics grid. Kept theme-agnostic (it inherits the
+# light/dark variables from ``_STYLE``).
 _PSR_STYLE = """
 .seq-panel[hidden] { display: none; }
 .seq-nav {
@@ -47,11 +136,55 @@ _PSR_STYLE = """
 .seq-nav .indicator { font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .seq-nav .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
 .seq-panel h2 .seqid { color: var(--ink-2); font-weight: 400; }
+.seq-panel h3 {
+  font-size: 1rem; font-weight: 600; margin: 1.6rem 0 .2rem;
+  padding-top: .8rem; border-top: 1px solid var(--rule);
+}
+.desc { color: var(--ink-2); margin: .1rem 0 .8rem; max-width: 74ch; font-size: 14px; }
 .note { color: var(--muted); font-size: 13px; }
+
+/* Wide figures (alignment row, strand bias) keep their intrinsic width and
+   scroll horizontally rather than being squashed to page width, so bars stay
+   readable on long alignments. */
+.col-scroll {
+  overflow-x: auto; background: #fcfcfb; border-radius: 6px; padding: .3rem;
+}
+.col-scroll svg { display: block; max-width: none; height: auto; }
+
+/* The spectrum and completion figures are fixed-width; centre them and cap to
+   the page so they stay aligned across sequences. */
+.figure-fixed { overflow-x: auto; background: #fcfcfb; border-radius: 6px; padding: .5rem; }
+.figure-fixed svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+
+/* Transposed, grouped statistics: a responsive grid of small sections, each a
+   two-column stat/value table with a short description. */
+.stat-grid {
+  display: grid; gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.stat-card {
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 8px; padding: .8rem 1rem;
+}
+.stat-card h4 { margin: 0 0 .2rem; font-size: .95rem; font-weight: 600; }
+.stat-card .desc { font-size: 12.5px; margin: 0 0 .6rem; }
+.stat-card table { width: 100%; font-size: 13px; }
+.stat-card th, .stat-card td {
+  text-align: left; padding: .3rem .2rem; border-bottom: 1px solid var(--rule);
+}
+.stat-card td.value {
+  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.stat-card tr:last-child th, .stat-card tr:last-child td { border-bottom: none; }
 """
 
-# ~30 lines of dependency-free navigation: track the visible panel, wrap at the
-# ends, and bind the arrow keys plus the prev/next buttons.
+# Dependency-free navigation. Beyond stepping between panels, it preserves both
+# scroll axes so content stays aligned when flipping pages: the window's vertical
+# scroll is never reset, and the horizontal scroll of the column-aligned figures
+# (alignment row + strand bias, which share the same column axis) is remembered
+# and re-applied to whichever panel is shown. Because every sequence has the same
+# number of columns and the figures use a fixed geometry, a given scroll offset
+# lands on the same column on every page.
 _PSR_SCRIPT = """
 (function () {
   var panels = Array.prototype.slice.call(
@@ -59,6 +192,13 @@ _PSR_SCRIPT = """
   if (!panels.length) return;
   var indicator = document.getElementById('seq-indicator');
   var current = 0;
+  var savedLeft = 0;      // shared horizontal offset for the column figures
+  var syncing = false;    // guard against scroll-event feedback while syncing
+
+  function colScrollers(panel) {
+    return Array.prototype.slice.call(panel.querySelectorAll('.col-scroll'));
+  }
+
   function show(k) {
     current = (k + panels.length) % panels.length;
     panels.forEach(function (p, i) {
@@ -68,8 +208,28 @@ _PSR_SCRIPT = """
     if (indicator) {
       indicator.textContent = 'Sequence ' + (current + 1) + ' / ' + panels.length;
     }
-    window.scrollTo(0, 0);
+    // Re-apply the remembered horizontal offset; leave the vertical scroll be.
+    syncing = true;
+    colScrollers(panels[current]).forEach(function (el) { el.scrollLeft = savedLeft; });
+    syncing = false;
   }
+
+  // Remember the horizontal offset whenever the user scrolls a column figure,
+  // and mirror it to the other column figures in the same panel.
+  panels.forEach(function (panel) {
+    colScrollers(panel).forEach(function (el) {
+      el.addEventListener('scroll', function () {
+        if (syncing) return;
+        savedLeft = el.scrollLeft;
+        syncing = true;
+        colScrollers(panel).forEach(function (other) {
+          if (other !== el) { other.scrollLeft = savedLeft; }
+        });
+        syncing = false;
+      });
+    });
+  });
+
   document.getElementById('seq-prev').addEventListener('click', function () {
     show(current - 1);
   });
@@ -231,6 +391,7 @@ def _panel_html(
 
     from derip2.plotting.persequence import (
         per_sequence_strand_bias,
+        rip_completion_bar,
         sequence_row_strip,
     )
     from derip2.plotting.spectra import plot_sbs96
@@ -238,25 +399,36 @@ def _panel_html(
     cls = derip.column_classes
     seq_id = derip.alignment[row_index].id
     consensus_seq = str(derip.gapped_consensus.seq)
+    row_stats = df.iloc[row_index]
+    n_cols = cls.arr.shape[1]
 
-    figures = []
+    # Wide figures share one width and identical fixed margins so the column axis
+    # lands on the same pixels in both (aligning the alignment row with the bias
+    # strip) and on the same pixels on every page (so a horizontal scroll offset
+    # points at the same column across sequences). ~0.06 in/column keeps bars
+    # legible; capped so the inline SVG stays a sane size on long alignments.
+    wide_w = max(6.0, min(280.0, n_cols * 0.06))
 
     strip = sequence_row_strip(
-        cls, row_index, seq_id=seq_id, consensus_seq=consensus_seq
+        cls, row_index, seq_id=seq_id, consensus_seq=consensus_seq, width=wide_w
     )
-    figures.append(('Alignment row', _figure_to_svg(strip, f's{row_index}row-')))
+    _fix_wide_axes(strip, wide_w, n_cols, top_in=0.34, bottom_in=0.42)
+    strip_svg = _figure_to_svg(strip, f's{row_index}row-', tight=False)
     plt.close(strip)
 
-    bias = per_sequence_strand_bias(cls, row_index, seq_id=seq_id)
-    figures.append(('Strand bias', _figure_to_svg(bias, f's{row_index}bias-')))
+    bias = per_sequence_strand_bias(cls, row_index, seq_id=seq_id, width=wide_w)
+    _fix_wide_axes(bias, wide_w, n_cols, top_in=0.5, bottom_in=0.55)
+    bias_svg = _figure_to_svg(bias, f's{row_index}bias-', tight=False)
     plt.close(bias)
 
-    sbs = plot_sbs96(spectra, sample=row_index, title=f'SBS-96: {seq_id}')
-    figures.append(('Mutation spectrum', _figure_to_svg(sbs, f's{row_index}sbs-')))
-    plt.close(sbs)
+    completion = rip_completion_bar(row_stats)
+    completion_svg = _figure_to_svg(completion, f's{row_index}rip-', tight=False)
+    plt.close(completion)
 
-    figure_html = ''.join(f'<div class="figure">{svg}</div>' for _label, svg in figures)
-    stats_html = _stats_table_html(df.iloc[[row_index]])
+    sbs = plot_sbs96(spectra, sample=row_index, title=f'SBS-96: {seq_id}')
+    _fix_spectrum_axes(sbs)
+    sbs_svg = _figure_to_svg(sbs, f's{row_index}sbs-', tight=False)
+    plt.close(sbs)
 
     # Gene-effect panel: only shown when a GFF annotated this sequence.
     effect_html = ''
@@ -266,19 +438,102 @@ def _panel_html(
             for gene in genes_by_seqid[seq_id]
             if gene.gene_id in deripd_aa
         }
-        effect_html = '<h2>Gene effects</h2>' + _effects_table_html(
+        effect_html = '<h3>Gene effects</h3>' + _effects_table_html(
             effects_by_seq.get(seq_id, []), genes_here
         )
 
     return (
         f'<section class="seq-panel" data-index="{panel_number - 1}" hidden>'
         f'<h2>Sequence {panel_number}: <span class="seqid">{escape(seq_id)}</span></h2>'
-        f'{figure_html}'
-        f'<h2>Summary statistics</h2>'
-        f'<div class="table-wrap">{stats_html}</div>'
+        '<h3>Alignment row</h3>'
+        '<p class="desc">This sequence aligned to the family, with RIP products '
+        '(blue), surviving substrates (orange) and non-RIP deaminations '
+        'highlighted; the reconstructed deRIP’d base is shown beneath. Scroll '
+        'horizontally to view the whole alignment.</p>'
+        f'<div class="col-scroll">{strip_svg}</div>'
+        '<h3>Per-sequence strand bias</h3>'
+        '<p class="desc">One bar per RIP-like column this sequence takes part in: '
+        'forward-strand events above the axis, reverse-strand events below, '
+        'coloured by whether the base is the RIP product (TA) or the surviving '
+        'substrate (CA/TG). Scroll horizontally to follow long alignments.</p>'
+        f'<div class="col-scroll">{bias_svg}</div>'
+        '<h3>RIP completion</h3>'
+        '<p class="desc">The fraction of this sequence’s available RIP-like sites '
+        '(surviving substrate plus product) that have been converted to product, '
+        'per strand and combined.</p>'
+        f'<div class="figure-fixed">{completion_svg}</div>'
+        '<h3>Mutation spectrum (SBS-96)</h3>'
+        '<p class="desc">The single-base-substitution spectrum of this sequence '
+        'measured against the reconstructed ancestor. RIP shows up as a C&gt;T '
+        'peak in CpA context.</p>'
+        f'<div class="figure-fixed">{sbs_svg}</div>'
+        '<h3>Summary statistics</h3>'
+        f'{_stats_sections_html(row_stats)}'
         f'{effect_html}'
         f'</section>'
     )
+
+
+def _fix_wide_axes(fig, width_in, n_cols, *, top_in, bottom_in):
+    """
+    Pin a wide figure's axes to fixed absolute margins and a common x-range.
+
+    Using absolute (inch) margins converted to fractions keeps the plotting area
+    at the same pixel offset regardless of the figure's total width, so the
+    alignment-row and strand-bias strips align column-for-column and a scroll
+    offset points at the same column on every page.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        The figure to adjust (single axes).
+    width_in : float
+        The figure width in inches.
+    n_cols : int
+        Number of alignment columns, used to set a shared x-range.
+    top_in, bottom_in : float
+        Top and bottom margins in inches.
+
+    Returns
+    -------
+    None
+        The axes are repositioned in place.
+    """
+    left_in, right_in = 0.8, 0.2
+    height_in = fig.get_size_inches()[1]
+    fig.subplots_adjust(
+        left=left_in / width_in,
+        right=1.0 - right_in / width_in,
+        top=1.0 - top_in / height_in,
+        bottom=bottom_in / height_in,
+    )
+    # A shared x-range so both strips map columns to identical pixels.
+    fig.axes[0].set_xlim(-0.5, n_cols - 0.5)
+
+
+def _fix_spectrum_axes(fig):
+    """
+    Pin the SBS-96 spectrum to a fixed axes rectangle with a padded y-label.
+
+    ``tight_layout`` sizes the left margin to the y tick labels, which vary with
+    the count magnitude (``5`` vs ``5000``), shifting the plot body between
+    sequences. Fixing the axes rectangle — with enough left margin for the
+    widest labels and extra spacing between the axis numbers and the y-axis
+    label — keeps the spectrum aligned across pages.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        The single-panel spectrum figure.
+
+    Returns
+    -------
+    None
+        The axes are repositioned in place.
+    """
+    ax = fig.axes[0]
+    ax.yaxis.labelpad = 12
+    ax.set_position([0.16, 0.30, 0.80, 0.46])
 
 
 def write_per_sequence_report(

@@ -25,6 +25,7 @@ import pytest  # noqa: E402
 from derip2.derip import DeRIP  # noqa: E402
 from derip2.plotting.persequence import (  # noqa: E402
     per_sequence_strand_bias,
+    rip_completion_bar,
     sequence_row_strip,
 )
 from derip2.plotting.spectra import plot_sbs96  # noqa: E402
@@ -104,6 +105,28 @@ def test_plot_sbs96_single_sample(mintest_derip):
     assert len(fig.axes) == 1
 
 
+def test_rip_completion_bar(mintest_derip):
+    """The RIP-completion bar renders three horizontal bars from a stats row."""
+    from matplotlib.patches import Rectangle
+
+    df = mintest_derip.summarize_stats()
+    fig = rip_completion_bar(df.iloc[0])
+    assert fig is not None
+    ax = fig.axes[0]
+    # Percentage axis, and at least one drawn segment.
+    assert ax.get_xlim() == (0.0, 100.0)
+    assert any(isinstance(p, Rectangle) and p.get_width() > 0 for p in ax.patches)
+
+
+def test_rip_completion_bar_no_sites():
+    """A sequence with no RIP-like sites renders without dividing by zero."""
+    aln = make_alignment(['GGGGG', 'GGGGG', 'GGGGG'])
+    derip = DeRIP(aln)
+    derip.calculate_rip()
+    fig = rip_completion_bar(derip.summarize_stats().iloc[0])
+    assert fig is not None
+
+
 def test_plot_sbs96_out_of_range(mintest_derip):
     """An out-of-range sample index is rejected."""
     spectra = mintest_derip.calculate_spectra(partition_by='row')
@@ -165,6 +188,53 @@ def test_report_truncation(mintest_derip, tmp_path):
     assert html.count('class="seq-panel"') == 2
     assert 'note' in html
     assert 'Sequence 1 / 2' in html
+
+
+def test_report_section_headings_and_scroll(mintest_derip, tmp_path):
+    """Each panel carries section headings and horizontal-scroll containers."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    for heading in (
+        'Alignment row',
+        'Per-sequence strand bias',
+        'RIP completion',
+        'Mutation spectrum (SBS-96)',
+        'Summary statistics',
+    ):
+        assert f'<h3>{heading}</h3>' in html, heading
+    # Wide figures scroll; the alignment row and bias each get a scroll box.
+    n = len(mintest_derip.alignment)
+    assert html.count('col-scroll') >= 2 * n
+
+
+def test_report_transposed_stat_cards(mintest_derip, tmp_path):
+    """Statistics are rendered as grouped, transposed cards, not one wide row."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    assert 'stat-grid' in html
+    n = len(mintest_derip.alignment)
+    # Four stat sections per sequence.
+    assert html.count('class="stat-card"') == 4 * n
+    for title in (
+        'RIP events',
+        'Strand bias (RSI)',
+        'Composite RIP Index',
+        'Composition',
+    ):
+        assert title in html
+
+
+def test_report_scroll_preserved_between_pages(mintest_derip, tmp_path):
+    """The navigation script preserves scroll position rather than resetting it."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    # It must not jump to the top on every page change ...
+    assert 'window.scrollTo(0, 0)' not in html
+    # ... and it must remember/re-apply the horizontal offset.
+    assert 'scrollLeft' in html
 
 
 def test_report_requires_rip(mintest_path, tmp_path):

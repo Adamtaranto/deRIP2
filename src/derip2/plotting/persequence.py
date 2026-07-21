@@ -87,7 +87,8 @@ def per_sequence_strand_bias(
     *,
     seq_id: Optional[str] = None,
     title: Optional[str] = None,
-    height: float = 1.7,
+    height: float = 2.2,
+    width: Optional[float] = None,
     dpi: int = 300,
     outfile: Optional[str] = None,
     ax=None,
@@ -116,7 +117,11 @@ def per_sequence_strand_bias(
     title : str, optional
         Figure title. Defaults to a description naming ``seq_id``.
     height : float, optional
-        Figure height in inches (default: 1.7).
+        Figure height in inches (default: 2.2).
+    width : float, optional
+        Figure width in inches. Defaults to a width scaled to the number of
+        columns (:func:`derip2.plotting.strandbias._figure_width`); pass an
+        explicit value to control bar density for a scrolling container.
     dpi : int, optional
         Raster resolution when ``outfile`` is a raster path (default: 300).
     outfile : str, optional
@@ -142,8 +147,7 @@ def per_sequence_strand_bias(
 
     with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
         if ax is None:
-            width = _figure_width(n_cols)
-            fig, ax = plt.subplots(figsize=(width, height))
+            fig, ax = plt.subplots(figsize=(width or _figure_width(n_cols), height))
         else:
             fig = ax.figure
 
@@ -289,7 +293,8 @@ def sequence_row_strip(
     seq_id: Optional[str] = None,
     consensus_seq: Optional[str] = None,
     title: Optional[str] = None,
-    height: float = 0.9,
+    height: float = 1.0,
+    width: Optional[float] = None,
     dpi: int = 300,
     outfile: Optional[str] = None,
 ):
@@ -315,7 +320,11 @@ def sequence_row_strip(
     title : str, optional
         Figure title. Defaults to a description naming ``seq_id``.
     height : float, optional
-        Figure height in inches (default: 0.9).
+        Figure height in inches (default: 1.0).
+    width : float, optional
+        Figure width in inches. Defaults to a width scaled to the number of
+        columns; pass an explicit value to match the strand-bias strip so the
+        two line up column-for-column in a scrolling container.
     dpi : int, optional
         Raster resolution when ``outfile`` is a raster path (default: 300).
     outfile : str, optional
@@ -354,8 +363,7 @@ def sequence_row_strip(
             base_rgb[0, cols] = _hex_to_rgb(HIGHLIGHT_COLORS[role])
 
     with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
-        width = _figure_width(n_cols)
-        fig, ax = plt.subplots(figsize=(width, height))
+        fig, ax = plt.subplots(figsize=(width or _figure_width(n_cols), height))
         fig.patch.set_facecolor(SURFACE)
         ax.imshow(base_rgb, aspect='auto', interpolation='nearest')
 
@@ -385,5 +393,171 @@ def sequence_row_strip(
         if outfile is not None:
             fig.savefig(outfile, dpi=dpi, bbox_inches='tight', facecolor=SURFACE)
             logger.info('Sequence row strip saved to %s', outfile)
+
+    return fig
+
+
+def rip_completion_bar(
+    stats,
+    *,
+    title: Optional[str] = None,
+    width: float = 6.6,
+    height: float = 1.7,
+    dpi: int = 300,
+    outfile: Optional[str] = None,
+):
+    """
+    Draw horizontal stacked bars of the fraction of RIP-like sites that are RIP'd.
+
+    For each strand, the available RIP-like sites are the surviving substrate
+    dinucleotides plus the RIP products (converted sites). The bar shows what
+    fraction of that substrate has been converted — the RIP *product* segment —
+    against the intact substrate, so a nearly full blue bar is a heavily RIP'd
+    strand and a nearly empty one has escaped RIP.
+
+    Three bars are drawn: forward, reverse and the two combined.
+
+    Parameters
+    ----------
+    stats : Mapping
+        A per-sequence statistics row exposing ``fwd_product``,
+        ``fwd_substrate``, ``rev_product`` and ``rev_substrate`` (as produced by
+        :meth:`derip2.derip.DeRIP.summarize_stats`).
+    title : str, optional
+        Figure title.
+    width, height : float, optional
+        Figure size in inches. Fixed by default so the bars line up across the
+        per-sequence report's pages.
+    dpi : int, optional
+        Raster resolution when ``outfile`` is a raster path (default: 300).
+    outfile : str, optional
+        Path to write the figure to. When ``None`` the figure is returned unsaved.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure the bars were drawn on.
+    """
+    fwd_p = float(stats['fwd_product'])
+    fwd_s = float(stats['fwd_substrate'])
+    rev_p = float(stats['rev_product'])
+    rev_s = float(stats['rev_substrate'])
+
+    # (label, product, substrate), top to bottom.
+    rows = [
+        ('Forward (CA)', fwd_p, fwd_s),
+        ('Reverse (TG)', rev_p, rev_s),
+        ('Combined', fwd_p + rev_p, fwd_s + rev_s),
+    ]
+
+    with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
+        fig, ax = plt.subplots(figsize=(width, height))
+        fig.patch.set_facecolor(SURFACE)
+        ax.set_facecolor(SURFACE)
+
+        y = np.arange(len(rows))[::-1]  # first row at the top
+        bar_h = 0.6
+        for yi, (_label, product, substrate) in zip(y, rows):
+            total = product + substrate
+            if total <= 0:
+                # No RIP-like sites on this strand: draw an empty track.
+                ax.text(
+                    50,
+                    yi,
+                    'no RIP-like sites',
+                    ha='center',
+                    va='center',
+                    fontsize=ANNOTATION_SIZE,
+                    color=INK_MUTED,
+                )
+                pct = 0.0
+            else:
+                pct = 100.0 * product / total
+                ax.barh(
+                    yi,
+                    pct,
+                    height=bar_h,
+                    color=ROLE_COLORS['product'],
+                    edgecolor=SURFACE,
+                    linewidth=0.4,
+                    zorder=2,
+                )
+                ax.barh(
+                    yi,
+                    100.0 - pct,
+                    left=pct,
+                    height=bar_h,
+                    color=ROLE_COLORS['substrate'],
+                    edgecolor=SURFACE,
+                    linewidth=0.4,
+                    zorder=2,
+                )
+            ax.text(
+                101,
+                yi,
+                f'{pct:.0f}%',
+                ha='left',
+                va='center',
+                fontsize=TICK_LABEL_SIZE,
+                color=INK_SECONDARY,
+            )
+
+        ax.set_xlim(0, 100)
+        ax.set_ylim(-0.6, len(rows) - 0.4)
+        ax.set_yticks(y)
+        ax.set_yticklabels([label for label, _p, _s in rows], fontsize=TICK_LABEL_SIZE)
+        ax.set_xlabel(
+            'RIP-like sites converted (%)',
+            color=INK_SECONDARY,
+            fontsize=AXIS_LABEL_SIZE,
+        )
+        ax.set_xticks([0, 25, 50, 75, 100])
+        ax.tick_params(
+            colors=AXIS_INK,
+            labelcolor=INK_MUTED,
+            labelsize=TICK_LABEL_SIZE,
+            length=2.5,
+            width=0.6,
+        )
+        for side in ('top', 'right', 'left'):
+            ax.spines[side].set_visible(False)
+        ax.spines['bottom'].set_color(AXIS_INK)
+        ax.spines['bottom'].set_linewidth(0.6)
+
+        from matplotlib.patches import Patch
+
+        ax.legend(
+            handles=[
+                Patch(
+                    facecolor=ROLE_COLORS['product'],
+                    edgecolor=SURFACE,
+                    linewidth=0.6,
+                    label="RIP'd (product)",
+                ),
+                Patch(
+                    facecolor=ROLE_COLORS['substrate'],
+                    edgecolor=SURFACE,
+                    linewidth=0.6,
+                    label='intact (substrate)',
+                ),
+            ],
+            loc='lower center',
+            bbox_to_anchor=(0.5, 1.0),
+            ncol=2,
+            fontsize=LEGEND_SIZE,
+            frameon=False,
+        )
+
+        if title:
+            ax.set_title(
+                title, color=INK_PRIMARY, fontsize=TITLE_SIZE, pad=22, loc='center'
+            )
+
+        # Fixed margins so the plot body is identical on every page.
+        fig.subplots_adjust(left=0.18, right=0.9, top=0.78, bottom=0.24)
+
+        if outfile is not None:
+            fig.savefig(outfile, dpi=dpi, facecolor=SURFACE)
+            logger.info('RIP completion bar saved to %s', outfile)
 
     return fig
