@@ -210,6 +210,27 @@ logger = logging.getLogger(__name__)
     show_default=True,
     help='Write a self-contained HTML report to prefix_report.html.',
 )
+@click.option(
+    '--per-seq-report',
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        'Write an interactive per-sequence HTML report to '
+        'prefix_per_sequence.html (one arrow-key-navigable panel per sequence).'
+    ),
+)
+@click.option(
+    '--max-report-seqs',
+    type=int,
+    default=None,
+    show_default=True,
+    help=(
+        'Cap the number of sequence panels in the per-sequence report. When the '
+        'alignment has more sequences, the strongest strand-bias sequences are '
+        'kept. Unset renders every sequence.'
+    ),
+)
 # Logging options
 @click.option(
     '--loglevel',
@@ -242,6 +263,8 @@ def main(
     sort_by_rsi,
     stats_out,
     html_report,
+    per_seq_report,
+    max_report_seqs,
     loglevel,
     logfile,
 ):
@@ -323,6 +346,11 @@ def main(
         If True, write the per-sequence statistics table as TSV. Default: False.
     html_report : bool
         If True, write a self-contained HTML strand bias report. Default: False.
+    per_seq_report : bool
+        If True, write an interactive per-sequence HTML report. Default: False.
+    max_report_seqs : int or None
+        Cap the number of sequence panels in the per-sequence report. If None,
+        every sequence is rendered. Default: None.
     loglevel : str
         Set logging level. One of: 'DEBUG', 'INFO', 'WARNING', 'ERROR', or 'CRITICAL'.
         Default: 'INFO'.
@@ -354,6 +382,7 @@ def main(
     strand_bias_path = path.join(out_dir, f'{prefix}_strand_bias.svg')
     stats_path = path.join(out_dir, f'{prefix}_stats.tsv')
     report_path = path.join(out_dir, f'{prefix}_report.html')
+    per_seq_report_path = path.join(out_dir, f'{prefix}_per_sequence.html')
 
     # ---------- Create DeRIP object and process alignment ----------
     logger.info(f'Processing alignment file: \033[0m{input}')
@@ -507,6 +536,17 @@ def main(
             title=f'deRIP2 strand bias: {prefix}',
             ambiguous=rsi_ambiguous,
             **strand_bias_opts,
+        )
+
+    if per_seq_report:
+        logger.info(
+            f'Writing per-sequence HTML report to: \033[0m{per_seq_report_path}'
+        )
+        derip_obj.write_per_sequence_report(
+            per_seq_report_path,
+            title=f'deRIP2 per-sequence: {prefix}',
+            ambiguous=rsi_ambiguous,
+            max_seqs=max_report_seqs,
         )
 
 

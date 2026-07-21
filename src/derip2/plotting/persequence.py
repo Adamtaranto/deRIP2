@@ -1,0 +1,389 @@
+"""
+Single-sequence figures for the per-sequence HTML report.
+
+These render *one* alignment row at a time, in the same visual system as the
+alignment-wide strand-bias chart (:mod:`derip2.plotting.strandbias`): the same
+colourblind-validated palette, typography and light publication surface, so the
+per-sequence report reads as one document with the rest of the package.
+
+Two figures are provided:
+
+- :func:`per_sequence_strand_bias` — a fixed-height binary bar strip showing, for
+  one sequence, which RIP-like columns carry a forward-strand event (above the
+  axis) or a reverse-strand event (below), coloured by whether the base is the
+  RIP product or the surviving substrate.
+- :func:`sequence_row_strip` — a coloured strip of the single alignment row with
+  RIP/deamination sites highlighted.
+
+Both return the matplotlib figure so the report can embed it as inline SVG.
+"""
+
+import logging
+from typing import Optional
+
+import matplotlib
+
+matplotlib.use('Agg')  # non-interactive backend for headless report generation
+import matplotlib.pyplot as plt
+import numpy as np
+
+from derip2.plotting.strandbias import (
+    ANNOTATION_SIZE,
+    AXIS_INK,
+    AXIS_LABEL_SIZE,
+    BASELINE,
+    FONT_STACK,
+    INK_MUTED,
+    INK_PRIMARY,
+    INK_SECONDARY,
+    LEGEND_SIZE,
+    ROLE_COLORS,
+    SURFACE,
+    TICK_LABEL_SIZE,
+    TITLE_SIZE,
+    _bar_path,
+    _figure_width,
+)
+
+logger = logging.getLogger(__name__)
+
+# Grey used for the base fills of the alignment-row strip: a neutral backdrop so
+# the RIP highlight overlay carries all the colour. Matches the 'basegrey'
+# palette in :mod:`derip2.plotting.minialign`.
+STRIP_BASE = '#c7d1d0'
+STRIP_GAP = '#ffffff'
+
+# Highlight colours for the alignment-row strip, drawn over the grey bases. These
+# reuse the role palette so product/substrate read the same as in the bar strip,
+# plus a third hue for non-RIP deamination (only shown when reaminate is on).
+HIGHLIGHT_COLORS = {
+    'product': ROLE_COLORS['product'],  # blue: the RIP product base (T / A)
+    'substrate': ROLE_COLORS['substrate'],  # orange: the surviving substrate
+    'non_rip': '#a05fb4',  # violet: deamination outside RIP context
+}
+
+
+def _hex_to_rgb(color: str):
+    """
+    Convert a ``#rrggbb`` hex string to a float RGB triple in ``[0, 1]``.
+
+    Parameters
+    ----------
+    color : str
+        Hex colour, e.g. ``'#2a78d6'``.
+
+    Returns
+    -------
+    tuple of float
+        ``(r, g, b)`` each in ``[0, 1]``.
+    """
+    color = color.lstrip('#')
+    return tuple(int(color[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+
+def per_sequence_strand_bias(
+    cls,
+    row_index: int,
+    *,
+    seq_id: Optional[str] = None,
+    title: Optional[str] = None,
+    height: float = 1.7,
+    dpi: int = 300,
+    outfile: Optional[str] = None,
+    ax=None,
+):
+    """
+    Draw a fixed-height binary strand-bias strip for a single sequence.
+
+    Every RIP-like column that this sequence participates in becomes one bar of
+    unit height. A forward-strand event is drawn above the axis, a reverse-strand
+    event below it, and the bar is coloured by the role the sequence's base
+    plays: the RIP *product* (the deaminated base) or the surviving *substrate*.
+
+    Because a cell holds one base, each column contributes at most one bar: a
+    forward product (T of TpA), a forward substrate (C of CpA), a reverse product
+    (A of TpA) or a reverse substrate (G of TpG). The four are mutually exclusive
+    per cell, so the strip is unambiguous.
+
+    Parameters
+    ----------
+    cls : derip2.aln_ops.ColumnClassification
+        Classification of the whole alignment; only row ``row_index`` is read.
+    row_index : int
+        Index of the sequence (alignment row) to plot.
+    seq_id : str, optional
+        Sequence identifier, used in the default title.
+    title : str, optional
+        Figure title. Defaults to a description naming ``seq_id``.
+    height : float, optional
+        Figure height in inches (default: 1.7).
+    dpi : int, optional
+        Raster resolution when ``outfile`` is a raster path (default: 300).
+    outfile : str, optional
+        Path to write the figure to. When ``None`` the figure is returned unsaved.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to draw on. When given, no new figure is created and
+        ``outfile`` is ignored.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure the strip was drawn on.
+    """
+    i = row_index
+    n_cols = cls.arr.shape[1]
+
+    # Row-sliced cell masks. Each is a (n_cols,) boolean; the four are mutually
+    # exclusive within a column because they require different bases.
+    above_prod = np.where(cls.prod_fwd[i])[0]  # T, RIP'd (TA), forward
+    above_sub = np.where(cls.sub_fwd[i])[0]  # C, un-RIP'd (CA), forward
+    below_prod = np.where(cls.prod_rev[i])[0]  # A, RIP'd (TA), reverse
+    below_sub = np.where(cls.sub_rev[i])[0]  # G, substrate (TG), reverse
+
+    with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
+        if ax is None:
+            width = _figure_width(n_cols)
+            fig, ax = plt.subplots(figsize=(width, height))
+        else:
+            fig = ax.figure
+
+        fig.patch.set_facecolor(SURFACE)
+        ax.set_facecolor(SURFACE)
+
+        from matplotlib.patches import PathPatch
+
+        bar_width = 0.82
+        radius = 0.18
+        # (columns, direction, role) -> one call to the rounded-bar helper each.
+        for cols, direction, role in (
+            (above_prod, +1, 'product'),
+            (above_sub, +1, 'substrate'),
+            (below_prod, -1, 'product'),
+            (below_sub, -1, 'substrate'),
+        ):
+            color = ROLE_COLORS[role]
+            for x in cols:
+                path = _bar_path(x, 0.0, bar_width, 1.0, direction, radius)
+                ax.add_patch(
+                    PathPatch(
+                        path,
+                        facecolor=color,
+                        edgecolor=SURFACE,
+                        linewidth=0.4,
+                        joinstyle='round',
+                        zorder=2,
+                    )
+                )
+
+        # Chrome: baseline, limits, spines, ticks.
+        ax.axhline(0.0, color=BASELINE, linewidth=0.6, zorder=1)
+        pad = max(1.0, 0.02 * n_cols)
+        ax.set_xlim(-pad, n_cols - 1 + pad)
+        ax.set_ylim(-1.35, 1.35)
+        ax.set_yticks([-1, 0, 1])
+        ax.set_yticklabels(['1', '0', '1'])
+        ax.set_ylabel('RIP-like site', color=INK_SECONDARY, fontsize=AXIS_LABEL_SIZE)
+        ax.set_xlabel('Alignment column', color=INK_SECONDARY, fontsize=AXIS_LABEL_SIZE)
+
+        default_title = (
+            f'Per-sequence strand bias: {seq_id}'
+            if seq_id
+            else ('Per-sequence strand bias')
+        )
+        ax.set_title(
+            title or default_title,
+            color=INK_PRIMARY,
+            fontsize=TITLE_SIZE,
+            pad=8,
+            loc='center',
+        )
+
+        ax.grid(False)
+        ax.set_axisbelow(True)
+        for side in ('top', 'right'):
+            ax.spines[side].set_visible(False)
+        for side in ('left', 'bottom'):
+            ax.spines[side].set_visible(True)
+            ax.spines[side].set_color(AXIS_INK)
+            ax.spines[side].set_linewidth(0.6)
+        ax.tick_params(
+            colors=AXIS_INK,
+            labelcolor=INK_MUTED,
+            labelsize=TICK_LABEL_SIZE,
+            direction='out',
+            length=2.5,
+            width=0.6,
+        )
+
+        _annotate_binary_arms(ax)
+
+        from matplotlib.patches import Patch
+
+        handles = [
+            Patch(
+                facecolor=ROLE_COLORS['product'],
+                edgecolor=SURFACE,
+                linewidth=0.6,
+                label='RIP product (TA)',
+            ),
+            Patch(
+                facecolor=ROLE_COLORS['substrate'],
+                edgecolor=SURFACE,
+                linewidth=0.6,
+                label='substrate (CA / TG)',
+            ),
+        ]
+        ax.legend(
+            handles=handles,
+            loc='upper right',
+            fontsize=LEGEND_SIZE,
+            frameon=False,
+            ncol=2,
+        )
+
+        if outfile is not None and ax is fig.axes[0]:
+            fig.savefig(outfile, dpi=dpi, bbox_inches='tight', facecolor=SURFACE)
+            logger.info('Per-sequence strand bias figure saved to %s', outfile)
+
+    return fig
+
+
+def _annotate_binary_arms(ax):
+    """
+    Name the forward/reverse arms of a per-sequence strand-bias strip.
+
+    Mirrors :func:`derip2.plotting.strandbias._annotate_arms` but for the
+    fixed-height binary strip, whose arms carry the same meaning.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axes to annotate.
+
+    Returns
+    -------
+    None
+        The annotations are added to ``ax``.
+    """
+    for xy, offset, va, text in (
+        ((0, 1), (4, -4), 'top', 'forward strand  CA / TA'),
+        ((0, 0), (4, 4), 'bottom', 'reverse strand  TG / TA'),
+    ):
+        ax.annotate(
+            text,
+            xy=xy,
+            xycoords='axes fraction',
+            xytext=offset,
+            textcoords='offset points',
+            ha='left',
+            va=va,
+            fontsize=ANNOTATION_SIZE,
+            color=INK_SECONDARY,
+        )
+
+
+def sequence_row_strip(
+    cls,
+    row_index: int,
+    *,
+    seq_id: Optional[str] = None,
+    consensus_seq: Optional[str] = None,
+    title: Optional[str] = None,
+    height: float = 0.9,
+    dpi: int = 300,
+    outfile: Optional[str] = None,
+):
+    """
+    Draw one alignment row as a coloured strip with RIP sites highlighted.
+
+    The row's bases are drawn as a neutral grey band (gaps white); RIP products,
+    surviving substrates and — when ``reaminate`` was on — non-RIP deaminations
+    are then overlaid in the role palette, so a reader sees at a glance where and
+    how RIP acted on this sequence.
+
+    Parameters
+    ----------
+    cls : derip2.aln_ops.ColumnClassification
+        Classification of the whole alignment; only row ``row_index`` is read.
+    row_index : int
+        Index of the sequence (alignment row) to draw.
+    seq_id : str, optional
+        Sequence identifier, used in the default title.
+    consensus_seq : str, optional
+        The deRIP'd consensus (one base per column). When given, a second row is
+        drawn beneath the sequence showing the reconstructed base.
+    title : str, optional
+        Figure title. Defaults to a description naming ``seq_id``.
+    height : float, optional
+        Figure height in inches (default: 0.9).
+    dpi : int, optional
+        Raster resolution when ``outfile`` is a raster path (default: 300).
+    outfile : str, optional
+        Path to write the figure to. When ``None`` the figure is returned unsaved.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure the strip was drawn on.
+    """
+    i = row_index
+    row = cls.arr[i]
+    n_cols = row.shape[0]
+    n_rows = 2 if consensus_seq is not None else 1
+
+    # Base layer: grey for a base, white for a gap.
+    base_rgb = np.empty((n_rows, n_cols, 3), dtype=float)
+    is_gap = row == b'-'
+    base_rgb[0, :] = _hex_to_rgb(STRIP_BASE)
+    base_rgb[0, is_gap] = _hex_to_rgb(STRIP_GAP)
+    if consensus_seq is not None:
+        cons = np.frombuffer(consensus_seq.upper().encode('ascii'), dtype='S1')
+        cons_gap = cons == b'-'
+        base_rgb[1, :] = _hex_to_rgb(STRIP_BASE)
+        base_rgb[1, cons_gap] = _hex_to_rgb(STRIP_GAP)
+
+    # Overlay: paint RIP roles onto the sequence row (row 0 of the image).
+    overlays = (
+        (cls.prod_fwd[i] | cls.prod_rev[i], 'product'),
+        (cls.sub_fwd[i] | cls.sub_rev[i], 'substrate'),
+        (cls.nonrip_fwd[i] | cls.nonrip_rev[i], 'non_rip'),
+    )
+    for mask, role in overlays:
+        cols = np.where(mask)[0]
+        if cols.size:
+            base_rgb[0, cols] = _hex_to_rgb(HIGHLIGHT_COLORS[role])
+
+    with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
+        width = _figure_width(n_cols)
+        fig, ax = plt.subplots(figsize=(width, height))
+        fig.patch.set_facecolor(SURFACE)
+        ax.imshow(base_rgb, aspect='auto', interpolation='nearest')
+
+        row_labels = [seq_id or f'row {i}']
+        if consensus_seq is not None:
+            row_labels.append('deRIP')
+        ax.set_yticks(range(n_rows))
+        ax.set_yticklabels(row_labels, fontsize=TICK_LABEL_SIZE, color=INK_MUTED)
+        ax.set_xlabel('Alignment column', color=INK_SECONDARY, fontsize=AXIS_LABEL_SIZE)
+        ax.tick_params(
+            colors=AXIS_INK, labelsize=TICK_LABEL_SIZE, length=2.5, width=0.6
+        )
+        for side in ('top', 'right', 'left'):
+            ax.spines[side].set_visible(False)
+        ax.spines['bottom'].set_color(AXIS_INK)
+        ax.spines['bottom'].set_linewidth(0.6)
+
+        default_title = f'Alignment row: {seq_id}' if seq_id else 'Alignment row'
+        ax.set_title(
+            title or default_title,
+            color=INK_PRIMARY,
+            fontsize=TITLE_SIZE,
+            pad=6,
+            loc='center',
+        )
+
+        if outfile is not None:
+            fig.savefig(outfile, dpi=dpi, bbox_inches='tight', facecolor=SURFACE)
+            logger.info('Sequence row strip saved to %s', outfile)
+
+    return fig

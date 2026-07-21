@@ -425,6 +425,7 @@ def plot_sbs96(
     title: Optional[str] = None,
     percentage: bool = False,
     dpi: int = 300,
+    sample: Optional[int] = None,
 ):
     """
     Draw the canonical six-block SBS-96 spectrum, one panel per sample.
@@ -441,16 +442,34 @@ def plot_sbs96(
         Plot each sample as a percentage of its total (default: counts).
     dpi : int, optional
         Raster resolution (default: 300).
+    sample : int or None, optional
+        Draw only this single sample (by column index into
+        :attr:`~derip2.stats.mutation_spectra.SpectraResult.sample_names`)
+        rather than one panel per sample. Its name is always shown as the panel
+        title. When ``None`` (default) every sample is drawn, one panel each.
 
     Returns
     -------
     matplotlib.figure.Figure
         The rendered figure.
+
+    Raises
+    ------
+    IndexError
+        If ``sample`` is out of range for the available samples.
     """
+    n_samples = len(result.sample_names)
+    if sample is not None and not -n_samples <= sample < n_samples:
+        raise IndexError(f'sample {sample} out of range for {n_samples} sample(s)')
+
+    # A single-sample request always labels its one panel; the multi-panel
+    # default only labels when there is more than one sample to disambiguate.
+    indices = list(range(n_samples)) if sample is None else [sample % n_samples]
+
     with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
-        n = len(result.sample_names)
-        fig, axes = _figure(n, width=7.4, panel_height=2.2)
-        for s, ax in enumerate(axes):
+        fig, axes = _figure(len(indices), width=7.4, panel_height=2.2)
+        label_panels = sample is not None or len(indices) > 1
+        for ax, s in zip(axes, indices):
             counts = _counts_for_sample(result.sbs96, s, percentage)
             _draw_spectrum_panel(
                 ax,
@@ -459,7 +478,7 @@ def plot_sbs96(
                 percentage=percentage,
                 show_context_ticks=True,
             )
-            if n > 1:
+            if label_panels:
                 # pad lifts the sample name clear of the class-block labels.
                 ax.set_title(
                     result.sample_names[s],
