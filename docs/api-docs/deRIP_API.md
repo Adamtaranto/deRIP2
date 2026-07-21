@@ -20,6 +20,7 @@
         - write_consensus
         - write_stats
         - write_html_report
+        - write_per_sequence_report
         - plot_alignment
         - plot_strand_bias
         - get_cri_values
@@ -62,3 +63,34 @@
     options:
       members:
         - write_html_report
+
+# Per-sequence reporting
+
+::: derip2.plotting.persequence
+    options:
+      members:
+        - per_sequence_strand_bias
+        - sequence_row_strip
+
+::: derip2.persequence_report
+    options:
+      members:
+        - write_per_sequence_report
+
+# Gene annotation and RIP effect prediction
+
+::: derip2.annotation
+    options:
+      members:
+        - parse_gff3
+        - Gene
+        - Feature
+        - EffectRecord
+        - ungapped_to_column_map
+        - predict_gene_effects
+        - translate_cds
+        - compute_effects_for_alignment
+        - deripd_translations
+        - write_snp_effects
+        - build_annotation_spans
+        - load_annotation_colors
