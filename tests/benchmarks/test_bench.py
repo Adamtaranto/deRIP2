@@ -210,3 +210,20 @@ def test_bench_plot_strand_bias(benchmark, sahana_alignment_small):
         plt.close(fig)
 
     benchmark(run)
+
+
+def test_bench_per_sequence_report(benchmark, sahana_alignment_small, tmp_path):
+    """
+    Benchmark building the per-sequence HTML report over a realistic subset.
+
+    This exercises the whole per-sequence path — the row strip, the fixed-height
+    strand-bias strip and the per-sequence SBS-96 panel rendered to inline SVG
+    for every sequence, plus the stats slices — which is the dominant cost of
+    ``--per-seq-report`` on real data.
+    """
+    d = DeRIP(sahana_alignment_small)
+    d.calculate_rip()
+    out = str(tmp_path / 'per_seq.html')
+
+    # Cap to keep the benchmark bounded; the per-panel work is what we measure.
+    benchmark(lambda: d.write_per_sequence_report(out, max_seqs=10))
