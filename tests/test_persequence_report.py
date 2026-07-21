@@ -346,18 +346,47 @@ def test_single_rip_column():
 
 
 def test_report_with_gff_effects(mintest_derip, gff_path, tmp_path):
-    """A GFF adds gene-effect panels and restored translations to the report."""
+    """A GFF adds a CDS SNP-effect section and restored translations."""
     out = tmp_path / 'per_seq.html'
     mintest_derip.write_per_sequence_report(str(out), gff=str(gff_path))
     html = out.read_text()
-    assert 'Gene effects' in html
+    assert '<h3>CDS SNP effects</h3>' in html
     assert 'deRIP-restored protein' in html
     # Panels for annotated sequences show an effect table or the no-change note.
     assert 'missense' in html or 'No RIP-induced coding change' in html
 
 
 def test_report_without_gff_has_no_effect_panel(mintest_derip, tmp_path):
-    """Without a GFF, no gene-effect section appears."""
+    """Without a GFF, no CDS SNP-effect section appears."""
     out = tmp_path / 'per_seq.html'
     mintest_derip.write_per_sequence_report(str(out))
-    assert 'Gene effects' not in out.read_text()
+    assert 'CDS SNP effects' not in out.read_text()
+
+
+def test_report_total_rip_events(mintest_derip, tmp_path):
+    """The RIP-events card shows a total equal to forward + reverse."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    assert 'Total RIP events' in html
+    df = mintest_derip.summarize_stats()
+    expected = int(df.iloc[0]['RIP_fwd']) + int(df.iloc[0]['RIP_rev'])
+    # The first panel's total appears as a table cell value.
+    assert f'>{expected}<' in html
+
+
+def test_report_cri_highlighted_when_above_one(mintest_path, tmp_path):
+    """A CRI above 1 is flagged green (the .pos class) in the stats card."""
+    from derip2.persequence_report import _stats_sections_html
+
+    derip = DeRIP(mintest_path)
+    derip.calculate_rip()
+    row = derip.summarize_stats().iloc[0].copy()
+    row['CRI'] = 1.5
+    html = _stats_sections_html(row)
+    # The CRI value cell carries the positive (green) class.
+    assert 'class="value pos">+1.500' in html or 'class="value pos">1.500' in html
+
+    row['CRI'] = 0.5
+    html_low = _stats_sections_html(row)
+    assert 'value pos">0.500' not in html_low and 'value pos">+0.500' not in html_low

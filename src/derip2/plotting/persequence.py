@@ -12,10 +12,12 @@ Two figures are provided:
   one sequence, which RIP-like columns carry a forward-strand event (above the
   axis) or a reverse-strand event (below), coloured by whether the base is the
   RIP product or the surviving substrate.
-- :func:`sequence_row_strip` — a coloured strip of the single alignment row with
-  RIP/deamination sites highlighted.
+- :func:`sequence_row_strip` — the subject and deRIP'd reference rows drawn
+  base-by-base, with RIP-like columns shaded as in the alignment-wide plot.
+- :func:`rip_completion_bar` / :func:`gc_content_bar` — small horizontal
+  stacked-bar summaries.
 
-Both return the matplotlib figure so the report can embed it as inline SVG.
+All return the matplotlib figure so the report can embed it as inline SVG.
 """
 
 import logging
@@ -31,8 +33,11 @@ from derip2.plotting.strandbias import (
     ANNOTATION_SIZE,
     AXIS_INK,
     AXIS_LABEL_SIZE,
+    BASE_COLORS,
     BASELINE,
     FONT_STACK,
+    HIGHLIGHT,
+    HIGHLIGHT_ALPHA,
     INK_MUTED,
     INK_PRIMARY,
     INK_SECONDARY,
@@ -59,14 +64,6 @@ STRIP_GAP = '#ffffff'
 # strand-bias strip and RIP-completion bar all agree.
 PRODUCT_COLOR = ROLE_COLORS['substrate']  # orange: the RIP product base (T / A)
 SUBSTRATE_COLOR = ROLE_COLORS['product']  # blue: the surviving substrate
-
-# Highlight colours for the alignment-row strip, drawn over the grey bases, plus
-# a third hue for non-RIP deamination (only shown when reaminate is on).
-HIGHLIGHT_COLORS = {
-    'product': PRODUCT_COLOR,  # orange
-    'substrate': SUBSTRATE_COLOR,  # blue
-    'non_rip': '#a05fb4',  # violet: deamination outside RIP context
-}
 
 
 def _hex_to_rgb(color: str):
@@ -298,26 +295,28 @@ def sequence_row_strip(
     outfile: Optional[str] = None,
 ):
     """
-    Draw one alignment row as a coloured strip with RIP sites highlighted.
+    Draw the subject and deRIP'd reference rows as base-coloured strips.
 
-    The row's bases are drawn as a neutral grey band (gaps white); RIP products,
-    surviving substrates and — when ``reaminate`` was on — non-RIP deaminations
-    are then overlaid in the role palette, so a reader sees at a glance where and
-    how RIP acted on this sequence.
+    Both aligned sequences are drawn base-by-base, coloured by nucleotide
+    identity with the shared palette (A green, C blue, G violet, T red; gaps
+    white). The reconstructed deRIP'd reference is drawn slightly more
+    transparent than the subject so the two are easy to tell apart. Columns that
+    the whole-alignment strand-bias analysis marks as RIP-like — those carrying a
+    RIP product on either strand anywhere in the alignment — are shaded with the
+    same hueless wash used by :func:`derip2.plotting.strandbias.plot_strand_bias`.
 
     Parameters
     ----------
     cls : derip2.aln_ops.ColumnClassification
-        Classification of the whole alignment; only row ``row_index`` is read.
+        Classification of the whole alignment; row ``row_index`` is the subject.
     row_index : int
-        Index of the sequence (alignment row) to draw.
+        Index of the subject sequence (alignment row) to draw.
     seq_id : str, optional
-        Sequence identifier, used in the default title.
+        Subject sequence identifier, used to label its row.
     consensus_seq : str, optional
-        The deRIP'd consensus (one base per column). When given, a second row is
-        drawn beneath the sequence showing the reconstructed base.
+        The deRIP'd reference (one base per column), drawn as the second row.
     title : str, optional
-        Figure title. Defaults to a description naming ``seq_id``.
+        Figure title. Untitled by default (the report supplies a heading).
     height : float, optional
         Figure height in inches (default: 1.0).
     width : float, optional
@@ -337,38 +336,75 @@ def sequence_row_strip(
     i = row_index
     row = cls.arr[i]
     n_cols = row.shape[0]
-    n_rows = 2 if consensus_seq is not None else 1
 
-    # Base layer: grey for a base, white for a gap.
-    base_rgb = np.empty((n_rows, n_cols, 3), dtype=float)
-    is_gap = row == b'-'
-    base_rgb[0, :] = _hex_to_rgb(STRIP_BASE)
-    base_rgb[0, is_gap] = _hex_to_rgb(STRIP_GAP)
+    def _base_rgba(bytes_row, alpha):
+        """
+        Colour one sequence row by base identity into an RGBA image row.
+
+        Parameters
+        ----------
+        bytes_row : numpy.ndarray
+            ``(n_cols,)`` ``'S1'`` bases for the row.
+        alpha : float
+            Opacity applied to every non-gap base (gaps stay opaque white).
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_cols, 4)`` RGBA array.
+        """
+        rgba = np.empty((n_cols, 4), dtype=float)
+        rgba[:, 3] = alpha
+        # Default any non-ACGT (N, IUPAC) to the neutral grey.
+        rgba[:, :3] = _hex_to_rgb(STRIP_BASE)
+        for base, hexcol in BASE_COLORS.items():
+            rgba[bytes_row == base.encode('ascii'), :3] = _hex_to_rgb(hexcol)
+        gap = bytes_row == b'-'
+        rgba[gap, :3] = _hex_to_rgb(STRIP_GAP)
+        rgba[gap, 3] = 1.0  # gaps stay opaque white on both rows
+        return rgba
+
+    # Row 0 (top) = subject at full opacity; row 1 = deRIP'd reference, fainter.
+    rows = [_base_rgba(row, 1.0)]
+    row_labels = [seq_id or f'row {i}']
     if consensus_seq is not None:
         cons = np.frombuffer(consensus_seq.upper().encode('ascii'), dtype='S1')
-        cons_gap = cons == b'-'
-        base_rgb[1, :] = _hex_to_rgb(STRIP_BASE)
-        base_rgb[1, cons_gap] = _hex_to_rgb(STRIP_GAP)
+        rows.append(_base_rgba(cons, 0.55))
+        row_labels.append('deRIP')
+    base_rgba = np.stack(rows, axis=0)  # (n_rows, n_cols, 4)
+    n_rows = base_rgba.shape[0]
 
-    # Overlay: paint RIP roles onto the sequence row (row 0 of the image).
-    overlays = (
-        (cls.prod_fwd[i] | cls.prod_rev[i], 'product'),
-        (cls.sub_fwd[i] | cls.sub_rev[i], 'substrate'),
-        (cls.nonrip_fwd[i] | cls.nonrip_rev[i], 'non_rip'),
-    )
-    for mask, role in overlays:
-        cols = np.where(mask)[0]
-        if cols.size:
-            base_rgb[0, cols] = _hex_to_rgb(HIGHLIGHT_COLORS[role])
+    # Columns the whole-MSA strand-bias plot would shade: a RIP product observed
+    # on either strand anywhere in the column (same rule as plot_strand_bias).
+    mutated = np.where((cls.prod_fwd.sum(axis=0) + cls.prod_rev.sum(axis=0)) > 0)[0]
 
     with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
         fig, ax = plt.subplots(figsize=(width or _figure_width(n_cols), height))
         fig.patch.set_facecolor(SURFACE)
-        ax.imshow(base_rgb, aspect='auto', interpolation='nearest')
+        ax.set_facecolor(SURFACE)
 
-        row_labels = [seq_id or f'row {i}']
-        if consensus_seq is not None:
-            row_labels.append('deRIP')
+        # Bases occupy y in [-0.5, n_rows-0.5]; leave head/foot room so the
+        # RIP-like column wash reads as vertical bands above and below the rows.
+        ax.imshow(
+            base_rgba,
+            aspect='auto',
+            interpolation='nearest',
+            extent=(-0.5, n_cols - 0.5, n_rows - 0.5, -0.5),
+            zorder=2,
+        )
+        pad = 0.55
+        ax.set_ylim(n_rows - 0.5 + pad, -0.5 - pad)  # inverted: row 0 on top
+        for x in mutated:
+            ax.axvspan(
+                x - 0.5,
+                x + 0.5,
+                facecolor=HIGHLIGHT,
+                alpha=HIGHLIGHT_ALPHA,
+                linewidth=0,
+                zorder=0,
+            )
+
+        ax.set_xlim(-0.5, n_cols - 0.5)
         ax.set_yticks(range(n_rows))
         ax.set_yticklabels(row_labels, fontsize=TICK_LABEL_SIZE, color=INK_MUTED)
         ax.set_xlabel('Alignment column', color=INK_SECONDARY, fontsize=AXIS_LABEL_SIZE)

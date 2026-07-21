@@ -37,6 +37,7 @@ _STAT_SECTIONS = (
         'strand the C→T product was read on, plus deaminations outside RIP '
         'dinucleotide context.',
         (
+            ('RIP_total', 'Total RIP events'),
             ('RIP_fwd', 'Forward RIP events'),
             ('RIP_rev', 'Reverse RIP events'),
             ('non_RIP', 'Non-RIP deaminations'),
@@ -102,7 +103,15 @@ def _stats_sections_html(row):
     for title, description, fields in _STAT_SECTIONS:
         rows_html = []
         for column, label in fields:
-            text, css = _format_cell(column, row[column])
+            if column == 'RIP_total':
+                # Derived: forward + reverse RIP events.
+                total = int(row['RIP_fwd']) + int(row['RIP_rev'])
+                text, css = str(total), ''
+            else:
+                text, css = _format_cell(column, row[column])
+            # Flag a positive-RIP CRI (> 1) in green, as the RIP-signal threshold.
+            if column == 'CRI' and float(row['CRI']) > 1:
+                css = 'pos'
             cls = f' {css}' if css else ''
             rows_html.append(
                 f'<tr><th scope="row">{escape(label)}</th>'
@@ -135,6 +144,12 @@ _PSR_STYLE = """
 .seq-nav button:hover { border-color: var(--muted); }
 .seq-nav .indicator { font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .seq-nav .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
+/* Keep the sequence header (number, name, length) pinned below the nav bar as
+   the reader scrolls down a long panel. */
+.seq-panel h2 {
+  position: sticky; top: 2.9rem; z-index: 9; margin: 0 0 .6rem;
+  padding: .5rem 0; background: var(--page); border-bottom: 1px solid var(--rule);
+}
 .seq-panel h2 .seqid { color: var(--ink-2); font-weight: 400; }
 .seq-panel h2 .seqlen { color: var(--muted); font-weight: 400; font-size: 1rem; }
 .seq-panel h3 {
@@ -162,7 +177,7 @@ _PSR_STYLE = """
    fixed figure geometry keeps the plot body aligned across sequences. This
    scroll is independent of the alignment column figures. */
 .spectrum-scroll { overflow-x: auto; background: #fcfcfb; border-radius: 6px; padding: .5rem; }
-.spectrum-scroll svg { display: block; max-width: none; height: auto; }
+.spectrum-scroll svg { display: block; margin: 0 auto; max-width: none; height: auto; }
 
 /* Transposed, grouped statistics: a responsive grid of small sections, each a
    two-column stat/value table with a short description. */
@@ -424,9 +439,14 @@ def _panel_html(
     wide_w = max(6.0, min(280.0, n_cols * 0.06))
 
     strip = sequence_row_strip(
-        cls, row_index, seq_id=seq_id, consensus_seq=consensus_seq, width=wide_w
+        cls,
+        row_index,
+        seq_id=seq_id,
+        consensus_seq=consensus_seq,
+        width=wide_w,
+        height=1.6,
     )
-    _fix_wide_axes(strip, wide_w, n_cols, top_in=0.34, bottom_in=0.42)
+    _fix_wide_axes(strip, wide_w, n_cols, top_in=0.3, bottom_in=0.42)
     strip_svg = _figure_to_svg(strip, f's{row_index}row-', tight=False)
     plt.close(strip)
 
@@ -445,12 +465,13 @@ def _panel_html(
 
     # Wide, bare spectra (no redundant sample title / caption); fixed geometry so
     # the plot body aligns across pages, scrolled independently of the columns.
-    sbs = plot_sbs96(spectra, sample=row_index, width=12.0, bare=True)
+    # A touch narrower than the page so the scroll box can centre them.
+    sbs = plot_sbs96(spectra, sample=row_index, width=11.0, bare=True)
     _fix_spectrum_axes(sbs)
     sbs_svg = _figure_to_svg(sbs, f's{row_index}sbs-', tight=False)
     plt.close(sbs)
 
-    ds = plot_downstream(downstream, sample=row_index, width=12.0, bare=True)
+    ds = plot_downstream(downstream, sample=row_index, width=11.0, bare=True)
     _fix_spectrum_axes(ds)
     ds_svg = _figure_to_svg(ds, f's{row_index}ds-', tight=False)
     plt.close(ds)
@@ -463,19 +484,24 @@ def _panel_html(
             for gene in genes_by_seqid[seq_id]
             if gene.gene_id in deripd_aa
         }
-        effect_html = '<h3>Gene effects</h3>' + _effects_table_html(
-            effects_by_seq.get(seq_id, []), genes_here
-        )
+        effect_html = (
+            '<h3>CDS SNP effects</h3>'
+            '<p class="desc">Effect of this sequence’s RIP substitutions on the '
+            'annotated coding sequence, predicted against the reconstructed '
+            'ancestor, followed by the deRIP-restored protein.</p>'
+        ) + _effects_table_html(effects_by_seq.get(seq_id, []), genes_here)
 
     return (
         f'<section class="seq-panel" data-index="{panel_number - 1}" hidden>'
         f'<h2>Sequence {panel_number}: <span class="seqid">{escape(seq_id)}</span> '
         f'<span class="seqlen">({ungapped_len} nt)</span></h2>'
         '<h3>Alignment row</h3>'
-        '<p class="desc">This sequence aligned to the family, with RIP products '
-        '(orange), surviving substrates (blue) and non-RIP deaminations '
-        'highlighted; the reconstructed deRIP’d base is shown beneath. Scroll '
-        'horizontally to view the whole alignment.</p>'
+        '<p class="desc">The subject sequence (top) and the reconstructed deRIP’d '
+        'reference (below, drawn fainter), coloured by base identity '
+        '(A green, C blue, G violet, T red; gaps white). RIP-like columns — those '
+        'the whole-alignment strand-bias analysis flags — are shaded grey, as in '
+        'the alignment-wide plot. Scroll horizontally to view the whole '
+        'alignment.</p>'
         f'<div class="col-scroll">{strip_svg}</div>'
         '<h3>Per-sequence strand bias</h3>'
         '<p class="desc">One bar per RIP-like column this sequence takes part in: '
