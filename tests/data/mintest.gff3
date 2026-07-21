@@ -1,0 +1,14 @@
+##gff-version 3
+# Minimal gene models over mintest.fa for testing annotation + effect reporting.
+# Sequence ids match the alignment record ids. Coordinates are 1-based inclusive
+# in each sequence's own ungapped frame (Seq1=33 nt, Seq3=32 nt, Seq4=31 nt).
+Seq1	deRIP2test	gene	1	9	.	+	.	ID=gene1
+Seq1	deRIP2test	mRNA	1	9	.	+	.	ID=mRNA1;Parent=gene1
+Seq1	deRIP2test	CDS	1	9	.	+	0	ID=cds1;Parent=mRNA1
+Seq3	deRIP2test	gene	4	12	.	-	.	ID=gene2
+Seq3	deRIP2test	mRNA	4	12	.	-	.	ID=mRNA2;Parent=gene2
+Seq3	deRIP2test	CDS	4	12	.	-	0	ID=cds2;Parent=mRNA2
+Seq4	deRIP2test	gene	1	21	.	+	.	ID=gene3
+Seq4	deRIP2test	mRNA	1	21	.	+	.	ID=mRNA3;Parent=gene3
+Seq4	deRIP2test	CDS	1	6	.	+	0	ID=cds3a;Parent=mRNA3
+Seq4	deRIP2test	CDS	13	21	.	+	0	ID=cds3b;Parent=mRNA3
