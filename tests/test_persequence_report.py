@@ -388,8 +388,8 @@ def test_report_without_gff_has_no_effect_panel(mintest_derip, tmp_path):
 
 def test_row_strip_draws_cds_track(mintest_derip):
     """A cds_tracks argument adds a labelled annotation sub-plot with stop marks."""
-    import numpy as np
     from matplotlib.collections import PathCollection
+    import numpy as np
 
     cls = mintest_derip.column_classes
     # One two-exon gene on the plus strand, with a stop codon at column 4.
