@@ -158,11 +158,15 @@ def per_sequence_strand_bias(
         fig.patch.set_facecolor(SURFACE)
         ax.set_facecolor(SURFACE)
 
-        from matplotlib.patches import PathPatch
+        from matplotlib.collections import PathCollection
 
         bar_width = 0.82
         radius = 0.18
-        # (columns, direction, colour) -> one call to the rounded-bar helper each.
+        # Build every bar's rounded path and collect them into a SINGLE artist.
+        # A heavily-RIP'd sequence contributes ~1000 bars; adding them one patch
+        # at a time triggers a per-patch limit update and bloats the SVG, so a
+        # PathCollection (one add, one <g>) is far faster to draw and serialise.
+        paths, facecolors = [], []
         for cols, direction, color in (
             (above_prod, +1, PRODUCT_COLOR),
             (above_sub, +1, SUBSTRATE_COLOR),
@@ -170,17 +174,19 @@ def per_sequence_strand_bias(
             (below_sub, -1, SUBSTRATE_COLOR),
         ):
             for x in cols:
-                path = _bar_path(x, 0.0, bar_width, 1.0, direction, radius)
-                ax.add_patch(
-                    PathPatch(
-                        path,
-                        facecolor=color,
-                        edgecolor=SURFACE,
-                        linewidth=0.4,
-                        joinstyle='round',
-                        zorder=2,
-                    )
+                paths.append(_bar_path(x, 0.0, bar_width, 1.0, direction, radius))
+                facecolors.append(color)
+        if paths:
+            ax.add_collection(
+                PathCollection(
+                    paths,
+                    facecolors=facecolors,
+                    edgecolors=SURFACE,
+                    linewidths=0.4,
+                    joinstyle='round',
+                    zorder=2,
                 )
+            )
 
         # Chrome: baseline, limits, spines, ticks.
         ax.axhline(0.0, color=BASELINE, linewidth=0.6, zorder=1)
@@ -429,14 +435,23 @@ def sequence_row_strip(
                 )
 
         bottom_pad = 0.35
-        ax.set_ylim(ref_bottom + bottom_pad, MARKER_Y - 0.35)  # inverted
-        for x in mutated:
-            ax.axvspan(
-                x - 0.5,
-                x + 0.5,
-                facecolor=HIGHLIGHT,
-                alpha=HIGHLIGHT_ALPHA,
-                linewidth=0,
+        y_top, y_bottom = MARKER_Y - 0.35, ref_bottom + bottom_pad
+        ax.set_ylim(y_bottom, y_top)  # inverted
+
+        # RIP-like column shading as a single raster layer rather than one
+        # axvspan per column: an alignment can have thousands of mutated columns
+        # and per-column patches dominate both draw and SVG-serialise time. A
+        # (1, n_cols, 4) RGBA strip (transparent except the shaded columns) is
+        # one artist and one SVG element.
+        if mutated.size:
+            highlight = np.zeros((1, n_cols, 4), dtype=float)
+            highlight[0, mutated, :3] = _hex_to_rgb(HIGHLIGHT)
+            highlight[0, mutated, 3] = HIGHLIGHT_ALPHA
+            ax.imshow(
+                highlight,
+                aspect='auto',
+                interpolation='nearest',
+                extent=(-0.5, n_cols - 0.5, y_bottom, y_top),
                 zorder=0,
             )
 

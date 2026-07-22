@@ -18,7 +18,6 @@ matplotlib.use('Agg')
 from Bio.Align import MultipleSeqAlignment  # noqa: E402
 from Bio.Seq import Seq  # noqa: E402
 from Bio.SeqRecord import SeqRecord  # noqa: E402
-from matplotlib.patches import PathPatch  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import pytest  # noqa: E402
 
@@ -41,6 +40,16 @@ def close_figures():
     """Never leak figures between tests."""
     yield
     plt.close('all')
+
+
+def strand_bias_bars(ax):
+    """Return the strand-bias bar Paths, now held in a single PathCollection."""
+    from matplotlib.collections import PathCollection
+
+    for coll in ax.collections:
+        if isinstance(coll, PathCollection):
+            return coll.get_paths()
+    return []
 
 
 def make_alignment(seqs, ids=None):
@@ -74,13 +83,11 @@ def test_strand_bias_bars_are_fixed_height(mintest_derip):
     cls = mintest_derip.column_classes
     fig = per_sequence_strand_bias(cls, 0, seq_id='Seq1')
     ax = fig.axes[0]
-    bars = [p for p in ax.patches if isinstance(p, PathPatch)]
+    bars = strand_bias_bars(ax)
     assert bars, 'expected at least one RIP-like bar for Seq1'
-    for bar in bars:
-        ymin, ymax = (
-            bar.get_path().vertices[:, 1].min(),
-            bar.get_path().vertices[:, 1].max(),
-        )
+    for path in bars:
+        ys = path.vertices[:, 1]
+        ymin, ymax = ys.min(), ys.max()
         # Each bar spans from 0 to +1 (forward) or -1 to 0 (reverse).
         assert abs(ymax - ymin) == pytest.approx(1.0, abs=1e-6)
         assert ymin == pytest.approx(0.0, abs=1e-6) or ymax == pytest.approx(
@@ -164,11 +171,12 @@ def test_strand_bias_uses_swapped_role_colours(mintest_derip):
     """Product bars are orange and substrate bars blue (swapped convention)."""
     from matplotlib.colors import to_hex
 
+    from matplotlib.collections import PathCollection
+
     fig = per_sequence_strand_bias(mintest_derip.column_classes, 0, seq_id='Seq1')
     ax = fig.axes[0]
-    bar_colours = {
-        to_hex(p.get_facecolor()) for p in ax.patches if isinstance(p, PathPatch)
-    }
+    coll = next(c for c in ax.collections if isinstance(c, PathCollection))
+    bar_colours = {to_hex(c) for c in coll.get_facecolors()}
     # Every bar is one of the two role colours; product is orange, not blue.
     assert bar_colours <= {to_hex(PRODUCT_COLOR), to_hex(SUBSTRATE_COLOR)}
     assert to_hex(PRODUCT_COLOR) != to_hex(SUBSTRATE_COLOR)
@@ -329,7 +337,7 @@ def test_zero_rip_sequence():
     derip.calculate_rip()
     fig = per_sequence_strand_bias(derip.column_classes, 0, seq_id='seq0')
     ax = fig.axes[0]
-    assert [p for p in ax.patches if isinstance(p, PathPatch)] == []
+    assert list(strand_bias_bars(ax)) == []
 
 
 def test_all_gap_row():
@@ -350,8 +358,7 @@ def test_single_rip_column():
     derip.calculate_rip()
     fig = per_sequence_strand_bias(derip.column_classes, 1, seq_id='seq1')
     ax = fig.axes[0]
-    bars = [p for p in ax.patches if isinstance(p, PathPatch)]
-    assert len(bars) >= 1
+    assert len(strand_bias_bars(ax)) >= 1
 
 
 # --- GFF integration -------------------------------------------------------
