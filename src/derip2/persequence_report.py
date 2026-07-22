@@ -86,6 +86,25 @@ _STAT_SECTIONS = (
 )
 
 
+def _zoom_control():
+    """
+    Build the (class-based) zoom control for a panel header.
+
+    Returns
+    -------
+    str
+        A ``<span class="zoom">`` with ``−`` / ``+`` buttons and a ``%`` label.
+        Class-based (not id-based) so every panel can carry its own copy in its
+        sticky header while the JS keeps them all in sync.
+    """
+    return (
+        '<span class="zoom" title="Zoom the alignment and strand-bias figures">'
+        '<button type="button" class="zoom-out">&minus;</button>'
+        '<span class="zlabel">100%</span>'
+        '<button type="button" class="zoom-in">+</button></span>'
+    )
+
+
 def _alignment_row_legend():
     """
     Build the HTML colour key for the alignment-row figure.
@@ -183,20 +202,26 @@ _PSR_STYLE = """
 .seq-nav button:hover { border-color: var(--muted); }
 .seq-nav .indicator { font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .seq-nav .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
-/* Simultaneous zoom control for the column-aligned figures. */
-.seq-nav .zoom { display: flex; align-items: center; gap: .3rem; }
-.seq-nav .zoom button {
-  width: 1.9rem; text-align: center; padding: .3rem 0; font-weight: 600;
+/* Simultaneous zoom control for the column-aligned figures, now living in the
+   sticky sequence header, right-aligned. */
+.zoom { display: inline-flex; align-items: center; gap: .3rem; margin-left: auto; }
+.zoom button {
+  font: inherit; font-size: 13px; cursor: pointer; width: 1.9rem;
+  text-align: center; padding: .25rem 0; font-weight: 600;
+  background: var(--page); color: var(--ink); border: 1px solid var(--rule);
+  border-radius: 6px;
 }
-.seq-nav .zoom .zlabel {
+.zoom button:hover { border-color: var(--muted); }
+.zoom .zlabel {
   min-width: 3.2rem; text-align: center; font-variant-numeric: tabular-nums;
   color: var(--ink-2); font-size: 12px;
 }
-/* Keep the sequence header (number, name, length) pinned below the nav bar as
-   the reader scrolls down a long panel. */
+/* Keep the sequence header (number, name, length) + zoom pinned below the nav
+   bar as the reader scrolls down a long panel. */
 .seq-panel h2 {
   position: sticky; top: 2.9rem; z-index: 9; margin: 0 0 .6rem;
   padding: .5rem 0; background: var(--page); border-bottom: 1px solid var(--rule);
+  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
 }
 .seq-panel h2 .seqid { color: var(--ink-2); font-weight: 400; }
 .seq-panel h2 .seqlen { color: var(--muted); font-weight: 400; font-size: 1rem; }
@@ -229,6 +254,15 @@ _PSR_STYLE = """
   overflow-x: auto; background: #fcfcfb; border-radius: 6px; padding: .3rem;
 }
 .col-scroll svg { display: block; max-width: none; height: auto; }
+
+/* The overview page's full alignment figure (a raster) scrolls in BOTH axes and
+   zooms with the shared control; capped height so a tall alignment does not run
+   off the page before you scroll it. */
+.aln-scroll {
+  overflow: auto; max-height: 80vh; background: #fcfcfb; border-radius: 6px;
+  padding: .3rem;
+}
+.aln-scroll img { display: block; max-width: none; height: auto; }
 
 /* The completion and GC bars are fixed-width; centre them and cap to the page
    so they stay aligned across sequences. */
@@ -285,6 +319,8 @@ _PSR_SCRIPT = """
     return Array.prototype.slice.call(panel.querySelectorAll('.col-scroll'));
   }
 
+  // Page 0 is the alignment overview; the rest are sequences 1..N.
+  var nSeqs = panels.length - 1;
   function show(k) {
     current = (k + panels.length) % panels.length;
     panels.forEach(function (p, i) {
@@ -292,7 +328,9 @@ _PSR_SCRIPT = """
       else { p.setAttribute('hidden', ''); }
     });
     if (indicator) {
-      indicator.textContent = 'Sequence ' + (current + 1) + ' / ' + panels.length;
+      indicator.textContent = current === 0
+        ? 'Overview'
+        : 'Sequence ' + current + ' / ' + nSeqs;
     }
     // Re-apply the remembered horizontal offset; leave the vertical scroll be.
     syncing = true;
@@ -328,27 +366,44 @@ _PSR_SCRIPT = """
   });
 
   // Simultaneous zoom for every column-aligned figure (alignment row + strand
-  // bias) across all panels, so they scale together and stay aligned. The base
-  // pixel width comes from the SVG's own point size (1pt = 4/3 px).
+  // bias) and the overview alignment image, across all panels, so they scale
+  // together. Each panel carries its own zoom control (in its sticky header);
+  // the controls are class-based and kept in sync. Base pixel width comes from
+  // an SVG's point size (1pt = 4/3 px) or an image's natural width.
   var zoom = 1;
-  var allCols = Array.prototype.slice.call(
+  var colSvgs = Array.prototype.slice.call(
     document.querySelectorAll('.col-scroll svg'));
-  function basePx(svg) {
+  var alnImgs = Array.prototype.slice.call(
+    document.querySelectorAll('.aln-scroll img'));
+  function svgBasePx(svg) {
     var w = parseFloat(svg.getAttribute('width') || '0');
     return w * 4 / 3;  // pt -> css px
   }
   function applyZoom() {
-    allCols.forEach(function (svg) {
-      svg.style.width = (basePx(svg) * zoom) + 'px';
+    colSvgs.forEach(function (svg) {
+      svg.style.width = (svgBasePx(svg) * zoom) + 'px';
     });
-    var label = document.getElementById('zoom-label');
-    if (label) { label.textContent = Math.round(zoom * 100) + '%'; }
+    alnImgs.forEach(function (img) {
+      var base = img.naturalWidth || img.width;
+      if (base) { img.style.width = (base * zoom) + 'px'; }
+    });
+    document.querySelectorAll('.zlabel').forEach(function (l) {
+      l.textContent = Math.round(zoom * 100) + '%';
+    });
   }
-  document.getElementById('zoom-in').addEventListener('click', function () {
-    zoom = Math.min(zoom * 1.25, 8); applyZoom();
+  document.querySelectorAll('.zoom-in').forEach(function (b) {
+    b.addEventListener('click', function () {
+      zoom = Math.min(zoom * 1.25, 8); applyZoom();
+    });
   });
-  document.getElementById('zoom-out').addEventListener('click', function () {
-    zoom = Math.max(zoom / 1.25, 0.25); applyZoom();
+  document.querySelectorAll('.zoom-out').forEach(function (b) {
+    b.addEventListener('click', function () {
+      zoom = Math.max(zoom / 1.25, 0.25); applyZoom();
+    });
+  });
+  // The overview image may not have decoded yet when applyZoom first runs.
+  alnImgs.forEach(function (img) {
+    if (!img.complete) { img.addEventListener('load', applyZoom); }
   });
   applyZoom();
 
@@ -606,7 +661,7 @@ def _panel_html(
     return (
         f'<section class="seq-panel" data-index="{panel_number - 1}" hidden>'
         f'<h2>Sequence {panel_number}: <span class="seqid">{escape(seq_id)}</span> '
-        f'<span class="seqlen">({ungapped_len} nt)</span></h2>'
+        f'<span class="seqlen">({ungapped_len} nt)</span>{_zoom_control()}</h2>'
         '<h3>Alignment row</h3>'
         '<p class="desc">The subject sequence (top) and the reconstructed deRIP’d '
         'reference (below), coloured by base identity; subject bases that match '
@@ -650,6 +705,86 @@ def _panel_html(
         f'{_stats_sections_html(row_stats)}'
         f'{effect_html}'
         f'</section>'
+    )
+
+
+def _overview_png(derip, annotation_track):
+    """
+    Render the full ``--plot`` alignment figure and return it base64-encoded.
+
+    Reuses :meth:`derip2.derip.DeRIP.plot_alignment` (the same raster figure the
+    ``--plot`` flag writes, including the deRIP corrected consensus row). The
+    figure is written to a temporary PNG and read back as base64 so the report
+    stays a single self-contained file.
+
+    Parameters
+    ----------
+    derip : derip2.derip.DeRIP
+        The analysed DeRIP object.
+    annotation_track : list or None
+        Gene-annotation spans to draw below the alignment (``--gff``), or None.
+
+    Returns
+    -------
+    str
+        Base64-encoded PNG bytes.
+    """
+    import base64
+    import os
+    import tempfile
+
+    ali_height = len(derip.alignment)
+    ali_length = derip.alignment.get_alignment_length()
+    handle, path = tempfile.mkstemp(suffix='.png')
+    os.close(handle)
+    try:
+        derip.plot_alignment(
+            output_file=path,
+            dpi=110,
+            title=None,
+            show_chars=(ali_height <= 25),
+            draw_boxes=(ali_height <= 25),
+            flag_corrected=(ali_length < 200),
+            annotation_track=annotation_track,
+        )
+        with open(path, 'rb') as fh:
+            data = fh.read()
+    finally:
+        os.unlink(path)
+    return base64.b64encode(data).decode('ascii')
+
+
+def _overview_html(derip, annotation_track):
+    """
+    Build the report's front (overview) page: the full alignment + consensus.
+
+    Parameters
+    ----------
+    derip : derip2.derip.DeRIP
+        The analysed DeRIP object.
+    annotation_track : list or None
+        Gene-annotation spans for the alignment figure (``--gff``), or None.
+
+    Returns
+    -------
+    str
+        The overview ``<section class="seq-panel">`` (first page of the deck).
+    """
+    b64 = _overview_png(derip, annotation_track)
+    n_total = len(derip.alignment)
+    n_cols = derip.alignment.get_alignment_length()
+    return (
+        '<section class="seq-panel" data-index="overview" hidden>'
+        f'<h2>Overview <span class="seqlen">({n_total} sequences &times; '
+        f'{n_cols} columns)</span>{_zoom_control()}</h2>'
+        '<h3>Full alignment</h3>'
+        '<p class="desc">The whole alignment with RIP markup and, beneath it, the '
+        'deRIP-corrected consensus with corrected positions — the same figure the '
+        '<code>--plot</code> flag writes. Scroll in both directions and use the '
+        'zoom control to inspect it; the per-sequence pages follow.</p>'
+        f'<div class="aln-scroll"><img alt="Full alignment overview" '
+        f'src="data:image/png;base64,{b64}"></div>'
+        '</section>'
     )
 
 
@@ -773,11 +908,13 @@ def write_per_sequence_report(
     effects_by_seq = {}
     deripd_aa = {}
     cds_gene_cols = []  # (gene, cds_columns) projected onto shared alignment columns
+    overview_track = None  # annotation-track spans for the overview --plot figure
     if gff is not None:
         import numpy as np
 
         from derip2.annotation import (
             DEFAULT_ANNOTATION_COLORS,
+            build_annotation_spans,
             cds_alignment_columns,
             compute_effects_for_alignment,
             deripd_translations,
@@ -800,10 +937,12 @@ def write_per_sequence_report(
         # stop codons are computed per panel).
         id_to_row = {rec.id: i for i, rec in enumerate(derip.alignment)}
         cds_colour = DEFAULT_ANNOTATION_COLORS['CDS']
+        row_lookup = {}
         for seqid, genes in genes_by_seqid.items():
             ri = id_to_row.get(seqid)
             if ri is None:
                 continue
+            row_lookup[seqid] = derip.column_classes.arr[ri]
             u2c = ungapped_to_column_map(derip.column_classes.arr[ri])
             for gene in genes:
                 cols = cds_alignment_columns(gene, u2c)
@@ -811,10 +950,14 @@ def write_per_sequence_report(
                     cds_gene_cols.append(
                         (gene, np.asarray(cols, dtype=int), cds_colour)
                     )
+        overview_track = build_annotation_spans(genes_by_seqid, row_lookup)
 
     indices, truncated = _select_rows(df, max_seqs)
 
-    panels = [
+    # The front (overview) page — the full alignment + deRIP consensus — followed
+    # by one panel per sequence.
+    panels = [_overview_html(derip, overview_track)]
+    panels += [
         _panel_html(
             derip,
             df,
@@ -847,12 +990,8 @@ def write_per_sequence_report(
         '<div class="seq-nav">'
         '<button id="seq-prev" type="button">&larr; Prev</button>'
         '<button id="seq-next" type="button">Next &rarr;</button>'
-        f'<span class="indicator" id="seq-indicator">Sequence 1 / {n_shown}</span>'
-        '<span class="zoom" title="Zoom the alignment row and strand-bias plots">'
-        '<button id="zoom-out" type="button">&minus;</button>'
-        '<span class="zlabel" id="zoom-label">100%</span>'
-        '<button id="zoom-in" type="button">+</button></span>'
-        '<span class="hint">&larr;/&rarr; keys change sequence</span>'
+        '<span class="indicator" id="seq-indicator">Overview</span>'
+        '<span class="hint">&larr;/&rarr; keys change page</span>'
         '</div>'
     )
 

@@ -222,13 +222,16 @@ def test_plot_sbs96_default_still_all_samples(mintest_derip):
 
 
 def test_report_written(mintest_derip, tmp_path):
-    """The report is a non-empty single file with one panel per sequence."""
+    """The report is a single file with an overview page + one panel per sequence."""
     out = tmp_path / 'per_seq.html'
     mintest_derip.write_per_sequence_report(str(out))
     assert out.exists() and out.stat().st_size > 0
     html = out.read_text()
     n = len(mintest_derip.alignment)
-    assert html.count('class="seq-panel"') == n
+    # One overview page plus one panel per sequence.
+    assert html.count('class="seq-panel"') == n + 1
+    assert 'data-index="overview"' in html
+    assert 'data:image/png;base64' in html  # embedded --plot overview figure
 
 
 def test_report_has_navigation(mintest_derip, tmp_path):
@@ -258,13 +261,13 @@ def test_report_no_duplicate_figure_ids(mintest_derip, tmp_path):
 
 
 def test_report_truncation(mintest_derip, tmp_path):
-    """``max_seqs`` caps the panel count and shows a truncation note."""
+    """``max_seqs`` caps the sequence-panel count and shows a truncation note."""
     out = tmp_path / 'per_seq.html'
     mintest_derip.write_per_sequence_report(str(out), max_seqs=2)
     html = out.read_text()
-    assert html.count('class="seq-panel"') == 2
+    # Two sequence panels plus the overview page.
+    assert html.count('class="seq-panel"') == 3
     assert 'note' in html
-    assert 'Sequence 1 / 2' in html
 
 
 def test_report_section_headings_and_scroll(mintest_derip, tmp_path):
@@ -285,9 +288,11 @@ def test_report_section_headings_and_scroll(mintest_derip, tmp_path):
     # Wide figures scroll; the alignment row and bias each get a scroll box.
     n = len(mintest_derip.alignment)
     assert html.count('col-scroll') >= 2 * n
-    # Ungapped length is shown in each panel header.
-    assert html.count('class="seqlen"') == n
+    # A seqlen span in each sequence header plus the overview header.
+    assert html.count('class="seqlen"') == n + 1
     assert 'nt)' in html
+    # The overview page embeds the full alignment figure in a both-axis scroller.
+    assert 'aln-scroll' in html
 
 
 def test_report_transposed_stat_cards(mintest_derip, tmp_path):
