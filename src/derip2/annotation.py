@@ -482,6 +482,34 @@ def _read_coding_bases(
     return ''.join(bases), kept
 
 
+def _first_cds_phase(gene: Gene) -> Optional[int]:
+    """
+    Return the phase of the gene's first CDS exon in transcription order.
+
+    ``Gene.cds`` is sorted ascending by genomic start, so the transcription-order
+    5' exon is the last element for a minus-strand gene and the first for a
+    plus-strand gene. The phase to trim from the assembled (already
+    transcription-ordered) coding sequence must come from that 5' exon — using
+    ``cds[0]`` unconditionally picks the 3' exon on the minus strand and shifts
+    the reading frame.
+
+    Parameters
+    ----------
+    gene : Gene
+        The gene whose 5' CDS phase is wanted.
+
+    Returns
+    -------
+    int or None
+        The phase (0, 1 or 2) of the transcription-first CDS, or ``None`` if the
+        gene has no CDS.
+    """
+    if not gene.cds:
+        return None
+    first_cds = gene.cds[-1] if gene.strand == '-' else gene.cds[0]
+    return first_cds.phase
+
+
 def _trim_phase(bases: str, columns: List[int], phase: Optional[int]):
     """
     Drop leading bases so the coding sequence starts in frame.
@@ -537,7 +565,7 @@ def translate_cds(
     if columns is None:
         return ''
     bases, kept = _read_coding_bases(row_bytes, columns, gene.strand)
-    phase = gene.cds[0].phase if gene.cds else None
+    phase = _first_cds_phase(gene)
     bases, _kept = _trim_phase(bases, kept, phase)
     usable = len(bases) - (len(bases) % 3)
     if usable <= 0:
@@ -718,7 +746,7 @@ def predict_gene_effects(
 
     tgt_bases, tgt_cols = _read_coding_bases(target_row, columns, gene.strand)
     ref_bases, _ref_cols = _read_coding_bases(ref_row, columns, gene.strand)
-    phase = gene.cds[0].phase if gene.cds else None
+    phase = _first_cds_phase(gene)
     tgt_bases, tgt_cols = _trim_phase(tgt_bases, tgt_cols, phase)
     ref_bases, _ref_cols = _trim_phase(ref_bases, _ref_cols, phase)
 

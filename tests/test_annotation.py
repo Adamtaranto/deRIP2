@@ -226,6 +226,35 @@ def test_phase_trims_leading_bases():
     assert translate_cds(gene, seq, ungapped_to_column_map(seq)) == 'MK*'
 
 
+def test_minus_strand_uses_transcription_first_exon_phase():
+    """
+    Phase is taken from the 5' exon in transcription order, not genomic order.
+
+    For a minus-strand gene, ``Gene.cds`` is sorted ascending by genomic start,
+    so ``cds[0]`` is the 3'-terminal exon. Using its phase would shift the frame
+    (the historical off-by-one). Here the two exons carry different phases: the
+    transcription-first (high-coordinate) exon is phase 0, the genomic-first
+    (low-coordinate) exon is phase 2. The correct translation uses phase 0.
+    """
+    # Coding sequence (5'->3') is the reverse complement of the whole 12-nt row.
+    # We want coding = ATGAAACCCTAA (M K P *), so row = revcomp of that.
+    from Bio.Seq import Seq as _Seq
+
+    coding = 'ATGAAACCCTAA'
+    fwd = str(_Seq(coding).reverse_complement())
+    seq = row(fwd)
+
+    # Two adjacent exons; genomic-first (1-6) gets phase 2, 5' exon (7-12) phase 0.
+    exons = [
+        Feature('S', 'CDS', 1, 6, '-', 2, {}, 'g:0', 'g'),  # 3' end (cds[0])
+        Feature('S', 'CDS', 7, 12, '-', 0, {}, 'g:1', 'g'),  # 5' start
+    ]
+    gene = Gene(gene_id='g', seqid='S', strand='-', cds=exons)
+
+    # Correct: phase 0 from the 5' exon -> full frame -> M K P *
+    assert translate_cds(gene, seq, ungapped_to_column_map(seq)) == 'MKP*'
+
+
 # --- alignment-level orchestration -----------------------------------------
 
 
