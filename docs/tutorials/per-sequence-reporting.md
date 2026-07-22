@@ -124,9 +124,12 @@ Providing `--gff` turns on three things.
 
 ### An annotation track on the alignment figure
 
-`--plot` gains a stacked gene-annotation track below the alignment. Each gene
-occupies its own row; multi-exon genes are drawn as separate spans, and gaps in
-a sequence are accounted for so the track lines up with the columns.
+`--plot` gains a gene-annotation sub-plot between the alignment and the deRIP
+consensus. Each gene occupies its own row, drawn as rounded CDS exon segments
+joined across introns by a midline of the gene colour, with an arrowhead giving
+the strand; a bold red `*` marks each stop codon in the deRIP'd consensus's
+projected reading frame. Gaps in a sequence are accounted for so the track lines
+up with the columns.
 
 ![Alignment with gene-annotation track](../img/annotation_track.svg)
 
