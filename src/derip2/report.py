@@ -87,7 +87,7 @@ code { background: rgba(127,127,127,.12); padding: .1em .35em; border-radius: 3p
 """
 
 
-def _figure_to_svg(fig, prefix):
+def _figure_to_svg(fig, prefix, tight=True):
     """
     Render a matplotlib figure to an inline SVG fragment with namespaced IDs.
 
@@ -97,6 +97,13 @@ def _figure_to_svg(fig, prefix):
         Figure to render.
     prefix : str
         Unique string prepended to every element ID and internal reference.
+    tight : bool, optional
+        Trim surrounding whitespace with ``bbox_inches='tight'`` (default:
+        True). Pass ``False`` to keep the figure's full, fixed canvas so a
+        series of figures with the same figure size and axes rectangle render at
+        identical dimensions — needed when several figures must stay aligned
+        across pages (their left margins would otherwise vary with tick-label
+        width).
 
     Returns
     -------
@@ -113,7 +120,10 @@ def _figure_to_svg(fig, prefix):
     and every internal reference keeps each figure self-referential.
     """
     buffer = io.StringIO()
-    fig.savefig(buffer, format='svg', bbox_inches='tight')
+    if tight:
+        fig.savefig(buffer, format='svg', bbox_inches='tight')
+    else:
+        fig.savefig(buffer, format='svg')
     svg = buffer.getvalue()
 
     # Drop everything before the opening <svg> tag: an XML declaration or a

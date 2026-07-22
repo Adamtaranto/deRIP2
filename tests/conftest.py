@@ -28,6 +28,12 @@ def mintest_path(data_dir):
 
 
 @pytest.fixture(scope='session')
+def gff_path(data_dir):
+    """Path to the minimal GFF3 gene models over the mintest alignment."""
+    return os.path.join(data_dir, 'mintest.gff3')
+
+
+@pytest.fixture(scope='session')
 def treefile_path(data_dir):
     """Path to the committed IQ-TREE ``.treefile`` for mintest."""
     return os.path.join(data_dir, 'mintest.treefile')

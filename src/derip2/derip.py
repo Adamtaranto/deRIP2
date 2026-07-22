@@ -718,7 +718,7 @@ class DeRIP:
 
     def plot_alignment(
         self,
-        output_file: str,
+        output_file: Optional[str] = None,
         dpi: int = 300,
         title: Optional[str] = None,
         width: int = 20,
@@ -802,7 +802,7 @@ class DeRIP:
         _t_plot = time.perf_counter()
         result = drawMiniAlignment(
             alignment=self.alignment,
-            outfile=output_file,
+            outfile=output_file or '',
             dpi=dpi,
             title=title,
             width=width,
@@ -825,7 +825,8 @@ class DeRIP:
         logger.debug(
             f'plot_alignment: drawMiniAlignment took {time.perf_counter() - _t_plot:.3f}s'
         )
-        logger.info(f'Alignment visualization saved to {output_file}')
+        if not kwargs.get('return_figure'):
+            logger.info(f'Alignment visualization saved to {output_file}')
         return result
 
     def calculate_rsi(self, ambiguous: str = 'split', substrate_scope: str = 'all'):
@@ -1314,6 +1315,61 @@ class DeRIP:
         self._require_rip('writing an HTML report')
         return write_html_report(
             self, output_file, title=title, ambiguous=ambiguous, **kwargs
+        )
+
+    def write_per_sequence_report(
+        self,
+        output_file: str,
+        title: Optional[str] = None,
+        ambiguous: str = 'split',
+        max_seqs: Optional[int] = None,
+        **kwargs,
+    ) -> str:
+        """
+        Write a single-file, interactive per-sequence HTML report.
+
+        The report renders one panel per input sequence — the alignment row with
+        RIP sites highlighted, a fixed-height per-sequence strand-bias strip, a
+        per-sequence SBS-96 spectrum against the reconstructed ancestor, and that
+        sequence's summary statistics — and lets the reader step between
+        sequences with the arrow keys. Every figure is inline SVG, so the file is
+        self-contained.
+
+        Parameters
+        ----------
+        output_file : str
+            Destination path for the HTML file.
+        title : str, optional
+            Report heading.
+        ambiguous : str, optional
+            Ambiguity policy for the per-sequence RSI statistics
+            (default: ``'split'``).
+        max_seqs : int, optional
+            Cap the number of sequence panels; the strongest strand-bias
+            sequences are kept. ``None`` (default) renders every sequence.
+        **kwargs
+            Forwarded to :func:`derip2.persequence_report.write_per_sequence_report`.
+
+        Returns
+        -------
+        str
+            The path written.
+
+        Raises
+        ------
+        ValueError
+            If :meth:`calculate_rip` has not been called first.
+        """
+        from derip2.persequence_report import write_per_sequence_report
+
+        self._require_rip('writing a per-sequence report')
+        return write_per_sequence_report(
+            self,
+            output_file,
+            title=title,
+            ambiguous=ambiguous,
+            max_seqs=max_seqs,
+            **kwargs,
         )
 
     def calculate_dinucleotide_frequency(self, sequence):

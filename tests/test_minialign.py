@@ -216,6 +216,91 @@ def test_drawMiniAlignment_basic(mock_savefig, simple_alignment):
 
 
 @patch('matplotlib.figure.Figure.savefig')
+def test_drawMiniAlignment_format_from_extension(mock_savefig, simple_alignment):
+    """The save format is derived from the output extension (SVG by default)."""
+    # No extension -> defaults to SVG.
+    drawMiniAlignment(simple_alignment, 'no_ext')
+    mock_savefig.assert_called_with('no_ext', format='svg')
+    # Explicit .svg extension.
+    drawMiniAlignment(simple_alignment, 'out.svg')
+    mock_savefig.assert_called_with('out.svg', format='svg')
+
+
+@patch('matplotlib.pyplot.close')
+@patch('matplotlib.figure.Figure.savefig')
+def test_drawMiniAlignment_return_figure(mock_savefig, mock_close, simple_alignment):
+    """return_figure hands back the live Figure without saving or closing it."""
+    import matplotlib.pyplot as plt
+
+    fig = drawMiniAlignment(simple_alignment, 'unused', return_figure=True)
+    assert isinstance(fig, plt.Figure)
+    mock_savefig.assert_not_called()
+    mock_close.assert_not_called()
+    # The tooltip map is always present (empty without an annotation track).
+    assert fig.annotation_titles == {}
+    plt.close(fig)
+
+
+def test_annotation_track_is_labelless_subplot(simple_alignment, tmp_path):
+    """The annotation track is a dedicated sub-plot: gid'd bars, no text labels."""
+    import matplotlib.patches
+    import matplotlib.pyplot as plt
+
+    fig = drawMiniAlignment(
+        simple_alignment,
+        'unused',
+        annotation_track=[(0, 2, '#008300', 'geneA', 0)],
+        return_figure=True,
+    )
+    # gene axis carries the label in the tooltip map, not as on-plot text.
+    assert fig.annotation_titles == {'anntip0': 'geneA'}
+    # The dedicated annotation axis holds the bar (a gid'd Rectangle) and no text.
+    ann_axes = [
+        ax
+        for ax in fig.axes
+        if any(
+            p.get_gid() == 'anntip0'
+            for p in ax.patches
+            if isinstance(p, matplotlib.patches.Rectangle)
+        )
+    ]
+    assert len(ann_axes) == 1
+    assert ann_axes[0].texts == [] or all(
+        'geneA' not in t.get_text() for t in ann_axes[0].texts
+    )
+    plt.close(fig)
+
+
+def test_cds_tracks_rich_glyphs_and_stops(simple_alignment):
+    """cds_tracks draws rounded exon PathPatches with tooltips and red '*' stops."""
+    from matplotlib.patches import PathPatch
+    import matplotlib.pyplot as plt
+
+    # One two-exon plus-strand gene with a stop codon at column 2.
+    fig = drawMiniAlignment(
+        simple_alignment,
+        'unused',
+        cds_tracks=[([(0, 0), (2, 3)], '+', [2], 'geneX', '#efb700')],
+        return_figure=True,
+    )
+    # Tooltip map carries the exon-numbered labels (transcription order).
+    assert set(fig.annotation_titles.values()) == {
+        'geneX — CDS exon 1/2',
+        'geneX — CDS exon 2/2',
+    }
+    # The annotation axis holds two gid'd exon PathPatches and a bold red '*'.
+    ann_axes = [
+        ax for ax in fig.axes if [p for p in ax.patches if isinstance(p, PathPatch)]
+    ]
+    assert len(ann_axes) == 1
+    exon_patches = [p for p in ann_axes[0].patches if isinstance(p, PathPatch)]
+    assert len(exon_patches) == 2
+    assert all(p.get_gid() for p in exon_patches)
+    assert any(t.get_text() == '*' for t in ann_axes[0].texts)
+    plt.close(fig)
+
+
+@patch('matplotlib.figure.Figure.savefig')
 def test_drawMiniAlignment_with_title(mock_savefig, simple_alignment):
     """Test drawMiniAlignment with a title."""
     outfile = 'test_output.png'
@@ -509,3 +594,51 @@ def test_addColumnRangeMarkers_single_column():
     # Should add 2 patches and 2 text labels
     assert mock_ax.add_patch.call_count == 2
     assert mock_ax.text.call_count == 2
+
+
+@patch('matplotlib.pyplot.close')
+def test_reference_marker_data_coords_track_annotation(mock_close, tmp_path):
+    """
+    The reference (fill) circle marker stays on its row when an annotation track
+    extends the y-limits.
+
+    The marker is drawn in data coordinates, so its y-offset must equal
+    ``ali_height - reference_seq_index - 1`` regardless of any annotation track.
+    """
+    from matplotlib.collections import PathCollection
+    import matplotlib.pyplot as plt
+
+    records = [SeqRecord(Seq('ACGTACGT'), id=f'seq{i}') for i in range(5)]
+    aln = MultipleSeqAlignment(records)
+    ali_height = len(aln)
+    ref_index = 2
+    expected_y = ali_height - ref_index - 1
+    out = str(tmp_path / 'aln.png')
+
+    def marker_offset_y():
+        # The reference marker is the single-point scatter on the alignment axes.
+        for ax in plt.gcf().axes:
+            for coll in ax.collections:
+                if isinstance(coll, PathCollection):
+                    offs = coll.get_offsets()
+                    if len(offs) == 1:
+                        return float(offs[0][1])
+        return None
+
+    # Without an annotation track (plt.close is a no-op so the figure survives).
+    drawMiniAlignment(aln, out, reference_seq_index=ref_index)
+    y_plain = marker_offset_y()
+    plt.close('all')
+
+    # With an annotation track that extends the y-limits downward.
+    drawMiniAlignment(
+        aln,
+        out,
+        reference_seq_index=ref_index,
+        annotation_track=[(1, 4, '#008300', 'gene', 0)],
+    )
+    y_track = marker_offset_y()
+    plt.close('all')
+
+    assert y_plain == expected_y
+    assert y_track == expected_y

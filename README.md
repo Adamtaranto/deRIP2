@@ -25,10 +25,15 @@ Use deRIP2 to:
 
 - Analyse mutation spectra in aligned sequences for evidence of RIP or other mutational processes.
 
+- Generate an interactive per-sequence HTML report, and — with a GFF3 gene model
+  — report how RIP alters the encoded protein (premature stops, non-synonymous
+  changes, frameshifts, broken splice sites).
+
 ## Table of contents
 
 - [Installation](#installation)
 - [Example usage](#example-usage)
+- [Per-sequence reporting](#per-sequence-reporting)
 - [Standard Options](#standard-options)
 - [Spectra Options](#spectra-options)
 - [Algorithm overview](#algorithm-overview)
@@ -105,9 +110,9 @@ derip2 -i tests/data/mintest.fa \
 
 - `results/derip_output.fasta` - Corrected sequence
 - `results/derip_output_masked_alignment.fasta` - Alignment with masked corrections
-- `results/derip_output_visualization.png` - Visualization of the alignment with RIP markup
+- `results/derip_output_visualization.svg` - Visualization of the alignment with RIP markup
 
-![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_output_visualization.png)
+![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_output_visualization.svg)
 
 ### Using maximum GC content for filling
 
@@ -146,9 +151,9 @@ derip2 -i tests/data/mintest.fa \
 
 - `results/derip_reaminated.fasta` - Corrected sequence using highest GC content sequence for filling
 - `results/derip_reaminated_alignment.fasta` - Alignment with corrected sequence appended
-- `results/derip_reaminated_vizualization.png` - Visualization of the alignment with RIP markup
+- `results/derip_reaminated_vizualization.svg` - Visualization of the alignment with RIP markup
 
-![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_reaminated_visualization.png)
+![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_reaminated_visualization.svg)
 
 ### Mutation spectra (`derip2-spectra`)
 
@@ -175,6 +180,35 @@ derip2-spectra -i family.fasta --context downstream -d results -p family
 See the [Mutation Spectra tutorial](https://adamtaranto.github.io/deRIP2/tutorials/mutation-spectra/)
 for the full walkthrough, including supplying your own phylogeny and per-group
 spectra.
+
+## Per-sequence reporting
+
+The `--per-seq-report` option writes a single self-contained
+`prefix_per_sequence.html` with one arrow-key-navigable panel per input
+sequence: the alignment row with RIP sites highlighted, a fixed-height
+per-sequence strand-bias strip, a per-sequence SBS-96 spectrum against the
+reconstructed ancestor, and that sequence's statistics.
+
+```bash
+derip2 -i tests/data/mintest.fa --per-seq-report -d results
+```
+
+Supply a GFF3 gene model with `--gff` (sequence ids must match the alignment;
+coordinates are auto-adjusted for gaps) to add a gene-annotation track to
+`--plot`, gene-effect panels (premature stops, non-synonymous changes,
+frameshifts, broken splice sites) plus the deRIP-restored protein to the report,
+and a `prefix_snp_effects.txt` summary.
+
+```bash
+derip2 -i tests/data/mintest.fa \
+  --gff tests/data/mintest.gff3 \
+  --per-seq-report --plot -d results
+```
+
+![Alignment with gene-annotation track](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/annotation_track.svg)
+
+See the [Per-sequence Reporting tutorial](https://adamtaranto.github.io/deRIP2/tutorials/per-sequence-reporting/)
+for the full walkthrough.
 
 ## Standard options
 
@@ -267,6 +301,24 @@ Options:
                                   prefix_stats.tsv.
   --html-report                   Write a self-contained HTML report to
                                   prefix_report.html.
+  --per-seq-report                Write an interactive per-sequence HTML
+                                  report to prefix_per_sequence.html (one
+                                  arrow-key-navigable panel per sequence).
+  --max-report-seqs INTEGER       Cap the number of sequence panels in the
+                                  per-sequence report. When the alignment has
+                                  more sequences, the strongest strand-bias
+                                  sequences are kept. Unset renders every
+                                  sequence.
+  --gff TEXT                      GFF3 gene model. Sequence ids must match
+                                  alignment record ids. Enables a gene-
+                                  annotation track on --plot, gene-effect
+                                  panels in the per-sequence report, and a
+                                  prefix_snp_effects.txt summary.
+  --genetic-code INTEGER          NCBI genetic code table for CDS translation
+                                  and effect prediction.  [default: 1]
+  --annotation-colors TEXT        Two-column (type<TAB>hex) file overriding
+                                  default annotation-track colours by feature
+                                  type.
   --loglevel [DEBUG|INFO|WARNING|ERROR|CRITICAL]
                                   Set logging level.  [default: INFO]
   --logfile TEXT                  Log file path.

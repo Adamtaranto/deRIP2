@@ -210,6 +210,54 @@ logger = logging.getLogger(__name__)
     show_default=True,
     help='Write a self-contained HTML report to prefix_report.html.',
 )
+@click.option(
+    '--per-seq-report',
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help=(
+        'Write an interactive per-sequence HTML report to '
+        'prefix_per_sequence.html (one arrow-key-navigable panel per sequence).'
+    ),
+)
+@click.option(
+    '--max-report-seqs',
+    type=int,
+    default=None,
+    show_default=True,
+    help=(
+        'Cap the number of sequence panels in the per-sequence report. When the '
+        'alignment has more sequences, the strongest strand-bias sequences are '
+        'kept. Unset renders every sequence.'
+    ),
+)
+# Gene annotation options
+@click.option(
+    '--gff',
+    type=str,
+    default=None,
+    help=(
+        'GFF3 gene model. Sequence ids must match alignment record ids. Enables '
+        'a gene-annotation track on --plot, gene-effect panels in the '
+        'per-sequence report, and a prefix_snp_effects.txt summary.'
+    ),
+)
+@click.option(
+    '--genetic-code',
+    type=int,
+    default=1,
+    show_default=True,
+    help='NCBI genetic code table for CDS translation and effect prediction.',
+)
+@click.option(
+    '--annotation-colors',
+    type=str,
+    default=None,
+    help=(
+        'Two-column (type<TAB>hex) file overriding default annotation-track '
+        'colours by feature type.'
+    ),
+)
 # Logging options
 @click.option(
     '--loglevel',
@@ -242,6 +290,11 @@ def main(
     sort_by_rsi,
     stats_out,
     html_report,
+    per_seq_report,
+    max_report_seqs,
+    gff,
+    genetic_code,
+    annotation_colors,
     loglevel,
     logfile,
 ):
@@ -323,6 +376,18 @@ def main(
         If True, write the per-sequence statistics table as TSV. Default: False.
     html_report : bool
         If True, write a self-contained HTML strand bias report. Default: False.
+    per_seq_report : bool
+        If True, write an interactive per-sequence HTML report. Default: False.
+    max_report_seqs : int or None
+        Cap the number of sequence panels in the per-sequence report. If None,
+        every sequence is rendered. Default: None.
+    gff : str or None
+        Path to a GFF3 gene model. Enables the annotation track, gene-effect
+        panels, and the SNP-effect summary. Default: None.
+    genetic_code : int
+        NCBI genetic code table for CDS translation. Default: 1.
+    annotation_colors : str or None
+        Path to a two-column annotation-track colour override file. Default: None.
     loglevel : str
         Set logging level. One of: 'DEBUG', 'INFO', 'WARNING', 'ERROR', or 'CRITICAL'.
         Default: 'INFO'.
@@ -350,10 +415,12 @@ def main(
     if mask:
         out_path_aln = path.join(out_dir, f'{prefix}_masked_alignment.fasta')
     # Path for visualization - only used if plot is True
-    viz_path = path.join(out_dir, f'{prefix}_visualization.png')
+    viz_path = path.join(out_dir, f'{prefix}_visualization.svg')
     strand_bias_path = path.join(out_dir, f'{prefix}_strand_bias.svg')
     stats_path = path.join(out_dir, f'{prefix}_stats.tsv')
     report_path = path.join(out_dir, f'{prefix}_report.html')
+    per_seq_report_path = path.join(out_dir, f'{prefix}_per_sequence.html')
+    snp_effects_path = path.join(out_dir, f'{prefix}_snp_effects.txt')
 
     # ---------- Create DeRIP object and process alignment ----------
     logger.info(f'Processing alignment file: \033[0m{input}')
@@ -447,6 +514,56 @@ def main(
         format='fasta',
     )
 
+    # ---------- Gene annotation (GFF3) ----------
+    # Parsed once and reused: an annotation track for --plot, gene effects for
+    # the per-sequence report, and the SNP-effect summary written here.
+    cds_tracks = None
+    if gff:
+        import numpy as np
+
+        from derip2.annotation import (
+            build_cds_tracks,
+            compute_effects_for_alignment,
+            deripd_translations,
+            load_annotation_colors,
+            parse_gff3,
+            warn_unmatched_seqids,
+            write_snp_effects,
+        )
+
+        logger.info(f'Reading gene annotation from: \033[0m{gff}')
+        genes_by_seqid = parse_gff3(gff)
+        warn_unmatched_seqids(genes_by_seqid, [r.id for r in derip_obj.alignment])
+
+        colors = (
+            load_annotation_colors(annotation_colors) if annotation_colors else None
+        )
+        row_lookup = {
+            rec.id: derip_obj.column_classes.arr[i]
+            for i, rec in enumerate(derip_obj.alignment)
+        }
+        # Rich CDS tracks for --plot: stop codons are read off the deRIP'd
+        # consensus, so the track flags stops in the corrected reading frame.
+        consensus_row = np.frombuffer(
+            str(derip_obj.gapped_consensus.seq).upper().encode('ascii'), dtype='S1'
+        )
+        cds_tracks = build_cds_tracks(
+            genes_by_seqid,
+            row_lookup,
+            consensus_row,
+            genetic_code=genetic_code,
+            colors=colors,
+        )
+
+        effects_by_seq = compute_effects_for_alignment(
+            derip_obj, genes_by_seqid, genetic_code=genetic_code
+        )
+        deripd_aa = deripd_translations(
+            derip_obj, genes_by_seqid, genetic_code=genetic_code
+        )
+        logger.info(f'Writing SNP-effect summary to: \033[0m{snp_effects_path}')
+        write_snp_effects(snp_effects_path, effects_by_seq, deripd_aa)
+
     # Create visualization highlighting RIP/deamination events if requested
     if plot:
         logger.info(
@@ -470,6 +587,7 @@ def main(
             flag_corrected=(
                 ali_length < 200
             ),  # Flag corrected positions for small alignments
+            cds_tracks=cds_tracks,
         )
 
         if viz_result:
@@ -507,6 +625,19 @@ def main(
             title=f'deRIP2 strand bias: {prefix}',
             ambiguous=rsi_ambiguous,
             **strand_bias_opts,
+        )
+
+    if per_seq_report:
+        logger.info(
+            f'Writing per-sequence HTML report to: \033[0m{per_seq_report_path}'
+        )
+        derip_obj.write_per_sequence_report(
+            per_seq_report_path,
+            title=f'deRIP2 per-sequence: {prefix}',
+            ambiguous=rsi_ambiguous,
+            max_seqs=max_report_seqs,
+            gff=gff,
+            genetic_code=genetic_code,
         )
 
 

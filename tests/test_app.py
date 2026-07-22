@@ -112,7 +112,7 @@ def test_main_function_with_visualization():
         # Check that output files were created with standardized names
         output_fasta = os.path.join(temp_dir, f'{prefix}.fasta')
         output_aln = os.path.join(temp_dir, f'{prefix}_masked_alignment.fasta')
-        output_viz = os.path.join(temp_dir, f'{prefix}_visualization.png')
+        output_viz = os.path.join(temp_dir, f'{prefix}_visualization.svg')
 
         # Verify files exist
         assert os.path.exists(output_fasta), (

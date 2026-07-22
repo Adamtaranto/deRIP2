@@ -47,9 +47,9 @@ derip2 -i tests/data/mintest.fa \
 
 - `results/derip_output.fasta` - Corrected sequence
 - `results/derip_output_masked_alignment.fasta` - Alignment with masked corrections
-- `results/derip_output_visualization.png` - Visualization of the alignment with RIP markup
+- `results/derip_output_visualization.svg` - Visualization of the alignment with RIP markup
 
-![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_output_visualization.png)
+![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_output_visualization.svg)
 
 ### Using maximum GC content for filling
 
@@ -88,9 +88,68 @@ derip2 -i tests/data/mintest.fa \
 
 - `results/derip_reaminated.fasta` - Corrected sequence using highest GC content sequence for filling
 - `results/derip_reaminated_alignment.fasta` - Alignment with corrected sequence appended
-- `results/derip_reaminated_vizualization.png` - Visualization of the alignment with RIP markup
+- `results/derip_reaminated_vizualization.svg` - Visualization of the alignment with RIP markup
 
-![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_reaminated_visualization.png)
+![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_reaminated_visualization.svg)
+
+### Per-sequence HTML report
+
+The `--per-seq-report` option writes an interactive, self-contained
+`prefix_per_sequence.html` with one panel per input sequence: the alignment row
+with its RIP sites highlighted, a fixed-height per-sequence strand-bias strip, a
+per-sequence SBS-96 mutation spectrum measured against the reconstructed
+ancestor, and that sequence's summary statistics. Step between sequences with
+the left/right arrow keys (or the Prev/Next buttons).
+
+```bash
+derip2 -i tests/data/mintest.fa \
+  --per-seq-report \
+  -d results \
+  --prefix derip_output
+```
+
+For large alignments, `--max-report-seqs N` caps the report at the `N`
+sequences with the strongest strand bias (largest `|RSI|`) and notes the
+truncation.
+
+```bash
+derip2 -i tests/data/sahana.fasta.gz \
+  --per-seq-report \
+  --max-report-seqs 20 \
+  -d results
+```
+
+### Gene annotation and RIP effect reporting
+
+Supply a GFF3 gene model with `--gff`. Sequence ids in the GFF must match the
+alignment record ids; coordinates are 1-based in each sequence's own ungapped
+frame and are automatically adjusted for alignment gaps. Providing `--gff`:
+
+- draws a stacked gene-annotation track below the `--plot` figure,
+- adds a gene-effect table (premature stops, non-synonymous changes,
+  frameshifts, broken splice sites) and the deRIP-restored protein to each
+  annotated sequence's panel in the per-sequence report, and
+- always writes a `prefix_snp_effects.txt` summary.
+
+```bash
+derip2 -i tests/data/mintest.fa \
+  --gff tests/data/mintest.gff3 \
+  --per-seq-report \
+  --plot \
+  --genetic-code 1 \
+  -d results \
+  --prefix derip_output
+```
+
+Use `--genetic-code` to select an NCBI translation table other than the
+standard code (table 1), and `--annotation-colors FILE` to override the
+annotation-track colours with a two-column `type<TAB>hex` file.
+
+**Output:**
+
+- `results/derip_output_per_sequence.html` - Interactive per-sequence report
+- `results/derip_output_snp_effects.txt` - Per-sequence + restored-CDS effects
+- `results/derip_output_visualization.svg` - Alignment figure with the track
 
 ## Standard Options
 
@@ -139,6 +198,51 @@ derip2 -i tests/data/mintest.fa \
                                   Specify the type of RIP events to be
                                   displayed in the alignment visualization.
                                   [default: both]
+  --plot-strand-bias              Create a diverging stacked-bar chart of per-
+                                  column RIP strand bias.
+  --strand-bias-scale [column|alignment|counts]
+                                  Bar height normalisation: each column to its
+                                  own depth, to the number of sequences (so
+                                  gappy columns are short), or raw counts.
+                                  [default: column]
+  --strand-bias-xaxis [none|logo|derip]
+                                  Draw a sequence logo or the deRIP'd
+                                  consensus along the zero line.  [default:
+                                  none]
+  --strand-bias-columns [rip|substrate|all]
+                                  Which positions are lettered along the zero
+                                  line.  [default: all]
+  --strand-bias-stack [signal|product|all]
+                                  Which bases each bar is made of.  [default:
+                                  signal]
+  --rsi-ambiguous [split|exclude|weight|both]
+                                  How to attribute a TA dinucleotide that
+                                  could have arisen from RIP on either strand
+                                  when calculating RSI.  [default: split]
+  --sort-by-rsi                   Sort the output alignment from most forward-
+                                  to most reverse-strand RIP.
+  --stats-out                     Write the per-sequence statistics table to
+                                  prefix_stats.tsv.
+  --html-report                   Write a self-contained HTML report to
+                                  prefix_report.html.
+  --per-seq-report                Write an interactive per-sequence HTML
+                                  report to prefix_per_sequence.html (one
+                                  arrow-key-navigable panel per sequence).
+  --max-report-seqs INTEGER       Cap the number of sequence panels in the
+                                  per-sequence report. When the alignment has
+                                  more sequences, the strongest strand-bias
+                                  sequences are kept. Unset renders every
+                                  sequence.
+  --gff TEXT                      GFF3 gene model. Sequence ids must match
+                                  alignment record ids. Enables a gene-
+                                  annotation track on --plot, gene-effect
+                                  panels in the per-sequence report, and a
+                                  prefix_snp_effects.txt summary.
+  --genetic-code INTEGER          NCBI genetic code table for CDS translation
+                                  and effect prediction.  [default: 1]
+  --annotation-colors TEXT        Two-column (type<TAB>hex) file overriding
+                                  default annotation-track colours by feature
+                                  type.
   --loglevel [DEBUG|INFO|WARNING|ERROR|CRITICAL]
                                   Set logging level.  [default: INFO]
   --logfile TEXT                  Log file path.

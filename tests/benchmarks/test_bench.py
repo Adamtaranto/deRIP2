@@ -210,3 +210,72 @@ def test_bench_plot_strand_bias(benchmark, sahana_alignment_small):
         plt.close(fig)
 
     benchmark(run)
+
+
+def test_bench_per_sequence_report(benchmark, sahana_alignment_small, tmp_path):
+    """
+    Benchmark building the per-sequence HTML report over a realistic subset.
+
+    This exercises the whole per-sequence path — the row strip, the fixed-height
+    strand-bias strip and the per-sequence SBS-96 panel rendered to inline SVG
+    for every sequence, plus the stats slices — which is the dominant cost of
+    ``--per-seq-report`` on real data.
+    """
+    d = DeRIP(sahana_alignment_small)
+    d.calculate_rip()
+    out = str(tmp_path / 'per_seq.html')
+
+    # Cap to keep the benchmark bounded; the per-panel work is what we measure.
+    benchmark(lambda: d.write_per_sequence_report(out, max_seqs=10))
+
+
+SAHANA_GFF = os.path.join(HERE, '..', 'data', 'sahana_prime_miniprot_KAH4331560.gff3')
+
+
+@pytest.fixture(scope='session')
+def sahana_cds_setup(sahana_alignment):
+    """
+    Full alignment + parsed Sahana_prime gene + its CDS alignment columns.
+
+    Uses the full alignment because the miniprot CDS lives near columns
+    2874–5381 — the trimmed [:40, :500] subset does not contain it.
+    """
+    from derip2.annotation import (
+        cds_alignment_columns,
+        parse_gff3,
+        ungapped_to_column_map,
+    )
+
+    d = DeRIP(sahana_alignment)
+    d.calculate_rip()
+    genes = parse_gff3(SAHANA_GFF)
+    ids = [r.id for r in d.alignment]
+    ri = ids.index('Sahana_prime')
+    u2c = ungapped_to_column_map(d.column_classes.arr[ri])
+    gene = genes['Sahana_prime'][0]
+    cols = cds_alignment_columns(gene, u2c)
+    return d.column_classes.arr, gene, cols
+
+
+def test_bench_parse_gff3(benchmark):
+    """Benchmark GFF3 parsing of the multi-exon Sahana_prime gene model."""
+    from derip2.annotation import parse_gff3
+
+    benchmark(lambda: parse_gff3(SAHANA_GFF))
+
+
+def test_bench_cds_extraction_across_records(benchmark, sahana_cds_setup):
+    """
+    Benchmark projecting a CDS onto every alignment record and calling stops.
+
+    This is the cross-record extraction the per-sequence report's CDS annotation
+    track drives (396 sequences × ~2000 CDS columns); it must stay vectorised.
+    """
+    from derip2.annotation import cds_stop_columns
+
+    arr, gene, cols = sahana_cds_setup
+
+    def run():
+        return [cds_stop_columns(gene, arr[i], cols) for i in range(arr.shape[0])]
+
+    benchmark(run)
