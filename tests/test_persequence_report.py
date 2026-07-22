@@ -169,9 +169,8 @@ def test_gc_content_bar(mintest_derip):
 
 def test_strand_bias_uses_swapped_role_colours(mintest_derip):
     """Product bars are orange and substrate bars blue (swapped convention)."""
-    from matplotlib.colors import to_hex
-
     from matplotlib.collections import PathCollection
+    from matplotlib.colors import to_hex
 
     fig = per_sequence_strand_bias(mintest_derip.column_classes, 0, seq_id='Seq1')
     ax = fig.axes[0]
