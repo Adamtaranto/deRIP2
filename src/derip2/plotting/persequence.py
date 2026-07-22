@@ -88,6 +88,88 @@ def _hex_to_rgb(color: str):
     return tuple(int(color[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
 
 
+def _gene_exon_path(x0, x1, y0, y1, strand, rx, ry, arrow_len):
+    """
+    Build a rounded rectangle with an arrowhead at the strand's 3' end.
+
+    The exon body runs from ``x0`` to ``x1`` between ``y0`` and ``y1``. The end
+    in the transcription direction (right for ``'+'``, left for ``'-'``) tapers
+    to a point; the opposite two corners are rounded. Separate ``rx``/``ry`` radii
+    are used because the annotation axes is very wide and short, so the x and y
+    data scales differ by orders of magnitude.
+
+    Parameters
+    ----------
+    x0, x1 : float
+        Left and right column bounds of the exon (x0 < x1).
+    y0, y1 : float
+        Top and bottom band bounds (y0 < y1).
+    strand : str
+        ``'+'`` (arrow right) or ``'-'`` (arrow left).
+    rx, ry : float
+        Corner rounding radius in x (columns) and y (band units).
+    arrow_len : float
+        Length of the arrowhead along x, in columns.
+
+    Returns
+    -------
+    matplotlib.path.Path
+        A closed path for the exon glyph.
+    """
+    from matplotlib.path import Path
+
+    ymid = (y0 + y1) / 2.0
+    w = x1 - x0
+    a = max(0.0, min(arrow_len, w * 0.5))
+    rx = max(0.0, min(rx, (w - a) * 0.5))
+    ry = max(0.0, min(ry, (y1 - y0) * 0.5))
+
+    if strand == '-':
+        base = x0 + a  # arrow base x
+        verts = [
+            (x1 - rx, y0),
+            (base, y0),
+            (x0, ymid),  # arrow tip
+            (base, y1),
+            (x1 - rx, y1),
+            (x1, y1),
+            (x1, y1 - ry),  # bottom-right round
+            (x1, y0 + ry),
+            (x1, y0),
+            (x1 - rx, y0),  # top-right round
+            (x1 - rx, y0),
+        ]
+    else:
+        base = x1 - a
+        verts = [
+            (x0 + rx, y0),
+            (base, y0),
+            (x1, ymid),  # arrow tip
+            (base, y1),
+            (x0 + rx, y1),
+            (x0, y1),
+            (x0, y1 - ry),  # bottom-left round
+            (x0, y0 + ry),
+            (x0, y0),
+            (x0 + rx, y0),  # top-left round
+            (x0 + rx, y0),
+        ]
+    codes = [
+        Path.MOVETO,
+        Path.LINETO,
+        Path.LINETO,
+        Path.LINETO,
+        Path.LINETO,
+        Path.CURVE3,
+        Path.CURVE3,
+        Path.LINETO,
+        Path.CURVE3,
+        Path.CURVE3,
+        Path.CLOSEPOLY,
+    ]
+    return Path(verts, codes)
+
+
 def per_sequence_strand_bias(
     cls,
     row_index: int,
@@ -328,10 +410,12 @@ def sequence_row_strip(
     consensus_seq : str, optional
         The deRIP'd reference (one base per column), drawn as the second row.
     cds_tracks : list of tuple, optional
-        Gene-annotation tracks to draw below the deRIP row, each
-        ``(cds_columns, stop_columns, label, colour)``: the alignment columns the
-        CDS covers (coloured band), the columns of this subject's stop codons
-        (marked ``*``), a row label and a hex colour.
+        Gene-annotation tracks to draw in a sub-plot below the alignment rows,
+        each ``(exon_spans, strand, stop_columns, label, colour)``: the per-exon
+        ``(start_col, end_col)`` spans (drawn as rounded segments with an
+        arrowhead at the ``strand`` 3' end and joined across introns by a
+        midline), this subject's stop-codon columns (marked ``*`` above the
+        track), a row label and a hex colour.
     title : str, optional
         Figure title. Untitled by default (the report supplies a heading).
     height : float, optional
@@ -415,11 +499,33 @@ def sequence_row_strip(
         (np.where(cls.nonrip_fwd[i] | cls.nonrip_rev[i])[0], NONRIP_COLOR),
     )
 
+    tracks = list(cds_tracks or [])
+    n_tracks = len(tracks)
+
     with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
-        fig, ax = plt.subplots(figsize=(width or _figure_width(n_cols), height))
+        fig_w = width or _figure_width(n_cols)
+        if n_tracks:
+            # Annotations live in their own sub-plot below the alignment rows,
+            # sharing the column axis. The main plot keeps a fixed ~2 in; the
+            # track plot grows with the number of gene tracks.
+            fig, (ax, ax_ann) = plt.subplots(
+                2,
+                1,
+                sharex=True,
+                figsize=(fig_w, height),
+                gridspec_kw={
+                    'height_ratios': [2.0, max(0.6, 0.75 * n_tracks)],
+                    'hspace': 0.32,
+                },
+            )
+            ax_ann.set_facecolor(SURFACE)
+        else:
+            fig, ax = plt.subplots(figsize=(fig_w, height))
+            ax_ann = None
         fig.patch.set_facecolor(SURFACE)
         ax.set_facecolor(SURFACE)
 
+        # --- main plot: subject + deRIP rows, markers, RIP-column shading -------
         ax.imshow(
             subject_rgba,
             aspect='auto',
@@ -442,46 +548,6 @@ def sequence_row_strip(
         else:
             ref_bottom = 1.0
 
-        # Gene-annotation tracks below the deRIP row: one band per track, the CDS
-        # columns coloured (introns/gaps left blank), with a bold red '*' at each
-        # projected stop codon for THIS subject.
-        TRACK_H, TRACK_GAP = 0.55, 0.14
-        tracks_top = ref_bottom + 0.18
-        for t, (cds_cols, stop_cols, label, colour) in enumerate(cds_tracks or []):
-            top = tracks_top + t * (TRACK_H + TRACK_GAP)
-            bottom = top + TRACK_H
-            if len(cds_cols):
-                band = np.zeros((1, n_cols, 4), dtype=float)
-                cds_cols = np.asarray(cds_cols, dtype=int)
-                band[0, cds_cols, :3] = _hex_to_rgb(colour)
-                band[0, cds_cols, 3] = 1.0
-                ax.imshow(
-                    band,
-                    aspect='auto',
-                    interpolation='nearest',
-                    extent=(-0.5, n_cols - 0.5, bottom, top),
-                    zorder=2,
-                )
-            for sc in stop_cols:
-                ax.text(
-                    int(sc),
-                    (top + bottom) / 2.0,
-                    '*',
-                    ha='center',
-                    va='center',
-                    fontsize=9,
-                    fontweight='bold',
-                    color='#b4292a',
-                    zorder=4,
-                )
-            yticks.append((top + bottom) / 2.0)
-            row_labels.append(label)
-        n_tracks = len(cds_tracks or [])
-        tracks_extent = (
-            tracks_top + n_tracks * (TRACK_H + TRACK_GAP) if n_tracks else ref_bottom
-        )
-
-        # Triangle markers above the subject row, coloured by this sequence's role.
         for cols, colour in marker_sets:
             if cols.size:
                 ax.scatter(
@@ -496,14 +562,11 @@ def sequence_row_strip(
                 )
 
         bottom_pad = 0.35
-        y_top, y_bottom = MARKER_Y - 0.35, tracks_extent + bottom_pad
+        y_top, y_bottom = MARKER_Y - 0.35, ref_bottom + bottom_pad
         ax.set_ylim(y_bottom, y_top)  # inverted
 
-        # RIP-like column shading as a single raster layer rather than one
-        # axvspan per column: an alignment can have thousands of mutated columns
-        # and per-column patches dominate both draw and SVG-serialise time. A
-        # (1, n_cols, 4) RGBA strip (transparent except the shaded columns) is
-        # one artist and one SVG element.
+        # RIP-like column shading as a single raster layer (one artist, one SVG
+        # element) rather than one axvspan per mutated column.
         if mutated.size:
             highlight = np.zeros((1, n_cols, 4), dtype=float)
             highlight[0, mutated, :3] = _hex_to_rgb(HIGHLIGHT)
@@ -519,7 +582,6 @@ def sequence_row_strip(
         ax.set_xlim(-0.5, n_cols - 0.5)
         ax.set_yticks(yticks)
         ax.set_yticklabels(row_labels, fontsize=TICK_LABEL_SIZE, color=INK_MUTED)
-        ax.set_xlabel('Alignment column', color=INK_SECONDARY, fontsize=AXIS_LABEL_SIZE)
         ax.tick_params(
             colors=AXIS_INK, labelsize=TICK_LABEL_SIZE, length=2.5, width=0.6
         )
@@ -527,6 +589,17 @@ def sequence_row_strip(
             ax.spines[side].set_visible(False)
         ax.spines['bottom'].set_color(AXIS_INK)
         ax.spines['bottom'].set_linewidth(0.6)
+
+        # --- annotation sub-plot: gene models -----------------------------------
+        x_axis_ax = ax
+        if ax_ann is not None:
+            x_axis_ax = ax_ann
+            _draw_annotation_tracks(ax_ann, tracks, n_cols, fig_w)
+            ax.tick_params(labelbottom=False)  # x labels belong to the track axis
+
+        x_axis_ax.set_xlabel(
+            'Alignment column', color=INK_SECONDARY, fontsize=AXIS_LABEL_SIZE
+        )
 
         # Untitled by default; the HTML report supplies its own section heading.
         if title:
@@ -539,6 +612,104 @@ def sequence_row_strip(
             logger.info('Sequence row strip saved to %s', outfile)
 
     return fig
+
+
+def _draw_annotation_tracks(ax, tracks, n_cols, fig_w):
+    """
+    Draw gene-model annotation tracks into a dedicated sub-plot axis.
+
+    Each gene is one row: its exons are rounded segments with an arrowhead at the
+    strand's 3' end, joined across introns by a midline of the gene colour, and a
+    bold red ``*`` marks each stop codon just above the track.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The annotation sub-plot axis (shares the column x-axis with the rows).
+    tracks : list of tuple
+        ``(exon_spans, strand, stop_columns, label, colour)`` per gene.
+    n_cols : int
+        Number of alignment columns (for the shared x-range).
+    fig_w : float
+        Figure width in inches, used to scale the arrowhead length in columns.
+
+    Returns
+    -------
+    None
+        The tracks are drawn in place.
+    """
+    from matplotlib.collections import PathCollection
+    from matplotlib.lines import Line2D
+
+    ax.set_facecolor(SURFACE)
+    half_h = 0.22
+    # Arrowhead length in columns: a small, roughly font-sized fraction of the
+    # visible width so it reads at report scale without swamping short exons.
+    arrow_len = max(1.0, n_cols / max(fig_w, 1.0) * 0.06)
+    rx = arrow_len * 0.7
+
+    paths, facecolors = [], []
+    for t, (exon_spans, strand, stop_cols, _label, colour) in enumerate(tracks):
+        center = t + 0.55
+        y0, y1 = center - half_h, center + half_h
+        spans = [(float(s), float(e)) for s, e in exon_spans]
+        if spans:
+            gmin = min(s for s, _ in spans)
+            gmax = max(e for _, e in spans)
+            # Join exons with a midline behind the segments (intron line).
+            ax.add_line(
+                Line2D(
+                    [gmin - 0.5, gmax + 0.5],
+                    [center, center],
+                    color=colour,
+                    linewidth=1.1,
+                    zorder=1,
+                )
+            )
+            for s, e in spans:
+                paths.append(
+                    _gene_exon_path(
+                        s - 0.5, e + 0.5, y0, y1, strand, rx, half_h * 0.6, arrow_len
+                    )
+                )
+                facecolors.append(colour)
+        for sc in stop_cols:
+            ax.text(
+                int(sc),
+                center - half_h - 0.16,
+                '*',
+                ha='center',
+                va='center',
+                fontsize=9,
+                fontweight='bold',
+                color='#b4292a',
+                zorder=4,
+            )
+
+    if paths:
+        ax.add_collection(
+            PathCollection(
+                paths,
+                facecolors=facecolors,
+                edgecolors=SURFACE,
+                linewidths=0.4,
+                zorder=2,
+            )
+        )
+
+    ax.set_xlim(-0.5, n_cols - 0.5)
+    ax.set_ylim(len(tracks) + 0.05, -0.05)  # inverted, room for '*' above track 0
+    ax.set_yticks([t + 0.55 for t in range(len(tracks))])
+    ax.set_yticklabels(
+        [label for _s, _st, _sc, label, _c in tracks],
+        fontsize=TICK_LABEL_SIZE,
+        color=INK_MUTED,
+    )
+    ax.tick_params(colors=AXIS_INK, labelsize=TICK_LABEL_SIZE, length=2.5, width=0.6)
+    for side in ('top', 'right', 'left'):
+        ax.spines[side].set_visible(False)
+    ax.spines['bottom'].set_color(AXIS_INK)
+    ax.spines['bottom'].set_linewidth(0.6)
 
 
 def rip_completion_bar(

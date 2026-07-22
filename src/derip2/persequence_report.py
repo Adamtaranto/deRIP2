@@ -554,9 +554,9 @@ def _panel_html(
     deripd_aa : dict of str to str
         Per-gene deRIP'd translations, keyed by gene identifier.
     cds_gene_cols : sequence of tuple, optional
-        ``(gene, cds_columns, colour)`` triples with each gene's CDS projected
-        onto the shared alignment columns; used to draw the per-subject CDS
-        track. Empty when no GFF was supplied.
+        ``(gene, cds_columns, exon_spans, colour)`` with each gene's CDS
+        projected onto the shared alignment columns; used to draw the
+        per-subject CDS track. Empty when no GFF was supplied.
     genetic_code : int, optional
         NCBI translation table for the projected stop-codon calls (default: 1).
 
@@ -598,11 +598,11 @@ def _panel_html(
     if cds_gene_cols:
         from derip2.annotation import cds_stop_columns
 
-        for gene, cols, colour in cds_gene_cols:
+        for gene, cols, exon_spans, colour in cds_gene_cols:
             stops = cds_stop_columns(
                 gene, cls.arr[row_index], cols, genetic_code=genetic_code
             )
-            cds_tracks.append((cols, stops, gene.gene_id, colour))
+            cds_tracks.append((exon_spans, gene.strand, stops, gene.gene_id, colour))
 
     strip = sequence_row_strip(
         cls,
@@ -668,10 +668,11 @@ def _panel_html(
         'the reference are faded so the mismatches stand out. Triangle markers '
         'above the subject mark its role at each RIP-informative column, and '
         'RIP-like columns are shaded grey, as in the alignment-wide plot. When a '
-        'gene model is supplied, a CDS track is drawn below with a bold red '
-        '<code>*</code> at each stop codon in this sequence’s projected reading '
-        'frame. Use the zoom control, or scroll horizontally, on long '
-        'alignments.</p>'
+        'gene model is supplied, a sub-plot below shows each CDS as rounded '
+        'segments (yellow) joined across introns, with an arrowhead giving the '
+        'strand, and a bold red <code>*</code> above the track at each stop codon '
+        'in this sequence’s projected reading frame. Use the zoom control, or '
+        'scroll horizontally, on long alignments.</p>'
         f'{_alignment_row_legend()}'
         f'<div class="col-scroll">{strip_svg}</div>'
         '<h3>Per-sequence strand bias</h3>'
@@ -821,8 +822,10 @@ def _fix_wide_axes(fig, width_in, n_cols, *, top_in, bottom_in):
         top=1.0 - top_in / height_in,
         bottom=bottom_in / height_in,
     )
-    # A shared x-range so both strips map columns to identical pixels.
-    fig.axes[0].set_xlim(-0.5, n_cols - 0.5)
+    # A shared x-range so every strip (and any annotation sub-plot) maps columns
+    # to identical pixels.
+    for axis in fig.axes:
+        axis.set_xlim(-0.5, n_cols - 0.5)
 
 
 def _fix_spectrum_axes(fig):
@@ -916,6 +919,7 @@ def write_per_sequence_report(
             DEFAULT_ANNOTATION_COLORS,
             build_annotation_spans,
             cds_alignment_columns,
+            cds_exon_spans,
             compute_effects_for_alignment,
             deripd_translations,
             parse_gff3,
@@ -948,7 +952,12 @@ def write_per_sequence_report(
                 cols = cds_alignment_columns(gene, u2c)
                 if cols:
                     cds_gene_cols.append(
-                        (gene, np.asarray(cols, dtype=int), cds_colour)
+                        (
+                            gene,
+                            np.asarray(cols, dtype=int),
+                            cds_exon_spans(gene, u2c),
+                            cds_colour,
+                        )
                     )
         overview_track = build_annotation_spans(genes_by_seqid, row_lookup)
 

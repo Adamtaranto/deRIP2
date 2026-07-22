@@ -53,9 +53,9 @@ for _b, _c in (('A', 'T'), ('T', 'A'), ('C', 'G'), ('G', 'C')):
 # Default colours for the alignment annotation track, keyed by feature type. A
 # user-supplied two-column file overrides these (:func:`load_annotation_colors`).
 DEFAULT_ANNOTATION_COLORS = {
-    'gene': '#4a3aa7',  # violet
+    'gene': '#008300',  # green
     'mRNA': '#2a78d6',  # blue
-    'CDS': '#008300',  # green
+    'CDS': '#efb700',  # yellow
     'exon': '#5aa469',  # light green
 }
 _FALLBACK_ANNOTATION_COLOR = '#898781'  # grey for unlisted types
@@ -606,6 +606,37 @@ def cds_alignment_columns(gene: Gene, ungapped_to_col: np.ndarray):
         exon runs past the end of the sequence.
     """
     return _cds_columns_transcription_order(gene, ungapped_to_col)
+
+
+def cds_exon_spans(gene: Gene, ungapped_to_col: np.ndarray):
+    """
+    Project each CDS exon onto its ``(start_col, end_col)`` alignment span.
+
+    One span per exon (genomic order), for drawing a gene-model track where the
+    exons are separate segments joined across the introns. Exons running past the
+    end of the sequence are skipped.
+
+    Parameters
+    ----------
+    gene : Gene
+        The gene to project.
+    ungapped_to_col : numpy.ndarray
+        The owning sequence's ungapped-to-column map.
+
+    Returns
+    -------
+    list of tuple of int
+        ``(start_col, end_col)`` per exon, ascending by column.
+    """
+    n_ungapped = ungapped_to_col.shape[0]
+    spans = []
+    for exon in gene.cds:  # sorted ascending by genomic start
+        if exon.end > n_ungapped:
+            continue
+        cols = ungapped_to_col[exon.start - 1 : exon.end]
+        if cols.size:
+            spans.append((int(cols.min()), int(cols.max())))
+    return spans
 
 
 def cds_stop_columns(

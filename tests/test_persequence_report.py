@@ -387,24 +387,43 @@ def test_report_without_gff_has_no_effect_panel(mintest_derip, tmp_path):
 
 
 def test_row_strip_draws_cds_track(mintest_derip):
-    """A cds_tracks argument adds a labelled track row with stop-codon marks."""
+    """A cds_tracks argument adds a labelled annotation sub-plot with stop marks."""
     import numpy as np
+    from matplotlib.collections import PathCollection
 
     cls = mintest_derip.column_classes
-    cds_cols = np.array([0, 1, 2, 3, 4, 5])
+    # One two-exon gene on the plus strand, with a stop codon at column 4.
+    exon_spans = [(0, 2), (4, 6)]
     stop_cols = np.array([4])
     fig = sequence_row_strip(
         cls,
         0,
         seq_id='Seq1',
         consensus_seq=str(mintest_derip.gapped_consensus.seq),
-        cds_tracks=[(cds_cols, stop_cols, 'geneX', '#008300')],
+        cds_tracks=[(exon_spans, '+', stop_cols, 'geneX', '#efb700')],
     )
-    ax = fig.axes[0]
-    # Subject, deRIP and the CDS track -> three labelled rows.
-    assert 'geneX' in [t.get_text() for t in ax.get_yticklabels()]
-    # A bold '*' text artist marks the stop column.
-    assert any(t.get_text() == '*' for t in ax.texts)
+    # The annotation lives in its own sub-plot (a second axis).
+    assert len(fig.axes) == 2
+    ann = fig.axes[1]
+    assert 'geneX' in [t.get_text() for t in ann.get_yticklabels()]
+    # Two exon glyphs in one PathCollection, and a '*' stop marker above them.
+    colls = [c for c in ann.collections if isinstance(c, PathCollection)]
+    assert colls and len(colls[0].get_paths()) == 2
+    assert any(t.get_text() == '*' for t in ann.texts)
+
+
+def test_gene_exon_path_arrow_direction():
+    """The exon glyph's arrow tip points in the strand direction."""
+    from derip2.plotting.persequence import _gene_exon_path
+
+    plus = _gene_exon_path(0, 10, 0.0, 1.0, '+', 1.0, 0.3, 2.0)
+    minus = _gene_exon_path(0, 10, 0.0, 1.0, '-', 1.0, 0.3, 2.0)
+    ymid = 0.5
+    # The arrow tip is the vertex sitting at the band midline.
+    plus_tip = [x for x, y in plus.vertices if abs(y - ymid) < 1e-9]
+    minus_tip = [x for x, y in minus.vertices if abs(y - ymid) < 1e-9]
+    assert max(plus_tip) == 10  # '+' tip at the right end
+    assert min(minus_tip) == 0  # '-' tip at the left end
 
 
 def test_report_total_rip_events(mintest_derip, tmp_path):
