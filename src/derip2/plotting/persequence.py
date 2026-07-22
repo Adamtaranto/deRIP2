@@ -66,6 +66,9 @@ PRODUCT_COLOR = ROLE_COLORS['substrate']  # orange: the RIP product base (T / A)
 SUBSTRATE_COLOR = ROLE_COLORS['product']  # blue: the surviving substrate
 NONRIP_COLOR = '#a05fb4'  # violet: deamination outside RIP dinucleotide context
 
+# Opacity of subject bases that match the deRIP'd reference; mismatches are 1.0.
+MATCH_ALPHA = 0.3
+
 
 def _hex_to_rgb(color: str):
     """
@@ -295,6 +298,7 @@ def sequence_row_strip(
     *,
     seq_id: Optional[str] = None,
     consensus_seq: Optional[str] = None,
+    cds_tracks=None,
     title: Optional[str] = None,
     height: float = 1.0,
     width: Optional[float] = None,
@@ -323,6 +327,11 @@ def sequence_row_strip(
         Subject sequence identifier, used to label its row.
     consensus_seq : str, optional
         The deRIP'd reference (one base per column), drawn as the second row.
+    cds_tracks : list of tuple, optional
+        Gene-annotation tracks to draw below the deRIP row, each
+        ``(cds_columns, stop_columns, label, colour)``: the alignment columns the
+        CDS covers (coloured band), the columns of this subject's stop codons
+        (marked ``*``), a row label and a hex colour.
     title : str, optional
         Figure title. Untitled by default (the report supplies a heading).
     height : float, optional
@@ -353,8 +362,9 @@ def sequence_row_strip(
         ----------
         bytes_row : numpy.ndarray
             ``(n_cols,)`` ``'S1'`` bases for the row.
-        alpha : float
-            Opacity applied to every non-gap base (gaps stay opaque white).
+        alpha : float or numpy.ndarray
+            Opacity for every non-gap base; either a scalar or a ``(n_cols,)``
+            per-column array (gaps stay opaque white regardless).
 
         Returns
         -------
@@ -379,7 +389,20 @@ def sequence_row_strip(
     #   deRIP    in  [1 + GAP, 2 + GAP]
     GAP = 0.22
     MARKER_Y = -0.5
-    subject_rgba = _base_rgba(row, 1.0)[np.newaxis, :, :]
+
+    # Subject bases that match the deRIP'd reference are drawn faded so the eye
+    # is drawn to the mismatches (where RIP or other change acted); mismatches
+    # stay at full opacity. Gaps are handled inside _base_rgba (kept opaque).
+    cons_bytes = (
+        np.frombuffer(consensus_seq.upper().encode('ascii'), dtype='S1')
+        if consensus_seq is not None
+        else None
+    )
+    if cons_bytes is not None:
+        subj_alpha = np.where(row == cons_bytes, MATCH_ALPHA, 1.0)
+    else:
+        subj_alpha = 1.0
+    subject_rgba = _base_rgba(row, subj_alpha)[np.newaxis, :, :]
 
     # Columns the whole-MSA strand-bias plot would shade: a RIP product observed
     # on either strand anywhere in the column (same rule as plot_strand_bias).
@@ -406,10 +429,9 @@ def sequence_row_strip(
         )
         yticks, row_labels = [0.5], [seq_id or f'row {i}']
         ref_bottom = 2.0 + GAP
-        if consensus_seq is not None:
-            cons = np.frombuffer(consensus_seq.upper().encode('ascii'), dtype='S1')
+        if cons_bytes is not None:
             ax.imshow(
-                _base_rgba(cons, 1.0)[np.newaxis, :, :],
+                _base_rgba(cons_bytes, 1.0)[np.newaxis, :, :],
                 aspect='auto',
                 interpolation='nearest',
                 extent=(-0.5, n_cols - 0.5, ref_bottom, 1.0 + GAP),
@@ -419,6 +441,45 @@ def sequence_row_strip(
             row_labels.append('deRIP')
         else:
             ref_bottom = 1.0
+
+        # Gene-annotation tracks below the deRIP row: one band per track, the CDS
+        # columns coloured (introns/gaps left blank), with a bold red '*' at each
+        # projected stop codon for THIS subject.
+        TRACK_H, TRACK_GAP = 0.55, 0.14
+        tracks_top = ref_bottom + 0.18
+        for t, (cds_cols, stop_cols, label, colour) in enumerate(cds_tracks or []):
+            top = tracks_top + t * (TRACK_H + TRACK_GAP)
+            bottom = top + TRACK_H
+            if len(cds_cols):
+                band = np.zeros((1, n_cols, 4), dtype=float)
+                cds_cols = np.asarray(cds_cols, dtype=int)
+                band[0, cds_cols, :3] = _hex_to_rgb(colour)
+                band[0, cds_cols, 3] = 1.0
+                ax.imshow(
+                    band,
+                    aspect='auto',
+                    interpolation='nearest',
+                    extent=(-0.5, n_cols - 0.5, bottom, top),
+                    zorder=2,
+                )
+            for sc in stop_cols:
+                ax.text(
+                    int(sc),
+                    (top + bottom) / 2.0,
+                    '*',
+                    ha='center',
+                    va='center',
+                    fontsize=9,
+                    fontweight='bold',
+                    color='#b4292a',
+                    zorder=4,
+                )
+            yticks.append((top + bottom) / 2.0)
+            row_labels.append(label)
+        n_tracks = len(cds_tracks or [])
+        tracks_extent = (
+            tracks_top + n_tracks * (TRACK_H + TRACK_GAP) if n_tracks else ref_bottom
+        )
 
         # Triangle markers above the subject row, coloured by this sequence's role.
         for cols, colour in marker_sets:
@@ -435,7 +496,7 @@ def sequence_row_strip(
                 )
 
         bottom_pad = 0.35
-        y_top, y_bottom = MARKER_Y - 0.35, ref_bottom + bottom_pad
+        y_top, y_bottom = MARKER_Y - 0.35, tracks_extent + bottom_pad
         ax.set_ylim(y_bottom, y_top)  # inverted
 
         # RIP-like column shading as a single raster layer rather than one

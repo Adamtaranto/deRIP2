@@ -472,6 +472,8 @@ def _panel_html(
     effects_by_seq,
     genes_by_seqid,
     deripd_aa,
+    cds_gene_cols=(),
+    genetic_code=1,
 ):
     """
     Build the HTML for one sequence's panel.
@@ -496,6 +498,12 @@ def _panel_html(
         Genes keyed by sequence identifier; empty when no GFF was supplied.
     deripd_aa : dict of str to str
         Per-gene deRIP'd translations, keyed by gene identifier.
+    cds_gene_cols : sequence of tuple, optional
+        ``(gene, cds_columns, colour)`` triples with each gene's CDS projected
+        onto the shared alignment columns; used to draw the per-subject CDS
+        track. Empty when no GFF was supplied.
+    genetic_code : int, optional
+        NCBI translation table for the projected stop-codon calls (default: 1).
 
     Returns
     -------
@@ -528,13 +536,27 @@ def _panel_html(
     # alignments. The zoom control scales both figures further, together.
     wide_w = max(6.0, min(360.0, n_cols * 0.09))
 
+    # Project each gene's CDS onto this subject: same alignment columns for all
+    # sequences, but the stop codons are this subject's own (RIP often adds
+    # premature stops). One track band per gene, drawn below the deRIP row.
+    cds_tracks = []
+    if cds_gene_cols:
+        from derip2.annotation import cds_stop_columns
+
+        for gene, cols, colour in cds_gene_cols:
+            stops = cds_stop_columns(
+                gene, cls.arr[row_index], cols, genetic_code=genetic_code
+            )
+            cds_tracks.append((cols, stops, gene.gene_id, colour))
+
     strip = sequence_row_strip(
         cls,
         row_index,
         seq_id=seq_id,
         consensus_seq=consensus_seq,
+        cds_tracks=cds_tracks,
         width=wide_w,
-        height=2.0,
+        height=2.0 + 0.75 * len(cds_tracks),
     )
     _fix_wide_axes(strip, wide_w, n_cols, top_in=0.3, bottom_in=0.4)
     strip_svg = _figure_to_svg(strip, f's{row_index}row-', tight=False)
@@ -587,11 +609,14 @@ def _panel_html(
         f'<span class="seqlen">({ungapped_len} nt)</span></h2>'
         '<h3>Alignment row</h3>'
         '<p class="desc">The subject sequence (top) and the reconstructed deRIP’d '
-        'reference (below), coloured by base identity. Triangle '
-        'markers above the subject mark its role at each RIP-informative column; '
-        'RIP-like columns — those the whole-alignment strand-bias analysis flags '
-        '— are shaded grey, as in the alignment-wide plot. Use the zoom control '
-        'in the toolbar, or scroll horizontally, to inspect long alignments.</p>'
+        'reference (below), coloured by base identity; subject bases that match '
+        'the reference are faded so the mismatches stand out. Triangle markers '
+        'above the subject mark its role at each RIP-informative column, and '
+        'RIP-like columns are shaded grey, as in the alignment-wide plot. When a '
+        'gene model is supplied, a CDS track is drawn below with a bold red '
+        '<code>*</code> at each stop codon in this sequence’s projected reading '
+        'frame. Use the zoom control, or scroll horizontally, on long '
+        'alignments.</p>'
         f'{_alignment_row_legend()}'
         f'<div class="col-scroll">{strip_svg}</div>'
         '<h3>Per-sequence strand bias</h3>'
@@ -747,11 +772,17 @@ def write_per_sequence_report(
     genes_by_seqid = {}
     effects_by_seq = {}
     deripd_aa = {}
+    cds_gene_cols = []  # (gene, cds_columns) projected onto shared alignment columns
     if gff is not None:
+        import numpy as np
+
         from derip2.annotation import (
+            DEFAULT_ANNOTATION_COLORS,
+            cds_alignment_columns,
             compute_effects_for_alignment,
             deripd_translations,
             parse_gff3,
+            ungapped_to_column_map,
             warn_unmatched_seqids,
         )
 
@@ -763,6 +794,23 @@ def write_per_sequence_report(
         deripd_aa = deripd_translations(
             derip, genes_by_seqid, genetic_code=genetic_code
         )
+
+        # Project each gene's CDS onto its owning sequence's alignment columns
+        # ONCE; the same columns then drive every subject's track (each subject's
+        # stop codons are computed per panel).
+        id_to_row = {rec.id: i for i, rec in enumerate(derip.alignment)}
+        cds_colour = DEFAULT_ANNOTATION_COLORS['CDS']
+        for seqid, genes in genes_by_seqid.items():
+            ri = id_to_row.get(seqid)
+            if ri is None:
+                continue
+            u2c = ungapped_to_column_map(derip.column_classes.arr[ri])
+            for gene in genes:
+                cols = cds_alignment_columns(gene, u2c)
+                if cols:
+                    cds_gene_cols.append(
+                        (gene, np.asarray(cols, dtype=int), cds_colour)
+                    )
 
     indices, truncated = _select_rows(df, max_seqs)
 
@@ -777,6 +825,8 @@ def write_per_sequence_report(
             effects_by_seq,
             genes_by_seqid,
             deripd_aa,
+            cds_gene_cols,
+            genetic_code,
         )
         for panel_number, row_index in enumerate(indices, start=1)
     ]

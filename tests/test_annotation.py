@@ -16,6 +16,8 @@ import pytest
 from derip2.annotation import (
     Feature,
     Gene,
+    cds_alignment_columns,
+    cds_stop_columns,
     parse_gff3,
     predict_gene_effects,
     translate_cds,
@@ -253,6 +255,38 @@ def test_minus_strand_uses_transcription_first_exon_phase():
 
     # Correct: phase 0 from the 5' exon -> full frame -> M K P *
     assert translate_cds(gene, seq, ungapped_to_column_map(seq)) == 'MKP*'
+
+
+def test_cds_alignment_columns_and_stops():
+    """CDS columns project onto the alignment; stop codons map back to columns."""
+    # Plus-strand single exon; coding ATG AAA TAA -> M K * (stop at codon 3).
+    seq = row('ATGAAATAA')
+    gene = cds_gene('g', 'S', '+', [(1, 9)])
+    u2c = ungapped_to_column_map(seq)
+    cols = cds_alignment_columns(gene, u2c)
+    assert cols == [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    # The stop codon is codon 3 (0-based k=2); its middle base is column 7.
+    assert cds_stop_columns(gene, seq, cols) == [7]
+
+
+def test_cds_stop_columns_minus_strand():
+    """Stops are found in the correct frame for a minus-strand projection."""
+    from Bio.Seq import Seq as _Seq
+
+    # Coding TAA is a stop; put it mid-CDS: ATG TAA GGG -> M * G.
+    coding = 'ATGTAAGGG'
+    seq = row(str(_Seq(coding).reverse_complement()))
+    gene = cds_gene('g', 'S', '-', [(1, 9)])
+    cols = cds_alignment_columns(gene, ungapped_to_column_map(seq))
+    stops = cds_stop_columns(gene, seq, cols)
+    assert len(stops) == 1
+
+
+def test_cds_stop_columns_empty_for_no_columns():
+    """An empty column list yields no stops rather than erroring."""
+    seq = row('ATGAAA')
+    gene = cds_gene('g', 'S', '+', [(1, 6)])
+    assert cds_stop_columns(gene, seq, []) == []
 
 
 # --- alignment-level orchestration -----------------------------------------

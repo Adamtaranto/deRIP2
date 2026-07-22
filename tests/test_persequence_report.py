@@ -382,6 +382,27 @@ def test_report_without_gff_has_no_effect_panel(mintest_derip, tmp_path):
     assert 'CDS SNP effects' not in out.read_text()
 
 
+def test_row_strip_draws_cds_track(mintest_derip):
+    """A cds_tracks argument adds a labelled track row with stop-codon marks."""
+    import numpy as np
+
+    cls = mintest_derip.column_classes
+    cds_cols = np.array([0, 1, 2, 3, 4, 5])
+    stop_cols = np.array([4])
+    fig = sequence_row_strip(
+        cls,
+        0,
+        seq_id='Seq1',
+        consensus_seq=str(mintest_derip.gapped_consensus.seq),
+        cds_tracks=[(cds_cols, stop_cols, 'geneX', '#008300')],
+    )
+    ax = fig.axes[0]
+    # Subject, deRIP and the CDS track -> three labelled rows.
+    assert 'geneX' in [t.get_text() for t in ax.get_yticklabels()]
+    # A bold '*' text artist marks the stop column.
+    assert any(t.get_text() == '*' for t in ax.texts)
+
+
 def test_report_total_rip_events(mintest_derip, tmp_path):
     """The RIP-events card shows a total equal to forward + reverse."""
     out = tmp_path / 'per_seq.html'

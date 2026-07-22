@@ -43,6 +43,13 @@ _ACCEPTOR = 'AG'
 # Complement used when reading a minus-strand CDS off the forward alignment.
 _COMPLEMENT = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'N': 'N', '-': '-'}
 
+# Byte-value complement lookup for vectorised minus-strand reads: A/C/G/T map to
+# their complement, every other (non-gap) byte maps to 'N'. Indexed by the raw
+# uint8 value of an upper-cased base. Gaps are dropped before this is applied.
+_COMPLEMENT_U8 = np.full(256, ord('N'), dtype=np.uint8)
+for _b, _c in (('A', 'T'), ('T', 'A'), ('C', 'G'), ('G', 'C')):
+    _COMPLEMENT_U8[ord(_b)] = ord(_c)
+
 # Default colours for the alignment annotation track, keyed by feature type. A
 # user-supplied two-column file overrides these (:func:`load_annotation_colors`).
 DEFAULT_ANNOTATION_COLORS = {
@@ -471,15 +478,18 @@ def _read_coding_bases(
         ``(bases, kept_columns)`` — the coding sequence string and the column
         index behind each of its bases.
     """
-    bases: List[str] = []
-    kept: List[int] = []
-    for col in columns:
-        base = row_bytes[col].decode('ascii').upper()
-        if base == '-':
-            continue
-        bases.append(_COMPLEMENT.get(base, 'N') if strand == '-' else base)
-        kept.append(col)
-    return ''.join(bases), kept
+    cols = np.asarray(columns, dtype=int)
+    if cols.size == 0:
+        return '', []
+    sub = np.char.upper(row_bytes[cols])  # (m,) 'S1', column order
+    nongap = sub != b'-'
+    kept_cols = cols[nongap]
+    kept = sub[nongap]
+    if strand == '-':
+        # Vectorised complement via the byte lookup (gaps already dropped).
+        kept = _COMPLEMENT_U8[kept.view(np.uint8)].view('S1')
+    bases = kept.tobytes().decode('ascii')
+    return bases, kept_cols.tolist()
 
 
 def _first_cds_phase(gene: Gene) -> Optional[int]:
@@ -571,6 +581,82 @@ def translate_cds(
     if usable <= 0:
         return ''
     return str(Seq(bases[:usable]).translate(table=genetic_code))
+
+
+def cds_alignment_columns(gene: Gene, ungapped_to_col: np.ndarray):
+    """
+    Project a gene's CDS onto its alignment columns, in transcription order.
+
+    Thin public wrapper over the internal transcription-order column builder,
+    for callers that want the CDS's alignment columns once (e.g. to draw an
+    annotation track and reuse the columns across every aligned sequence).
+
+    Parameters
+    ----------
+    gene : Gene
+        The gene to project.
+    ungapped_to_col : numpy.ndarray
+        The owning sequence's ungapped-to-column map
+        (:func:`ungapped_to_column_map`).
+
+    Returns
+    -------
+    list of int or None
+        Alignment columns in 5'->3' transcription order, or ``None`` if a CDS
+        exon runs past the end of the sequence.
+    """
+    return _cds_columns_transcription_order(gene, ungapped_to_col)
+
+
+def cds_stop_columns(
+    gene: Gene,
+    subject_row: np.ndarray,
+    cds_columns,
+    genetic_code: int = 1,
+) -> List[int]:
+    """
+    Alignment columns of stop codons when a CDS is projected onto one sequence.
+
+    The CDS columns (transcription order, from :func:`cds_alignment_columns` on
+    the annotated sequence) are read off ``subject_row``, translated in that
+    sequence's own frame, and every codon translating to a stop is mapped back
+    to the alignment column of its middle base. This is how a projected CDS's
+    premature/terminal stops are marked on a subject's alignment-row track.
+
+    Parameters
+    ----------
+    gene : Gene
+        The gene whose phase/strand define the reading frame.
+    subject_row : numpy.ndarray
+        The subject sequence's alignment row (``'S1'`` byte array).
+    cds_columns : sequence of int
+        The CDS alignment columns in transcription order.
+    genetic_code : int, optional
+        NCBI translation table (default: 1).
+
+    Returns
+    -------
+    list of int
+        Alignment columns (middle base) of each stop codon, ascending.
+    """
+    from Bio.Seq import Seq
+
+    if len(cds_columns) == 0:
+        return []
+    bases, kept = _read_coding_bases(subject_row, list(cds_columns), gene.strand)
+    phase = _first_cds_phase(gene)
+    bases, kept = _trim_phase(bases, kept, phase)
+    usable = len(bases) - (len(bases) % 3)
+    if usable <= 0:
+        return []
+    aa = str(Seq(bases[:usable]).translate(table=genetic_code))
+    stops = []
+    for k, residue in enumerate(aa):
+        if residue == '*':
+            mid = 3 * k + 1
+            if mid < len(kept):
+                stops.append(int(kept[mid]))
+    return sorted(stops)
 
 
 def _revcomp(bases: str) -> str:
