@@ -86,6 +86,35 @@ _STAT_SECTIONS = (
 )
 
 
+def _inject_svg_titles(svg, prefix, titles):
+    """
+    Insert an SVG ``<title>`` (native hover tooltip) into named ``<g>`` groups.
+
+    Matplotlib writes an artist's ``gid`` as ``<g id="gid">``; ``_figure_to_svg``
+    then namespaces every id with ``prefix``. Inserting a ``<title>`` child right
+    after that group's opening tag makes browsers show it as a tooltip when the
+    pointer is over the group's shape.
+
+    Parameters
+    ----------
+    svg : str
+        The inline SVG fragment (already id-prefixed).
+    prefix : str
+        The id prefix applied by :func:`derip2.report._figure_to_svg`.
+    titles : dict of str to str
+        Maps each artist ``gid`` to its tooltip text.
+
+    Returns
+    -------
+    str
+        The SVG with ``<title>`` elements inserted.
+    """
+    for gid, text in titles.items():
+        opening = f'<g id="{prefix}{gid}">'
+        svg = svg.replace(opening, f'{opening}<title>{escape(text)}</title>', 1)
+    return svg
+
+
 def _zoom_control():
     """
     Build the (class-based) zoom control for a panel header.
@@ -615,6 +644,9 @@ def _panel_html(
     )
     _fix_wide_axes(strip, wide_w, n_cols, top_in=0.3, bottom_in=0.4)
     strip_svg = _figure_to_svg(strip, f's{row_index}row-', tight=False)
+    strip_svg = _inject_svg_titles(
+        strip_svg, f's{row_index}row-', getattr(strip, 'annotation_titles', {})
+    )
     plt.close(strip)
 
     bias = per_sequence_strand_bias(cls, row_index, seq_id=seq_id, width=wide_w)
@@ -671,8 +703,9 @@ def _panel_html(
         'gene model is supplied, a sub-plot below shows each CDS as rounded '
         'segments (yellow) joined across introns, with an arrowhead giving the '
         'strand, and a bold red <code>*</code> above the track at each stop codon '
-        'in this sequence’s projected reading frame. Use the zoom control, or '
-        'scroll horizontally, on long alignments.</p>'
+        'in this sequence’s projected reading frame. Hover a segment to see its '
+        'annotation id and CDS exon number. Use the zoom control, or scroll '
+        'horizontally, on long alignments.</p>'
         f'{_alignment_row_legend()}'
         f'<div class="col-scroll">{strip_svg}</div>'
         '<h3>Per-sequence strand bias</h3>'

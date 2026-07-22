@@ -592,9 +592,12 @@ def sequence_row_strip(
 
         # --- annotation sub-plot: gene models -----------------------------------
         x_axis_ax = ax
+        fig.annotation_titles = {}  # gid -> tooltip text, injected as SVG <title>
         if ax_ann is not None:
             x_axis_ax = ax_ann
-            _draw_annotation_tracks(ax_ann, tracks, n_cols, fig_w)
+            fig.annotation_titles = _draw_annotation_tracks(
+                ax_ann, tracks, n_cols, fig_w
+            )
             ax.tick_params(labelbottom=False)  # x labels belong to the track axis
 
         x_axis_ax.set_xlabel(
@@ -635,11 +638,12 @@ def _draw_annotation_tracks(ax, tracks, n_cols, fig_w):
 
     Returns
     -------
-    None
-        The tracks are drawn in place.
+    dict of str to str
+        Maps each exon patch's ``gid`` to the tooltip text (the annotation id,
+        plus the CDS exon number) that the report injects as an SVG ``<title>``.
     """
-    from matplotlib.collections import PathCollection
     from matplotlib.lines import Line2D
+    from matplotlib.patches import PathPatch
 
     ax.set_facecolor(SURFACE)
     half_h = 0.22
@@ -648,8 +652,11 @@ def _draw_annotation_tracks(ax, tracks, n_cols, fig_w):
     arrow_len = max(1.0, n_cols / max(fig_w, 1.0) * 0.06)
     rx = arrow_len * 0.7
 
-    paths, facecolors = [], []
-    for t, (exon_spans, strand, stop_cols, _label, colour) in enumerate(tracks):
+    # Each exon is a separate patch (not a collection) so it can carry a gid and,
+    # after SVG export, an individual <title> tooltip. Exon counts are small.
+    titles = {}
+    gid_n = 0
+    for t, (exon_spans, strand, stop_cols, label, colour) in enumerate(tracks):
         center = t + 0.55
         y0, y1 = center - half_h, center + half_h
         spans = [(float(s), float(e)) for s, e in exon_spans]
@@ -666,13 +673,25 @@ def _draw_annotation_tracks(ax, tracks, n_cols, fig_w):
                     zorder=1,
                 )
             )
-            for s, e in spans:
-                paths.append(
+            n_exons = len(spans)
+            for j, (s, e) in enumerate(spans):
+                # Number exons in transcription order (5'->3'): ascending for the
+                # plus strand, descending for the minus strand.
+                exon_no = n_exons - j if strand == '-' else j + 1
+                gid = f'anntip{gid_n}'
+                gid_n += 1
+                titles[gid] = f'{label} — CDS exon {exon_no}/{n_exons}'
+                patch = PathPatch(
                     _gene_exon_path(
                         s - 0.5, e + 0.5, y0, y1, strand, rx, half_h * 0.6, arrow_len
-                    )
+                    ),
+                    facecolor=colour,
+                    edgecolor=SURFACE,
+                    linewidth=0.4,
+                    zorder=2,
                 )
-                facecolors.append(colour)
+                patch.set_gid(gid)
+                ax.add_patch(patch)
         for sc in stop_cols:
             ax.text(
                 int(sc),
@@ -685,17 +704,6 @@ def _draw_annotation_tracks(ax, tracks, n_cols, fig_w):
                 color='#b4292a',
                 zorder=4,
             )
-
-    if paths:
-        ax.add_collection(
-            PathCollection(
-                paths,
-                facecolors=facecolors,
-                edgecolors=SURFACE,
-                linewidths=0.4,
-                zorder=2,
-            )
-        )
 
     ax.set_xlim(-0.5, n_cols - 0.5)
     ax.set_ylim(len(tracks) + 0.05, -0.05)  # inverted, room for '*' above track 0
@@ -710,6 +718,7 @@ def _draw_annotation_tracks(ax, tracks, n_cols, fig_w):
         ax.spines[side].set_visible(False)
     ax.spines['bottom'].set_color(AXIS_INK)
     ax.spines['bottom'].set_linewidth(0.6)
+    return titles
 
 
 def rip_completion_bar(

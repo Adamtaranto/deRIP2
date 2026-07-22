@@ -388,7 +388,7 @@ def test_report_without_gff_has_no_effect_panel(mintest_derip, tmp_path):
 
 def test_row_strip_draws_cds_track(mintest_derip):
     """A cds_tracks argument adds a labelled annotation sub-plot with stop marks."""
-    from matplotlib.collections import PathCollection
+    from matplotlib.patches import PathPatch
     import numpy as np
 
     cls = mintest_derip.column_classes
@@ -406,10 +406,16 @@ def test_row_strip_draws_cds_track(mintest_derip):
     assert len(fig.axes) == 2
     ann = fig.axes[1]
     assert 'geneX' in [t.get_text() for t in ann.get_yticklabels()]
-    # Two exon glyphs in one PathCollection, and a '*' stop marker above them.
-    colls = [c for c in ann.collections if isinstance(c, PathCollection)]
-    assert colls and len(colls[0].get_paths()) == 2
+    # Two exon glyphs, each its own patch carrying a tooltip gid, plus a '*'.
+    exon_patches = [p for p in ann.patches if isinstance(p, PathPatch)]
+    assert len(exon_patches) == 2
+    assert all(p.get_gid() for p in exon_patches)
     assert any(t.get_text() == '*' for t in ann.texts)
+    # The figure exposes the gid -> tooltip map for SVG <title> injection.
+    assert set(fig.annotation_titles.values()) == {
+        'geneX — CDS exon 1/2',
+        'geneX — CDS exon 2/2',
+    }
 
 
 def test_gene_exon_path_arrow_direction():
@@ -424,6 +430,18 @@ def test_gene_exon_path_arrow_direction():
     minus_tip = [x for x, y in minus.vertices if abs(y - ymid) < 1e-9]
     assert max(plus_tip) == 10  # '+' tip at the right end
     assert min(minus_tip) == 0  # '-' tip at the left end
+
+
+def test_report_annotation_tooltips(mintest_derip, gff_path, tmp_path):
+    """CDS exon segments carry an SVG <title> tooltip with id and exon number."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out), gff=str(gff_path))
+    html = out.read_text()
+    # mRNA3 is a two-exon plus-strand gene, so both exon numbers appear.
+    assert '<title>mRNA3 — CDS exon 1/2</title>' in html
+    assert '<title>mRNA3 — CDS exon 2/2</title>' in html
+    # A single-exon gene shows exon 1/1.
+    assert '<title>mRNA1 — CDS exon 1/1</title>' in html
 
 
 def test_report_total_rip_events(mintest_derip, tmp_path):
