@@ -617,7 +617,7 @@ def sequence_row_strip(
     return fig
 
 
-def _draw_annotation_tracks(ax, tracks, n_cols, fig_w):
+def _draw_annotation_tracks(ax, tracks, n_cols, fig_w, show_labels=True):
     """
     Draw gene-model annotation tracks into a dedicated sub-plot axis.
 
@@ -635,12 +635,16 @@ def _draw_annotation_tracks(ax, tracks, n_cols, fig_w):
         Number of alignment columns (for the shared x-range).
     fig_w : float
         Figure width in inches, used to scale the arrowhead length in columns.
+    show_labels : bool, optional
+        Whether to label each track row with its gene id on the y-axis. The
+        per-sequence strips label them; the alignment-wide plot suppresses the
+        labels and relies on hover tooltips instead (default: True).
 
     Returns
     -------
     dict of str to str
         Maps each exon patch's ``gid`` to the tooltip text (the annotation id,
-        plus the CDS exon number) that the report injects as an SVG ``<title>``.
+        plus the CDS exon number) that the report injects as a ``data-tip``.
     """
     from matplotlib.lines import Line2D
     from matplotlib.patches import PathPatch
@@ -707,12 +711,15 @@ def _draw_annotation_tracks(ax, tracks, n_cols, fig_w):
 
     ax.set_xlim(-0.5, n_cols - 0.5)
     ax.set_ylim(len(tracks) + 0.05, -0.05)  # inverted, room for '*' above track 0
-    ax.set_yticks([t + 0.55 for t in range(len(tracks))])
-    ax.set_yticklabels(
-        [label for _s, _st, _sc, label, _c in tracks],
-        fontsize=TICK_LABEL_SIZE,
-        color=INK_MUTED,
-    )
+    if show_labels:
+        ax.set_yticks([t + 0.55 for t in range(len(tracks))])
+        ax.set_yticklabels(
+            [label for _s, _st, _sc, label, _c in tracks],
+            fontsize=TICK_LABEL_SIZE,
+            color=INK_MUTED,
+        )
+    else:
+        ax.set_yticks([])
     ax.tick_params(colors=AXIS_INK, labelsize=TICK_LABEL_SIZE, length=2.5, width=0.6)
     for side in ('top', 'right', 'left'):
         ax.spines[side].set_visible(False)

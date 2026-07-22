@@ -277,6 +277,7 @@ def drawMiniAlignment(
     markupdict: Optional[Dict[str, List[RIPPosition]]] = None,
     column_ranges: Optional[List[Tuple[int, int, str, str]]] = None,
     annotation_track: Optional[List[Tuple[int, int, str, str, int]]] = None,
+    cds_tracks: Optional[List[Tuple]] = None,
     show_chars: bool = False,
     draw_boxes: bool = False,
     consensus_seq: Optional[str] = None,
@@ -328,6 +329,12 @@ def drawMiniAlignment(
         columns (already adjusted for gaps by the caller); ``track_row`` (0 at
         the top) stacks spans of different annotation types into separate rows
         (default: None).
+    cds_tracks : list of tuple, optional
+        Rich per-gene CDS tracks, each ``(exon_spans, strand, stop_columns,
+        label, colour)`` in alignment-column coordinates. When given, the
+        annotation sub-plot draws rounded exon segments joined across introns by
+        a coloured midline, a strand arrowhead, and a bold red ``*`` at each stop
+        column; takes precedence over ``annotation_track`` (default: None).
     show_chars : bool, optional
         Whether to display sequence characters inside the colored cells (default: False).
     draw_boxes : bool, optional
@@ -430,7 +437,9 @@ def drawMiniAlignment(
     f = plt.figure(figsize=(width + width_padding, height + height_padding), dpi=dpi)
 
     n_ann_rows = 0
-    if annotation_track:
+    if cds_tracks:
+        n_ann_rows = len(cds_tracks)
+    elif annotation_track:
         n_ann_rows = max(row for *_rest, row in annotation_track) + 1
     ann_ratio = 0.5 * n_ann_rows if n_ann_rows else 0.0
 
@@ -463,9 +472,11 @@ def drawMiniAlignment(
     # markup, the per-column consensus row) into the embedded image rather than
     # emitting thousands of tiny vector rectangles in the SVG. Text, tick labels
     # and the reference marker (zorder >= 200) stay crisp vector. Narrow
-    # alignments keep everything vector, so they render sharply at any zoom.
+    # alignments keep everything vector, so they render sharply at any zoom. The
+    # annotation axis is left untouched: it holds only a handful of gene glyphs,
+    # which must stay vector so their tooltips survive in the SVG.
     if ali_width > 500:
-        for _ax in (a, ann_ax, consensus_ax):
+        for _ax in (a, consensus_ax):
             if _ax is not None:
                 _ax.set_rasterization_zorder(200)
 
@@ -606,10 +617,19 @@ def drawMiniAlignment(
     if column_ranges:
         addColumnRangeMarkers(a, column_ranges, ali_height)
 
-    # Add a stacked gene-annotation track in its own sub-plot below the alignment
-    # if provided. The returned gid -> label map is attached to the figure so the
-    # HTML report can inject hover tooltips onto the inline-SVG overview.
-    if annotation_track and ann_ax is not None:
+    # Add a gene-annotation track in its own sub-plot between the alignment and
+    # the deRIP consensus. Rich CDS tracks (rounded exon segments joined across
+    # introns by a coloured midline, a strand arrowhead, and a bold red '*' at
+    # each stop codon in the projected reading frame) are preferred; a flat span
+    # list is the fallback. The returned gid -> label map is attached to the
+    # figure so the HTML report can inject hover tooltips onto the inline overview.
+    if cds_tracks and ann_ax is not None:
+        from derip2.plotting.persequence import _draw_annotation_tracks
+
+        f.annotation_titles = _draw_annotation_tracks(
+            ann_ax, cds_tracks, ali_width, width, show_labels=False
+        )
+    elif annotation_track and ann_ax is not None:
         f.annotation_titles = addAnnotationTrack(ann_ax, annotation_track, ali_width)
     else:
         f.annotation_titles = {}

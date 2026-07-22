@@ -802,7 +802,7 @@ def _panel_html(
     )
 
 
-def _overview_svg(derip, annotation_track):
+def _overview_svg(derip, cds_tracks):
     """
     Render the full ``--plot`` alignment figure and return it as inline SVG.
 
@@ -816,8 +816,9 @@ def _overview_svg(derip, annotation_track):
     ----------
     derip : derip2.derip.DeRIP
         The analysed DeRIP object.
-    annotation_track : list or None
-        Gene-annotation spans to draw below the alignment (``--gff``), or None.
+    cds_tracks : list or None
+        Rich per-gene CDS tracks ``(exon_spans, strand, stop_columns, label,
+        colour)`` to draw above the consensus (``--gff``), or None.
 
     Returns
     -------
@@ -835,7 +836,7 @@ def _overview_svg(derip, annotation_track):
         show_chars=(ali_height <= 25),
         draw_boxes=(ali_height <= 25),
         flag_corrected=(ali_length < 200),
-        annotation_track=annotation_track,
+        cds_tracks=cds_tracks,
     )
     try:
         svg = _figure_to_svg(fig, 'ovw-', tight=True)
@@ -845,7 +846,7 @@ def _overview_svg(derip, annotation_track):
     return svg
 
 
-def _overview_html(derip, annotation_track):
+def _overview_html(derip, cds_tracks):
     """
     Build the report's front (overview) page: the full alignment + consensus.
 
@@ -853,15 +854,15 @@ def _overview_html(derip, annotation_track):
     ----------
     derip : derip2.derip.DeRIP
         The analysed DeRIP object.
-    annotation_track : list or None
-        Gene-annotation spans for the alignment figure (``--gff``), or None.
+    cds_tracks : list or None
+        Rich per-gene CDS tracks for the alignment figure (``--gff``), or None.
 
     Returns
     -------
     str
         The overview ``<section class="seq-panel">`` (first page of the deck).
     """
-    svg = _overview_svg(derip, annotation_track)
+    svg = _overview_svg(derip, cds_tracks)
     n_total = len(derip.alignment)
     n_cols = derip.alignment.get_alignment_length()
     return (
@@ -1007,9 +1008,9 @@ def write_per_sequence_report(
 
         from derip2.annotation import (
             DEFAULT_ANNOTATION_COLORS,
-            build_annotation_spans,
             cds_alignment_columns,
             cds_exon_spans,
+            cds_stop_columns,
             compute_effects_for_alignment,
             deripd_translations,
             parse_gff3,
@@ -1031,12 +1032,10 @@ def write_per_sequence_report(
         # stop codons are computed per panel).
         id_to_row = {rec.id: i for i, rec in enumerate(derip.alignment)}
         cds_colour = DEFAULT_ANNOTATION_COLORS['CDS']
-        row_lookup = {}
         for seqid, genes in genes_by_seqid.items():
             ri = id_to_row.get(seqid)
             if ri is None:
                 continue
-            row_lookup[seqid] = derip.column_classes.arr[ri]
             u2c = ungapped_to_column_map(derip.column_classes.arr[ri])
             for gene in genes:
                 cols = cds_alignment_columns(gene, u2c)
@@ -1049,7 +1048,22 @@ def write_per_sequence_report(
                             cds_colour,
                         )
                     )
-        overview_track = build_annotation_spans(genes_by_seqid, row_lookup)
+        # Rich CDS tracks for the overview --plot figure: stop codons are read
+        # off the deRIP'd consensus so the track flags stops in the corrected
+        # reading frame (mirrors the per-sequence strips, minus the labels).
+        consensus_row = np.frombuffer(
+            str(derip.gapped_consensus.seq).upper().encode('ascii'), dtype='S1'
+        )
+        overview_track = [
+            (
+                exon_spans,
+                gene.strand,
+                cds_stop_columns(gene, consensus_row, cols, genetic_code=genetic_code),
+                gene.gene_id,
+                colour,
+            )
+            for gene, cols, exon_spans, colour in cds_gene_cols
+        ]
 
     indices, truncated = _select_rows(df, max_seqs)
 

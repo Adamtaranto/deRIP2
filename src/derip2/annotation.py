@@ -354,6 +354,65 @@ def load_annotation_colors(path: str) -> Dict[str, str]:
     return colors
 
 
+def build_cds_tracks(
+    genes_by_seqid: Dict[str, List[Gene]],
+    row_lookup: Dict[str, np.ndarray],
+    subject_row: np.ndarray,
+    genetic_code: int = 1,
+    colors: Optional[Dict[str, str]] = None,
+) -> List[Tuple[List[Tuple[int, int]], str, List[int], str, str]]:
+    """
+    Build rich per-gene CDS tracks for the alignment-wide plot.
+
+    Each gene becomes one track carrying its exon spans (for rounded segments
+    joined across introns), its strand (for the arrowhead), and the alignment
+    columns of every stop codon when its CDS is read in-frame off ``subject_row``
+    — typically the deRIP'd consensus, so the track flags stops in the corrected
+    sequence's own reading frame. The result is ready to pass to
+    :func:`derip2.plotting.minialign.drawMiniAlignment` as ``cds_tracks``.
+
+    Parameters
+    ----------
+    genes_by_seqid : dict of str to list of Gene
+        Parsed genes keyed by sequence identifier.
+    row_lookup : dict of str to numpy.ndarray
+        Maps each annotated sequence identifier to its alignment row
+        (``'S1'`` byte array), used to project ungapped coordinates to columns.
+    subject_row : numpy.ndarray
+        The alignment row (``'S1'`` byte array) whose bases are translated to
+        find stop codons — e.g. the gapped deRIP consensus.
+    genetic_code : int, optional
+        NCBI translation table (default: 1).
+    colors : dict of str to str, optional
+        Feature-type colour map; defaults to :data:`DEFAULT_ANNOTATION_COLORS`.
+
+    Returns
+    -------
+    list of tuple
+        ``(exon_spans, strand, stop_columns, label, colour)`` per gene.
+    """
+    colors = colors or DEFAULT_ANNOTATION_COLORS
+    cds_color = colors.get('CDS', _FALLBACK_ANNOTATION_COLOR)
+    tracks: List[Tuple[List[Tuple[int, int]], str, List[int], str, str]] = []
+    for seqid, genes in genes_by_seqid.items():
+        row = row_lookup.get(seqid)
+        if row is None:
+            continue  # unmatched seqid, already warned elsewhere
+        ungapped_to_col = ungapped_to_column_map(row)
+        for gene in genes:
+            exon_spans = cds_exon_spans(gene, ungapped_to_col)
+            if not exon_spans:
+                continue
+            cols = _cds_columns_transcription_order(gene, ungapped_to_col)
+            stops = (
+                cds_stop_columns(gene, subject_row, cols, genetic_code=genetic_code)
+                if cols
+                else []
+            )
+            tracks.append((exon_spans, gene.strand, stops, gene.gene_id, cds_color))
+    return tracks
+
+
 def build_annotation_spans(
     genes_by_seqid: Dict[str, List[Gene]],
     row_lookup: Dict[str, np.ndarray],

@@ -517,10 +517,12 @@ def main(
     # ---------- Gene annotation (GFF3) ----------
     # Parsed once and reused: an annotation track for --plot, gene effects for
     # the per-sequence report, and the SNP-effect summary written here.
-    annotation_track = None
+    cds_tracks = None
     if gff:
+        import numpy as np
+
         from derip2.annotation import (
-            build_annotation_spans,
+            build_cds_tracks,
             compute_effects_for_alignment,
             deripd_translations,
             load_annotation_colors,
@@ -540,7 +542,18 @@ def main(
             rec.id: derip_obj.column_classes.arr[i]
             for i, rec in enumerate(derip_obj.alignment)
         }
-        annotation_track = build_annotation_spans(genes_by_seqid, row_lookup, colors)
+        # Rich CDS tracks for --plot: stop codons are read off the deRIP'd
+        # consensus, so the track flags stops in the corrected reading frame.
+        consensus_row = np.frombuffer(
+            str(derip_obj.gapped_consensus.seq).upper().encode('ascii'), dtype='S1'
+        )
+        cds_tracks = build_cds_tracks(
+            genes_by_seqid,
+            row_lookup,
+            consensus_row,
+            genetic_code=genetic_code,
+            colors=colors,
+        )
 
         effects_by_seq = compute_effects_for_alignment(
             derip_obj, genes_by_seqid, genetic_code=genetic_code
@@ -574,7 +587,7 @@ def main(
             flag_corrected=(
                 ali_length < 200
             ),  # Flag corrected positions for small alignments
-            annotation_track=annotation_track,
+            cds_tracks=cds_tracks,
         )
 
         if viz_result:

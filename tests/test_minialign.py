@@ -271,6 +271,35 @@ def test_annotation_track_is_labelless_subplot(simple_alignment, tmp_path):
     plt.close(fig)
 
 
+def test_cds_tracks_rich_glyphs_and_stops(simple_alignment):
+    """cds_tracks draws rounded exon PathPatches with tooltips and red '*' stops."""
+    from matplotlib.patches import PathPatch
+    import matplotlib.pyplot as plt
+
+    # One two-exon plus-strand gene with a stop codon at column 2.
+    fig = drawMiniAlignment(
+        simple_alignment,
+        'unused',
+        cds_tracks=[([(0, 0), (2, 3)], '+', [2], 'geneX', '#efb700')],
+        return_figure=True,
+    )
+    # Tooltip map carries the exon-numbered labels (transcription order).
+    assert set(fig.annotation_titles.values()) == {
+        'geneX — CDS exon 1/2',
+        'geneX — CDS exon 2/2',
+    }
+    # The annotation axis holds two gid'd exon PathPatches and a bold red '*'.
+    ann_axes = [
+        ax for ax in fig.axes if [p for p in ax.patches if isinstance(p, PathPatch)]
+    ]
+    assert len(ann_axes) == 1
+    exon_patches = [p for p in ann_axes[0].patches if isinstance(p, PathPatch)]
+    assert len(exon_patches) == 2
+    assert all(p.get_gid() for p in exon_patches)
+    assert any(t.get_text() == '*' for t in ann_axes[0].texts)
+    plt.close(fig)
+
+
 @patch('matplotlib.figure.Figure.savefig')
 def test_drawMiniAlignment_with_title(mock_savefig, simple_alignment):
     """Test drawMiniAlignment with a title."""

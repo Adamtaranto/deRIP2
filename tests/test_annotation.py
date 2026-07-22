@@ -398,3 +398,27 @@ def test_annotation_track_smoke(gff_derip, gff_path, tmp_path):
     result = gff_derip.plot_alignment(output_file=str(out), annotation_track=spans)
     assert result
     assert out.exists() and out.stat().st_size > 0
+
+
+def test_build_cds_tracks(gff_derip, gff_path):
+    """build_cds_tracks yields rich per-gene tracks with consensus-frame stops."""
+    import numpy as np
+
+    from derip2.annotation import build_cds_tracks
+
+    genes = parse_gff3(gff_path)
+    row_lookup = {
+        rec.id: gff_derip.column_classes.arr[i]
+        for i, rec in enumerate(gff_derip.alignment)
+    }
+    consensus_row = np.frombuffer(
+        str(gff_derip.gapped_consensus.seq).upper().encode('ascii'), dtype='S1'
+    )
+    tracks = build_cds_tracks(genes, row_lookup, consensus_row)
+    assert tracks
+    for exon_spans, strand, stops, label, colour in tracks:
+        assert exon_spans and all(len(s) == 2 for s in exon_spans)
+        assert strand in ('+', '-')
+        assert isinstance(stops, list)
+        assert isinstance(label, str) and label
+        assert colour.startswith('#')
