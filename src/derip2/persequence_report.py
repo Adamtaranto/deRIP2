@@ -86,14 +86,16 @@ _STAT_SECTIONS = (
 )
 
 
-def _inject_svg_titles(svg, prefix, titles):
+def _inject_svg_tooltips(svg, prefix, titles):
     """
-    Insert an SVG ``<title>`` (native hover tooltip) into named ``<g>`` groups.
+    Tag named ``<g>`` groups with a ``data-tip`` attribute for custom tooltips.
 
     Matplotlib writes an artist's ``gid`` as ``<g id="gid">``; ``_figure_to_svg``
-    then namespaces every id with ``prefix``. Inserting a ``<title>`` child right
-    after that group's opening tag makes browsers show it as a tooltip when the
-    pointer is over the group's shape.
+    then namespaces every id with ``prefix``. Adding a ``data-tip`` attribute to
+    that group's opening tag lets the report's own JavaScript show a floating
+    tooltip with no delay and pin it on click (a native ``<title>`` would impose
+    a ~1 s browser delay and never appear on click). ``aria-label`` mirrors the
+    text so assistive technology can still announce it.
 
     Parameters
     ----------
@@ -107,11 +109,13 @@ def _inject_svg_titles(svg, prefix, titles):
     Returns
     -------
     str
-        The SVG with ``<title>`` elements inserted.
+        The SVG with ``data-tip``/``aria-label`` attributes added.
     """
     for gid, text in titles.items():
         opening = f'<g id="{prefix}{gid}">'
-        svg = svg.replace(opening, f'{opening}<title>{escape(text)}</title>', 1)
+        esc = escape(text, quote=True)
+        replacement = f'<g id="{prefix}{gid}" data-tip="{esc}" aria-label="{esc}">'
+        svg = svg.replace(opening, replacement, 1)
     return svg
 
 
@@ -284,14 +288,15 @@ _PSR_STYLE = """
 }
 .col-scroll svg { display: block; max-width: none; height: auto; }
 
-/* The overview page's full alignment figure (a raster) scrolls in BOTH axes and
-   zooms with the shared control; capped height so a tall alignment does not run
-   off the page before you scroll it. */
+/* The overview page's full alignment figure (inline SVG, vector chrome + one
+   embedded raster grid) scrolls in BOTH axes and zooms with the shared control;
+   capped height so a tall alignment does not run off the page before you scroll
+   it. */
 .aln-scroll {
   overflow: auto; max-height: 80vh; background: #fcfcfb; border-radius: 6px;
   padding: .3rem;
 }
-.aln-scroll img { display: block; max-width: none; height: auto; }
+.aln-scroll svg { display: block; max-width: none; height: auto; }
 
 /* The completion and GC bars are fixed-width; centre them and cap to the page
    so they stay aligned across sequences. */
@@ -325,6 +330,20 @@ _PSR_STYLE = """
   text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .stat-card tr:last-child th, .stat-card tr:last-child td { border-bottom: none; }
+
+/* Custom annotation tooltip: a single floating element positioned near the
+   cursor by JS. Replaces native SVG <title> (which has a ~1 s delay and no
+   click behaviour). Annotation groups carry a data-tip attribute. */
+[data-tip] { cursor: pointer; }
+.psr-tip {
+  position: fixed; z-index: 50; pointer-events: none;
+  max-width: 320px; padding: .3rem .5rem; border-radius: 6px;
+  background: var(--ink); color: var(--surface);
+  border: 1px solid var(--rule);
+  font-size: 12.5px; line-height: 1.3; white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+}
+.psr-tip[hidden] { display: none; }
 """
 
 # Dependency-free navigation. Beyond stepping between panels, it preserves both
@@ -400,21 +419,17 @@ _PSR_SCRIPT = """
   // the controls are class-based and kept in sync. Base pixel width comes from
   // an SVG's point size (1pt = 4/3 px) or an image's natural width.
   var zoom = 1;
-  var colSvgs = Array.prototype.slice.call(
-    document.querySelectorAll('.col-scroll svg'));
-  var alnImgs = Array.prototype.slice.call(
-    document.querySelectorAll('.aln-scroll img'));
+  // Both the column strips and the overview are inline SVG; scale them all by
+  // their intrinsic point width (1pt = 4/3 px).
+  var zoomSvgs = Array.prototype.slice.call(
+    document.querySelectorAll('.col-scroll svg, .aln-scroll svg'));
   function svgBasePx(svg) {
     var w = parseFloat(svg.getAttribute('width') || '0');
     return w * 4 / 3;  // pt -> css px
   }
   function applyZoom() {
-    colSvgs.forEach(function (svg) {
+    zoomSvgs.forEach(function (svg) {
       svg.style.width = (svgBasePx(svg) * zoom) + 'px';
-    });
-    alnImgs.forEach(function (img) {
-      var base = img.naturalWidth || img.width;
-      if (base) { img.style.width = (base * zoom) + 'px'; }
     });
     document.querySelectorAll('.zlabel').forEach(function (l) {
       l.textContent = Math.round(zoom * 100) + '%';
@@ -430,11 +445,55 @@ _PSR_SCRIPT = """
       zoom = Math.max(zoom / 1.25, 0.25); applyZoom();
     });
   });
-  // The overview image may not have decoded yet when applyZoom first runs.
-  alnImgs.forEach(function (img) {
-    if (!img.complete) { img.addEventListener('load', applyZoom); }
-  });
   applyZoom();
+
+  // Custom annotation tooltip: show the hovered group's data-tip with no delay,
+  // follow the cursor, and pin it on click (the only path on touch devices).
+  var tip = document.getElementById('psr-tip');
+  var pinned = false;
+  function placeTip(e) {
+    var pad = 12;
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    var x = e.clientX + pad, y = e.clientY + pad;
+    if (x + w > window.innerWidth) { x = e.clientX - w - pad; }
+    if (y + h > window.innerHeight) { y = e.clientY - h - pad; }
+    tip.style.left = Math.max(0, x) + 'px';
+    tip.style.top = Math.max(0, y) + 'px';
+  }
+  function showTip(text, e) {
+    tip.textContent = text;
+    tip.removeAttribute('hidden');
+    placeTip(e);
+  }
+  function hideTip() {
+    if (pinned) return;
+    tip.setAttribute('hidden', '');
+  }
+  if (tip) {
+    document.addEventListener('mouseover', function (e) {
+      if (pinned) return;
+      var g = e.target.closest && e.target.closest('[data-tip]');
+      if (g) { showTip(g.getAttribute('data-tip'), e); }
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (pinned || tip.hasAttribute('hidden')) return;
+      var g = e.target.closest && e.target.closest('[data-tip]');
+      if (g) { placeTip(e); } else { tip.setAttribute('hidden', ''); }
+    });
+    document.addEventListener('mouseout', function (e) {
+      if (pinned) return;
+      var g = e.target.closest && e.target.closest('[data-tip]');
+      if (g) { hideTip(); }
+    });
+    document.addEventListener('click', function (e) {
+      var g = e.target.closest && e.target.closest('[data-tip]');
+      if (g) {
+        pinned = true; showTip(g.getAttribute('data-tip'), e);
+      } else {
+        pinned = false; tip.setAttribute('hidden', '');
+      }
+    });
+  }
 
   show(0);
 })();
@@ -644,7 +703,7 @@ def _panel_html(
     )
     _fix_wide_axes(strip, wide_w, n_cols, top_in=0.3, bottom_in=0.4)
     strip_svg = _figure_to_svg(strip, f's{row_index}row-', tight=False)
-    strip_svg = _inject_svg_titles(
+    strip_svg = _inject_svg_tooltips(
         strip_svg, f's{row_index}row-', getattr(strip, 'annotation_titles', {})
     )
     plt.close(strip)
@@ -703,8 +762,9 @@ def _panel_html(
         'gene model is supplied, a sub-plot below shows each CDS as rounded '
         'segments (yellow) joined across introns, with an arrowhead giving the '
         'strand, and a bold red <code>*</code> above the track at each stop codon '
-        'in this sequence’s projected reading frame. Hover a segment to see its '
-        'annotation id and CDS exon number. Use the zoom control, or scroll '
+        'in this sequence’s projected reading frame. Hover (or click to pin) a '
+        'segment to see its annotation id and CDS exon number. Use the zoom '
+        'control, or scroll '
         'horizontally, on long alignments.</p>'
         f'{_alignment_row_legend()}'
         f'<div class="col-scroll">{strip_svg}</div>'
@@ -742,14 +802,15 @@ def _panel_html(
     )
 
 
-def _overview_png(derip, annotation_track):
+def _overview_svg(derip, annotation_track):
     """
-    Render the full ``--plot`` alignment figure and return it base64-encoded.
+    Render the full ``--plot`` alignment figure and return it as inline SVG.
 
-    Reuses :meth:`derip2.derip.DeRIP.plot_alignment` (the same raster figure the
+    Reuses :meth:`derip2.derip.DeRIP.plot_alignment` (the same figure the
     ``--plot`` flag writes, including the deRIP corrected consensus row). The
-    figure is written to a temporary PNG and read back as base64 so the report
-    stays a single self-contained file.
+    figure is rendered to inline SVG so the axes, annotation track and consensus
+    stay crisp vector (the coloured base grid remains a single embedded raster);
+    the annotation groups carry ``data-tip`` attributes for the report tooltips.
 
     Parameters
     ----------
@@ -761,31 +822,27 @@ def _overview_png(derip, annotation_track):
     Returns
     -------
     str
-        Base64-encoded PNG bytes.
+        The inline ``<svg>`` fragment (id-prefixed, tooltip-tagged).
     """
-    import base64
-    import os
-    import tempfile
+    import matplotlib.pyplot as plt
 
     ali_height = len(derip.alignment)
     ali_length = derip.alignment.get_alignment_length()
-    handle, path = tempfile.mkstemp(suffix='.png')
-    os.close(handle)
+    fig = derip.plot_alignment(
+        return_figure=True,
+        dpi=110,
+        title=None,
+        show_chars=(ali_height <= 25),
+        draw_boxes=(ali_height <= 25),
+        flag_corrected=(ali_length < 200),
+        annotation_track=annotation_track,
+    )
     try:
-        derip.plot_alignment(
-            output_file=path,
-            dpi=110,
-            title=None,
-            show_chars=(ali_height <= 25),
-            draw_boxes=(ali_height <= 25),
-            flag_corrected=(ali_length < 200),
-            annotation_track=annotation_track,
-        )
-        with open(path, 'rb') as fh:
-            data = fh.read()
+        svg = _figure_to_svg(fig, 'ovw-', tight=True)
+        svg = _inject_svg_tooltips(svg, 'ovw-', getattr(fig, 'annotation_titles', {}))
     finally:
-        os.unlink(path)
-    return base64.b64encode(data).decode('ascii')
+        plt.close(fig)
+    return svg
 
 
 def _overview_html(derip, annotation_track):
@@ -804,7 +861,7 @@ def _overview_html(derip, annotation_track):
     str
         The overview ``<section class="seq-panel">`` (first page of the deck).
     """
-    b64 = _overview_png(derip, annotation_track)
+    svg = _overview_svg(derip, annotation_track)
     n_total = len(derip.alignment)
     n_cols = derip.alignment.get_alignment_length()
     return (
@@ -815,9 +872,9 @@ def _overview_html(derip, annotation_track):
         '<p class="desc">The whole alignment with RIP markup and, beneath it, the '
         'deRIP-corrected consensus with corrected positions — the same figure the '
         '<code>--plot</code> flag writes. Scroll in both directions and use the '
-        'zoom control to inspect it; the per-sequence pages follow.</p>'
-        f'<div class="aln-scroll"><img alt="Full alignment overview" '
-        f'src="data:image/png;base64,{b64}"></div>'
+        'zoom control to inspect it; hover (or click to pin) an annotation segment '
+        'for its id. The per-sequence pages follow.</p>'
+        f'<div class="aln-scroll">{svg}</div>'
         '</section>'
     )
 
@@ -1050,6 +1107,7 @@ def write_per_sequence_report(
         + ''.join(panels)
         + '<footer>Generated by deRIP2. Figures are inline SVG and render on '
         'their own light surface so the colourblind-safe palette holds.</footer>'
+        '<div class="psr-tip" id="psr-tip" hidden></div>'
         f'<script>{_PSR_SCRIPT}</script>'
         '</main></body></html>'
     )

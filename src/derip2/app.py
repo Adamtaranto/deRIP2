@@ -415,7 +415,7 @@ def main(
     if mask:
         out_path_aln = path.join(out_dir, f'{prefix}_masked_alignment.fasta')
     # Path for visualization - only used if plot is True
-    viz_path = path.join(out_dir, f'{prefix}_visualization.png')
+    viz_path = path.join(out_dir, f'{prefix}_visualization.svg')
     strand_bias_path = path.join(out_dir, f'{prefix}_strand_bias.svg')
     stats_path = path.join(out_dir, f'{prefix}_stats.tsv')
     report_path = path.join(out_dir, f'{prefix}_report.html')

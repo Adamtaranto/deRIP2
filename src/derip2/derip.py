@@ -718,7 +718,7 @@ class DeRIP:
 
     def plot_alignment(
         self,
-        output_file: str,
+        output_file: Optional[str] = None,
         dpi: int = 300,
         title: Optional[str] = None,
         width: int = 20,
@@ -802,7 +802,7 @@ class DeRIP:
         _t_plot = time.perf_counter()
         result = drawMiniAlignment(
             alignment=self.alignment,
-            outfile=output_file,
+            outfile=output_file or '',
             dpi=dpi,
             title=title,
             width=width,
@@ -825,7 +825,8 @@ class DeRIP:
         logger.debug(
             f'plot_alignment: drawMiniAlignment took {time.perf_counter() - _t_plot:.3f}s'
         )
-        logger.info(f'Alignment visualization saved to {output_file}')
+        if not kwargs.get('return_figure'):
+            logger.info(f'Alignment visualization saved to {output_file}')
         return result
 
     def calculate_rsi(self, ambiguous: str = 'split', substrate_scope: str = 'all'):

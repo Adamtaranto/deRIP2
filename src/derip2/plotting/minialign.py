@@ -8,6 +8,7 @@ modifications for the deRIP2 project.
 """
 
 import logging
+import os
 from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union
 
 from Bio.Align import MultipleSeqAlignment
@@ -285,7 +286,8 @@ def drawMiniAlignment(
     show_rip: str = 'both',  # 'substrate', 'product', or 'both'
     highlight_corrected: bool = True,
     flag_corrected: bool = False,
-) -> Union[str, bool]:
+    return_figure: bool = False,
+) -> Union[str, bool, plt.Figure]:
     """
     Generate a visualization of a DNA sequence alignment with optional RIP markup.
 
@@ -344,11 +346,17 @@ def drawMiniAlignment(
         If True, only corrected positions in the consensus will be colored, all others will be gray (default: True).
     flag_corrected : bool, optional
         If True, corrected positions will be marked with a large asterisk above the consensus (default: False).
+    return_figure : bool, optional
+        If True, return the live :class:`matplotlib.figure.Figure` without writing
+        a file or closing it (for callers that render it to inline SVG); the
+        output format otherwise follows the ``outfile`` extension, defaulting to
+        SVG (default: False).
 
     Returns
     -------
-    Union[str, bool]
-        Path to the output image file if successful, False if only one sequence was found.
+    Union[str, bool, matplotlib.figure.Figure]
+        The output file path if written, the Figure if ``return_figure`` is True,
+        or False if only one sequence was found.
 
     Notes
     -----
@@ -414,33 +422,42 @@ def drawMiniAlignment(
     width_padding = 0.2  # Add 0.2 inches of padding to width
     height_padding = 1  # Add 1 inch of padding to height
 
-    # Create the figure with subplots if consensus is provided
+    # Create the figure. The alignment always occupies the top row (ratio 4); an
+    # optional gene-annotation track and the optional deRIP-consensus row each add
+    # their own stacked sub-plot below it. Building them as separate axes (rather
+    # than drawing the track onto the alignment axis) keeps the SVG chrome clean
+    # and lets the track carry its own tooltips.
+    f = plt.figure(figsize=(width + width_padding, height + height_padding), dpi=dpi)
+
+    n_ann_rows = 0
+    if annotation_track:
+        n_ann_rows = max(row for *_rest, row in annotation_track) + 1
+    ann_ratio = 0.5 * n_ann_rows if n_ann_rows else 0.0
+
+    ratios = [4.0]
+    if ann_ratio:
+        ratios.append(ann_ratio)
     if consensus_seq is not None:
-        # Use GridSpec for more control over subplot sizes
-        f = plt.figure(
-            figsize=(width + width_padding, height + height_padding), dpi=dpi
-        )
-        gs = f.add_gridspec(
-            2, 1, height_ratios=[4, 1]
-        )  # 4:1 ratio for alignment:consensus
+        ratios.append(1.0)
 
-        # Create the alignment subplot
-        a = f.add_subplot(gs[0])
+    gs = f.add_gridspec(len(ratios), 1, height_ratios=ratios)
+    a = f.add_subplot(gs[0])
 
-        # Create the consensus subplot
-        consensus_ax = f.add_subplot(gs[1])
+    row_i = 1
+    ann_ax = None
+    if ann_ratio:
+        ann_ax = f.add_subplot(gs[row_i])
+        row_i += 1
 
-        # Position adjustments - keep the same relative positioning
+    consensus_ax = None
+    if consensus_seq is not None:
+        consensus_ax = f.add_subplot(gs[row_i])
+
+    # Position adjustments - keep the same relative positioning
+    if consensus_ax is not None or ann_ax is not None:
         f.subplots_adjust(top=0.88, bottom=0.12, left=0.12, right=0.88, hspace=0.5)
     else:
-        # Create a single plot for alignment only
-        f = plt.figure(
-            figsize=(width + width_padding, height + height_padding), dpi=dpi
-        )
-        a = f.add_subplot(1, 1, 1)
-        # Keep the same relative positioning
         f.subplots_adjust(top=0.88, bottom=0.15, left=0.12, right=0.88)
-        consensus_ax = None  # No consensus subplot
 
     # Setup the alignment plot with normal limits
     a.set_xlim(-0.5, ali_width - 0.5)
@@ -575,9 +592,13 @@ def drawMiniAlignment(
     if column_ranges:
         addColumnRangeMarkers(a, column_ranges, ali_height)
 
-    # Add a stacked gene-annotation track below the alignment if provided.
-    if annotation_track:
-        addAnnotationTrack(a, annotation_track)
+    # Add a stacked gene-annotation track in its own sub-plot below the alignment
+    # if provided. The returned gid -> label map is attached to the figure so the
+    # HTML report can inject hover tooltips onto the inline-SVG overview.
+    if annotation_track and ann_ax is not None:
+        f.annotation_titles = addAnnotationTrack(ann_ax, annotation_track, ali_width)
+    else:
+        f.annotation_titles = {}
 
     # Display sequence characters if requested and alignment isn't too large
     if show_chars and ali_width < 500:  # Limit for performance reasons
@@ -714,8 +735,17 @@ def drawMiniAlignment(
                         zorder=30,  # ensure it's on top
                     )
 
-    # Save the plot as a PNG image
-    f.savefig(outfile, format='png')
+    # Hand the live figure back to the caller (e.g. the HTML report, which
+    # renders it to inline SVG) without writing a file or closing it.
+    if return_figure:
+        del arr, arr2, nams
+        return f
+
+    # Otherwise save to disk, deriving the format from the output extension
+    # (defaulting to SVG when there is none) so the alignment chrome stays vector.
+    ext = os.path.splitext(outfile)[1].lower().lstrip('.')
+    fmt = ext if ext else 'svg'
+    f.savefig(outfile, format=fmt)
 
     # Clean up resources
     plt.close()
@@ -1003,67 +1033,60 @@ def addColumnRangeMarkers(
 
 
 def addAnnotationTrack(
-    a: plt.Axes, spans: List[Tuple[int, int, str, str, int]]
-) -> None:
+    ann_ax: plt.Axes, spans: List[Tuple[int, int, str, str, int]], ali_width: int
+) -> Dict[str, str]:
     """
-    Draw a stacked gene-annotation track below the alignment.
+    Draw a stacked gene-annotation track in its own sub-plot below the alignment.
 
     Each span is a coloured bar at its ``track_row``; different annotation types
     occupy different rows so overlapping features (e.g. gene vs CDS vs exon) do
-    not collide. The axes lower limit is extended to make room for the deepest
-    row and its label.
+    not collide. No text labels are drawn on the plot itself — each bar instead
+    carries a ``gid`` so the HTML report can attach a hover/click tooltip. The
+    returned map lets the caller build those tooltips.
 
     Parameters
     ----------
-    a : plt.Axes
-        The axes containing the alignment.
+    ann_ax : plt.Axes
+        The dedicated annotation axes below the alignment.
     spans : List[Tuple[int, int, str, str, int]]
         Spans to draw, each as ``(start_col, end_col, color, label, track_row)``
         in alignment-column coordinates (0 at the top of the stack).
+    ali_width : int
+        Number of alignment columns, used to match the alignment axis x-range so
+        the track lines up column-for-column.
 
     Returns
     -------
-    None
-        Modifies the plot in-place.
+    Dict[str, str]
+        Maps each bar's ``gid`` to its annotation label (for SVG tooltips).
     """
-    if not spans:
-        return
+    # Match the alignment axis x-range so columns line up; invert y so row 0 is at
+    # the top, and strip the axis chrome (the alignment axis carries the ticks).
+    n_rows = (max(row for *_rest, row in spans) + 1) if spans else 1
+    ann_ax.set_xlim(-0.5, ali_width - 0.5)
+    ann_ax.set_ylim(n_rows, 0)
+    ann_ax.set_xticks([])
+    ann_ax.set_yticks([])
+    for spine in ann_ax.spines.values():
+        spine.set_visible(False)
 
-    # Geometry: the first track sits just below the alignment, each subsequent
-    # track a fixed step lower. Bars are shorter than one row to leave a gap.
-    top = -1.5
-    step = 1.4
+    titles: Dict[str, str] = {}
     bar_height = 0.8
-
-    max_row = 0
-    for start_col, end_col, color, label, track_row in spans:
-        max_row = max(max_row, track_row)
-        bar_y = top - track_row * step
-        a.add_patch(
-            matplotlib.patches.Rectangle(
-                (start_col - 0.5, bar_y),
-                end_col - start_col + 1,
-                bar_height,
-                color=color,
-                zorder=90,
-            )
+    gap = (1.0 - bar_height) / 2.0
+    for i, (start_col, end_col, color, label, track_row) in enumerate(spans):
+        rect = matplotlib.patches.Rectangle(
+            (start_col - 0.5, track_row + gap),
+            end_col - start_col + 1,
+            bar_height,
+            color=color,
+            zorder=90,
         )
+        gid = f'anntip{i}'
+        rect.set_gid(gid)
+        ann_ax.add_patch(rect)
         if label:
-            a.text(
-                (start_col + end_col) / 2,
-                bar_y + bar_height / 2,
-                label,
-                ha='center',
-                va='center',
-                fontsize=7,
-                color='black',
-                zorder=91,
-            )
-
-    # Extend the y-axis downward so the whole track (and a little margin) shows.
-    lower = top - max_row * step - 1.0
-    ymin, ymax = a.get_ylim()
-    a.set_ylim(min(ymin, lower), ymax)
+            titles[gid] = label
+    return titles
 
 
 def getHighlightedPositions(

@@ -230,7 +230,10 @@ def test_report_written(mintest_derip, tmp_path):
     # One overview page plus one panel per sequence.
     assert html.count('class="seq-panel"') == n + 1
     assert 'data-index="overview"' in html
-    assert 'data:image/png;base64' in html  # embedded --plot overview figure
+    # The overview is inline SVG inside the scroll wrap (its base grid remains a
+    # raster embedded *within* the SVG), not a top-level base64 PNG <img>.
+    assert '<div class="aln-scroll"><svg' in html
+    assert 'aln-scroll"><img' not in html
 
 
 def test_report_has_navigation(mintest_derip, tmp_path):
@@ -411,7 +414,7 @@ def test_row_strip_draws_cds_track(mintest_derip):
     assert len(exon_patches) == 2
     assert all(p.get_gid() for p in exon_patches)
     assert any(t.get_text() == '*' for t in ann.texts)
-    # The figure exposes the gid -> tooltip map for SVG <title> injection.
+    # The figure exposes the gid -> tooltip map for data-tip injection.
     assert set(fig.annotation_titles.values()) == {
         'geneX — CDS exon 1/2',
         'geneX — CDS exon 2/2',
@@ -433,15 +436,17 @@ def test_gene_exon_path_arrow_direction():
 
 
 def test_report_annotation_tooltips(mintest_derip, gff_path, tmp_path):
-    """CDS exon segments carry an SVG <title> tooltip with id and exon number."""
+    """CDS exon segments carry a data-tip tooltip with id and exon number."""
     out = tmp_path / 'per_seq.html'
     mintest_derip.write_per_sequence_report(str(out), gff=str(gff_path))
     html = out.read_text()
+    # Custom tooltips replace native <title> (no browser delay; pin on click).
+    assert '<div class="psr-tip" id="psr-tip"' in html
     # mRNA3 is a two-exon plus-strand gene, so both exon numbers appear.
-    assert '<title>mRNA3 — CDS exon 1/2</title>' in html
-    assert '<title>mRNA3 — CDS exon 2/2</title>' in html
+    assert 'data-tip="mRNA3 — CDS exon 1/2"' in html
+    assert 'data-tip="mRNA3 — CDS exon 2/2"' in html
     # A single-exon gene shows exon 1/1.
-    assert '<title>mRNA1 — CDS exon 1/1</title>' in html
+    assert 'data-tip="mRNA1 — CDS exon 1/1"' in html
 
 
 def test_report_total_rip_events(mintest_derip, tmp_path):

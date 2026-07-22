@@ -216,6 +216,62 @@ def test_drawMiniAlignment_basic(mock_savefig, simple_alignment):
 
 
 @patch('matplotlib.figure.Figure.savefig')
+def test_drawMiniAlignment_format_from_extension(mock_savefig, simple_alignment):
+    """The save format is derived from the output extension (SVG by default)."""
+    # No extension -> defaults to SVG.
+    drawMiniAlignment(simple_alignment, 'no_ext')
+    mock_savefig.assert_called_with('no_ext', format='svg')
+    # Explicit .svg extension.
+    drawMiniAlignment(simple_alignment, 'out.svg')
+    mock_savefig.assert_called_with('out.svg', format='svg')
+
+
+@patch('matplotlib.pyplot.close')
+@patch('matplotlib.figure.Figure.savefig')
+def test_drawMiniAlignment_return_figure(mock_savefig, mock_close, simple_alignment):
+    """return_figure hands back the live Figure without saving or closing it."""
+    import matplotlib.pyplot as plt
+
+    fig = drawMiniAlignment(simple_alignment, 'unused', return_figure=True)
+    assert isinstance(fig, plt.Figure)
+    mock_savefig.assert_not_called()
+    mock_close.assert_not_called()
+    # The tooltip map is always present (empty without an annotation track).
+    assert fig.annotation_titles == {}
+    plt.close(fig)
+
+
+def test_annotation_track_is_labelless_subplot(simple_alignment, tmp_path):
+    """The annotation track is a dedicated sub-plot: gid'd bars, no text labels."""
+    import matplotlib.patches
+    import matplotlib.pyplot as plt
+
+    fig = drawMiniAlignment(
+        simple_alignment,
+        'unused',
+        annotation_track=[(0, 2, '#008300', 'geneA', 0)],
+        return_figure=True,
+    )
+    # gene axis carries the label in the tooltip map, not as on-plot text.
+    assert fig.annotation_titles == {'anntip0': 'geneA'}
+    # The dedicated annotation axis holds the bar (a gid'd Rectangle) and no text.
+    ann_axes = [
+        ax
+        for ax in fig.axes
+        if any(
+            p.get_gid() == 'anntip0'
+            for p in ax.patches
+            if isinstance(p, matplotlib.patches.Rectangle)
+        )
+    ]
+    assert len(ann_axes) == 1
+    assert ann_axes[0].texts == [] or all(
+        'geneA' not in t.get_text() for t in ann_axes[0].texts
+    )
+    plt.close(fig)
+
+
+@patch('matplotlib.figure.Figure.savefig')
 def test_drawMiniAlignment_with_title(mock_savefig, simple_alignment):
     """Test drawMiniAlignment with a title."""
     outfile = 'test_output.png'
