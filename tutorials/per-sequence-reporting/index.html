@@ -1,0 +1,1026 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Predict ancestral fungal transposon sequences by correcting for RIP-like mutations">
+      
+      
+        <meta name="author" content="adamtaranto">
+      
+      
+      
+        <link rel="prev" href="../mutation-spectra/">
+      
+      
+        <link rel="next" href="../../api-docs/deRIP_API/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Per-sequence Reporting - deRIP2</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#per-sequence-html-reporting" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="deRIP2" class="md-header__button md-logo" aria-label="deRIP2" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            deRIP2
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Per-sequence Reporting
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/adamtaranto/deRIP2" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    adamtaranto/deRIP2
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="deRIP2" class="md-nav__button md-logo" aria-label="deRIP2" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    deRIP2
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/adamtaranto/deRIP2" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    adamtaranto/deRIP2
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Colab demo notebook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rip-strand-bias/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RIP Strand Bias
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rip-masking-phylogeny/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RIP Masking & Phylogeny
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mutation-spectra/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mutation Spectra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Per-sequence Reporting
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Per-sequence Reporting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-per-sequence-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The per-sequence report
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The per-sequence report">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#alignment-row" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alignment row
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-sequence-strand-bias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-sequence strand bias
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rip-completion-and-gc-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RIP completion and GC content
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mutation-spectra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mutation spectra
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#summary-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary statistics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#large-alignments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Large alignments
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gene-annotation-and-rip-effect-reporting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gene annotation and RIP effect reporting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Gene annotation and RIP effect reporting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#an-annotation-track-on-the-alignment-figure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An annotation track on the alignment figure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cds-snp-effect-panels-in-the-per-sequence-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CDS SNP-effect panels in the per-sequence report
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-snp-effect-summary-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A SNP-effect summary file
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-docs/deRIP_API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli-docs/deRIP_cmd_line/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-per-sequence-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The per-sequence report
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The per-sequence report">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#alignment-row" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alignment row
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-sequence-strand-bias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-sequence strand bias
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rip-completion-and-gc-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RIP completion and GC content
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mutation-spectra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mutation spectra
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#summary-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary statistics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#large-alignments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Large alignments
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gene-annotation-and-rip-effect-reporting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gene annotation and RIP effect reporting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Gene annotation and RIP effect reporting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#an-annotation-track-on-the-alignment-figure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An annotation track on the alignment figure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cds-snp-effect-panels-in-the-per-sequence-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CDS SNP-effect panels in the per-sequence report
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-snp-effect-summary-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A SNP-effect summary file
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="per-sequence-html-reporting">Per-sequence HTML reporting</h1>
+<p>deRIP2's other outputs summarise a repeat family <em>as a whole</em> — the deRIP'd
+consensus, the alignment-wide strand-bias figure, the pooled mutation spectrum.
+This page covers the complementary view: an <strong>interactive, per-sequence report</strong>
+that lets you inspect what RIP did to one family member at a time, and — when
+you supply a gene model — what those mutations do to the encoded protein.</p>
+<h2 id="the-per-sequence-report">The per-sequence report</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>derip2<span class="w"> </span>-i<span class="w"> </span>tests/data/mintest.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span>--per-seq-report<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span>-d<span class="w"> </span>results
+</code></pre></div>
+<p>This writes a single self-contained <code>results/deRIPseq_per_sequence.html</code>. Open
+it in any browser and step through the sequences with the <strong>left/right arrow
+keys</strong> (or the Prev/Next buttons). The header bar — sequence number, name and
+ungapped length — stays pinned to the top as you scroll, and your scroll
+position (both axes) is preserved between sequences so the same region stays in
+view when you flip pages. Every figure is embedded as inline SVG, so the file
+has no external assets — it can be emailed or archived as one file, and the
+figures stay vector.</p>
+<p>Each sequence gets a panel with several sections.</p>
+<h3 id="alignment-row">Alignment row</h3>
+<p>The <strong>subject</strong> sequence (top) and the reconstructed <strong>deRIP'd reference</strong>
+(below), each drawn base-by-base and coloured by nucleotide identity (A green,
+C blue, G violet, T red; gaps white), separated by a narrow gap. Triangle
+markers above the subject flag its role at each RIP-informative column —
+<strong>orange</strong> for the RIP product, <strong>blue</strong> for the surviving substrate, <strong>violet</strong>
+for non-RIP deamination. Columns the whole-alignment strand-bias analysis marks
+as RIP-like are shaded grey, exactly as in the alignment-wide plot. A colour key
+sits above the figure.</p>
+<p><img alt="Per-sequence alignment row" src="../../img/per_sequence_row_strip.png" /></p>
+<p>Long alignments scroll horizontally; the <code>−</code>/<code>+</code> <strong>zoom</strong> control in the toolbar
+scales the alignment row and the strand-bias strip together, so they stay
+aligned column-for-column as you zoom in to read individual bases.</p>
+<h3 id="per-sequence-strand-bias">Per-sequence strand bias</h3>
+<p>A fixed-height binary strip: one bar per RIP-like column this sequence takes
+part in. Forward-strand events sit <strong>above</strong> the axis, reverse-strand events
+<strong>below</strong>, and each bar is coloured by whether the sequence's base is the RIP
+product (<strong>orange</strong>, <code>TA</code>) or the surviving substrate (<strong>blue</strong>, <code>CA</code> on the
+forward strand, <code>TG</code> on the reverse). Because a base is either product or
+substrate, each column shows at most one bar — so the strip reads as a clean
+yes/no map of where RIP struck this copy.</p>
+<p><img alt="Per-sequence strand bias" src="../../img/per_sequence_strand_bias.png" /></p>
+<p>This is the single-sequence companion to the alignment-wide
+<a href="../rip-strand-bias/">strand-bias figure</a>, which pools every sequence into
+scaled bars.</p>
+<h3 id="rip-completion-and-gc-content">RIP completion and GC content</h3>
+<p>Two horizontal stacked bars summarise how far RIP has gone. <strong>RIP completion</strong>
+shows the fraction of the available RIP-like sites (surviving substrate plus
+product) that have been converted to product, per strand and combined:</p>
+<p><img alt="Per-sequence RIP completion" src="../../img/per_sequence_rip_completion.png" /></p>
+<p><strong>GC content</strong> shows the sequence's base composition; RIP lowers GC by converting
+C to T, so a low bar is consistent with heavy RIP:</p>
+<p><img alt="Per-sequence GC content" src="../../img/per_sequence_gc.png" /></p>
+<h3 id="mutation-spectra">Mutation spectra</h3>
+<p>The sequence's <strong>SBS-96</strong> trinucleotide mutation spectrum measured against the
+reconstructed ancestor, and a second <strong>downstream-context</strong> spectrum that
+classifies each substitution by the mutated base plus its two downstream bases
+(resolving the CHG-methylation <code>C&gt;T</code> signal). These are the
+<a href="../mutation-spectra/">mutation-spectrum</a> analyses restricted to one row
+(<code>calculate_spectra(partition_by='row')</code>), so RIP's <code>C&gt;T</code> signature in <code>CpA</code>
+context shows up per sequence. Each spectrum scrolls horizontally on its own so
+the 96 channels never overlap.</p>
+<h3 id="summary-statistics">Summary statistics</h3>
+<p>That sequence's statistics, split into described cards — RIP events (including a
+<strong>total</strong>), the strand-bias/RSI components, the composite RIP index (CRI), and
+composition. A CRI above 1 is highlighted green, and a strand-asymmetry
+<code>p-value</code> below 0.05 is shown in bold. These are the same values written by
+<code>--stats-out</code>.</p>
+<h3 id="large-alignments">Large alignments</h3>
+<p>Rendering hundreds of sequences produces hundreds of inline figures and a large
+file. For big families, cap the report with <code>--max-report-seqs</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>derip2<span class="w"> </span>-i<span class="w"> </span>tests/data/sahana.fasta.gz<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>--per-seq-report<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span>--max-report-seqs<span class="w"> </span><span class="m">20</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span>-d<span class="w"> </span>results
+</code></pre></div>
+<p>The report then keeps the <code>N</code> sequences with the strongest strand bias (largest
+<code>|RSI|</code>) and notes that it was truncated.</p>
+<h2 id="gene-annotation-and-rip-effect-reporting">Gene annotation and RIP effect reporting</h2>
+<p>If you have a gene model for one or more of the aligned sequences, supply it as
+GFF3 with <code>--gff</code>. The sequence ids in the GFF must match the alignment record
+ids, and coordinates are given in each sequence's own <strong>ungapped</strong> frame (1-based
+inclusive); deRIP2 adjusts them for the gaps in the alignment automatically.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>derip2<span class="w"> </span>-i<span class="w"> </span>tests/data/mintest.fa<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>--gff<span class="w"> </span>tests/data/mintest.gff3<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>--per-seq-report<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>--plot<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span>-d<span class="w"> </span>results
+</code></pre></div>
+<p>Providing <code>--gff</code> turns on three things.</p>
+<h3 id="an-annotation-track-on-the-alignment-figure">An annotation track on the alignment figure</h3>
+<p><code>--plot</code> gains a gene-annotation sub-plot between the alignment and the deRIP
+consensus. Each gene occupies its own row, drawn as rounded CDS exon segments
+joined across introns by a midline of the gene colour, with an arrowhead giving
+the strand; a bold red <code>*</code> marks each stop codon in the deRIP'd consensus's
+projected reading frame. Gaps in a sequence are accounted for so the track lines
+up with the columns.</p>
+<p><img alt="Alignment with gene-annotation track" src="../../img/annotation_track.svg" /></p>
+<p>Override the default per-type colours with a two-column <code>type&lt;TAB&gt;hex</code> file via
+<code>--annotation-colors</code>.</p>
+<h3 id="cds-snp-effect-panels-in-the-per-sequence-report">CDS SNP-effect panels in the per-sequence report</h3>
+<p>Each annotated sequence's panel gains a <strong>CDS SNP effects</strong> table. deRIP2
+assembles the sequence's CDS in transcription order (reverse-complementing
+minus-strand genes and joining exons), translates it against the reconstructed
+ancestor, and reports:</p>
+<ul>
+<li><strong>premature stops</strong> — a codon that became a stop,</li>
+<li><strong>missense</strong> — a non-synonymous amino-acid change,</li>
+<li><strong>frameshifts</strong> — an indel that shifts the reading frame,</li>
+<li><strong>splice sites</strong> — a broken canonical <code>GT</code>…<code>AG</code> intron boundary.</li>
+</ul>
+<p>The panel also shows the <strong>deRIP-restored protein</strong>: the amino-acid sequence the
+un-RIP'd (ancestral) CDS encodes, with <code>*</code> for any stop codon.</p>
+<p>By default the standard NCBI genetic code (table 1) is used; select another with
+<code>--genetic-code</code> (for example, <code>4</code> for some fungal mitochondrial genes).</p>
+<h3 id="a-snp-effect-summary-file">A SNP-effect summary file</h3>
+<p><code>--gff</code> always writes <code>prefix_snp_effects.txt</code>, a tab-separated summary of every
+effect per sequence, followed by the restored CDS translation for each gene:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>seq_id  gene_id  kind            aa_pos  ref_aa  alt_aa  gapped_col  nt_change
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>Seq1    mRNA1    missense        2       H       Y       5
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>Seq1    mRNA1    missense        3       V       E       9
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a># deRIP-restored CDS translations
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a># gene_id  protein
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a># mRNA1     MHV
+</code></pre></div>
+<h2 id="python-api">Python API</h2>
+<p>The same outputs are available on the <code>DeRIP</code> object:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.derip</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeRIP</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">derip</span> <span class="o">=</span> <span class="n">DeRIP</span><span class="p">(</span><span class="s2">&quot;tests/data/mintest.fa&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">derip</span><span class="o">.</span><span class="n">calculate_rip</span><span class="p">()</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1"># Per-sequence report (optionally with a gene model)</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">derip</span><span class="o">.</span><span class="n">write_per_sequence_report</span><span class="p">(</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="s2">&quot;per_sequence.html&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">gff</span><span class="o">=</span><span class="s2">&quot;tests/data/mintest.gff3&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="n">genetic_code</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="n">max_seqs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="p">)</span>
+</code></pre></div>
+<p>Lower-level building blocks live in <code>derip2.annotation</code> (<code>parse_gff3</code>,
+<code>predict_gene_effects</code>, <code>translate_cds</code>, <code>compute_effects_for_alignment</code>,
+<code>write_snp_effects</code>) and <code>derip2.plotting.persequence</code>
+(<code>per_sequence_strand_bias</code>, <code>sequence_row_strip</code>, <code>rip_completion_bar</code>,
+<code>gc_content_bar</code>). The single-sample spectra are drawn by
+<code>derip2.plotting.spectra.plot_sbs96</code>/<code>plot_downstream</code> with the <code>sample=</code>
+argument.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.top", "navigation.expand", "navigation.tabs.sticky", "navigation.sections"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

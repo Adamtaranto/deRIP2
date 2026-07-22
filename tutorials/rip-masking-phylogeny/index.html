@@ -485,6 +485,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../per-sequence-reporting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Per-sequence Reporting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../api-docs/deRIP_API/" class="md-nav__link">
         
   
@@ -756,12 +783,12 @@ you do not want that synthetic ancestor as a taxon, so pass <code>--no-append</c
 <p>Plot the alignment to see where RIP struck. Substrate bases are blue, products red —
 these are precisely the sites rewritten to <code>Y</code>/<code>R</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">d</span><span class="o">.</span><span class="n">plot_alignment</span><span class="p">(</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">output_file</span><span class="o">=</span><span class="s1">&#39;sahana_masking.png&#39;</span><span class="p">,</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">output_file</span><span class="o">=</span><span class="s1">&#39;sahana_masking.svg&#39;</span><span class="p">,</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">title</span><span class="o">=</span><span class="s1">&#39;Sahana subset (35 copies): RIP substrate (blue) and product (red) sites&#39;</span><span class="p">,</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">width</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">show_chars</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">show_rip</span><span class="o">=</span><span class="s1">&#39;both&#39;</span><span class="p">,</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">)</span>
 </code></pre></div>
-<p><img alt="RIP substrate and product sites across the Sahana subset" src="../../img/masking_msa_rip.png" /></p>
+<p><img alt="RIP substrate and product sites across the Sahana subset" src="../../img/masking_msa_rip.svg" /></p>
 <p>RIP is spread across the whole element, and every red column is a convergence trap for
 tree search. Masking neutralises them.</p>
 <h2 id="3-build-raw-and-masked-phylogenies">3. Build raw and masked phylogenies</h2>
