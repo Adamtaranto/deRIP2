@@ -100,13 +100,13 @@ these are precisely the sites rewritten to `Y`/`R`:
 
 ```python
 d.plot_alignment(
-    output_file='sahana_masking.png',
+    output_file='sahana_masking.svg',
     title='Sahana subset (35 copies): RIP substrate (blue) and product (red) sites',
     width=20, height=8, show_chars=False, show_rip='both',
 )
 ```
 
-![RIP substrate and product sites across the Sahana subset](../img/masking_msa_rip.png)
+![RIP substrate and product sites across the Sahana subset](../img/masking_msa_rip.svg)
 
 RIP is spread across the whole element, and every red column is a convergence trap for
 tree search. Masking neutralises them.

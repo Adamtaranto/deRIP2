@@ -110,9 +110,9 @@ derip2 -i tests/data/mintest.fa \
 
 - `results/derip_output.fasta` - Corrected sequence
 - `results/derip_output_masked_alignment.fasta` - Alignment with masked corrections
-- `results/derip_output_visualization.png` - Visualization of the alignment with RIP markup
+- `results/derip_output_visualization.svg` - Visualization of the alignment with RIP markup
 
-![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_output_visualization.png)
+![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_output_visualization.svg)
 
 ### Using maximum GC content for filling
 
@@ -151,9 +151,9 @@ derip2 -i tests/data/mintest.fa \
 
 - `results/derip_reaminated.fasta` - Corrected sequence using highest GC content sequence for filling
 - `results/derip_reaminated_alignment.fasta` - Alignment with corrected sequence appended
-- `results/derip_reaminated_vizualization.png` - Visualization of the alignment with RIP markup
+- `results/derip_reaminated_vizualization.svg` - Visualization of the alignment with RIP markup
 
-![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_reaminated_visualization.png)
+![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_reaminated_visualization.svg)
 
 ### Mutation spectra (`derip2-spectra`)
 
@@ -205,7 +205,7 @@ derip2 -i tests/data/mintest.fa \
   --per-seq-report --plot -d results
 ```
 
-![Alignment with gene-annotation track](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/annotation_track.png)
+![Alignment with gene-annotation track](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/annotation_track.svg)
 
 See the [Per-sequence Reporting tutorial](https://adamtaranto.github.io/deRIP2/tutorials/per-sequence-reporting/)
 for the full walkthrough.

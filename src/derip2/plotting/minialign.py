@@ -459,6 +459,16 @@ def drawMiniAlignment(
     else:
         f.subplots_adjust(top=0.88, bottom=0.15, left=0.12, right=0.88)
 
+    # On a wide alignment, rasterize the dense per-cell content (base grid, RIP
+    # markup, the per-column consensus row) into the embedded image rather than
+    # emitting thousands of tiny vector rectangles in the SVG. Text, tick labels
+    # and the reference marker (zorder >= 200) stay crisp vector. Narrow
+    # alignments keep everything vector, so they render sharply at any zoom.
+    if ali_width > 500:
+        for _ax in (a, ann_ax, consensus_ax):
+            if _ax is not None:
+                _ax.set_rasterization_zorder(200)
+
     # Setup the alignment plot with normal limits
     a.set_xlim(-0.5, ali_width - 0.5)
     a.set_ylim(-0.5, ali_height - 0.5)
@@ -515,7 +525,10 @@ def drawMiniAlignment(
     # Continue with the rest of the plotting code from drawMiniAlignment...
     # (Including grid lines, reference marker, labels, text, etc.)
 
-    # Add grid lines
+    # Add grid lines. The horizontal (per-row) lines are always cheap. The
+    # vertical (per-column) lines are only drawn when columns are few enough to
+    # be visible: on a wide alignment they are sub-pixel and, in SVG output,
+    # would explode into thousands of invisible vector paths.
     a.hlines(
         np.arange(-0.5, ali_height),
         -0.5,
@@ -524,14 +537,15 @@ def drawMiniAlignment(
         color='white',
         zorder=100,
     )
-    a.vlines(
-        np.arange(-0.5, ali_width),
-        -0.5,
-        ali_height,
-        lw=lineweight_v,
-        color='white',
-        zorder=100,
-    )
+    if ali_width <= 500:
+        a.vlines(
+            np.arange(-0.5, ali_width),
+            -0.5,
+            ali_height,
+            lw=lineweight_v,
+            color='white',
+            zorder=100,
+        )
 
     # Mark the reference (fill) sequence with a black circle just past the end of
     # its row. Drawn in *data* coordinates (not baked figure coordinates) so it
@@ -660,15 +674,17 @@ def drawMiniAlignment(
         for spine in consensus_ax.spines.values():
             spine.set_visible(False)
 
-        # Add vertical grid lines
-        consensus_ax.vlines(
-            np.arange(-0.5, len(consensus_seq)),
-            -0.5,
-            1.5,  # Extended grid lines to cover the new space
-            lw=lineweight_v,
-            color='white',
-            zorder=100,
-        )
+        # Add vertical grid lines (only when columns are few enough to see them;
+        # see the alignment-axis note above).
+        if len(consensus_seq) <= 500:
+            consensus_ax.vlines(
+                np.arange(-0.5, len(consensus_seq)),
+                -0.5,
+                1.5,  # Extended grid lines to cover the new space
+                lw=lineweight_v,
+                color='white',
+                zorder=100,
+            )
 
         # Plot each base in the consensus as a colored cell with character
         for i, base in enumerate(consensus_seq):

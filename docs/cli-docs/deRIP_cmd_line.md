@@ -47,9 +47,9 @@ derip2 -i tests/data/mintest.fa \
 
 - `results/derip_output.fasta` - Corrected sequence
 - `results/derip_output_masked_alignment.fasta` - Alignment with masked corrections
-- `results/derip_output_visualization.png` - Visualization of the alignment with RIP markup
+- `results/derip_output_visualization.svg` - Visualization of the alignment with RIP markup
 
-![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_output_visualization.png)
+![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_output_visualization.svg)
 
 ### Using maximum GC content for filling
 
@@ -88,9 +88,9 @@ derip2 -i tests/data/mintest.fa \
 
 - `results/derip_reaminated.fasta` - Corrected sequence using highest GC content sequence for filling
 - `results/derip_reaminated_alignment.fasta` - Alignment with corrected sequence appended
-- `results/derip_reaminated_vizualization.png` - Visualization of the alignment with RIP markup
+- `results/derip_reaminated_vizualization.svg` - Visualization of the alignment with RIP markup
 
-![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_reaminated_visualization.png)
+![Visualization of the alignment with RIP markup](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/derip_reaminated_visualization.svg)
 
 ### Per-sequence HTML report
 
@@ -149,7 +149,7 @@ annotation-track colours with a two-column `type<TAB>hex` file.
 
 - `results/derip_output_per_sequence.html` - Interactive per-sequence report
 - `results/derip_output_snp_effects.txt` - Per-sequence + restored-CDS effects
-- `results/derip_output_visualization.png` - Alignment figure with the track
+- `results/derip_output_visualization.svg` - Alignment figure with the track
 
 ## Standard Options
 

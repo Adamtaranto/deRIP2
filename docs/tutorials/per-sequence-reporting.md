@@ -128,7 +128,7 @@ Providing `--gff` turns on three things.
 occupies its own row; multi-exon genes are drawn as separate spans, and gaps in
 a sequence are accounted for so the track lines up with the columns.
 
-![Alignment with gene-annotation track](../img/annotation_track.png)
+![Alignment with gene-annotation track](../img/annotation_track.svg)
 
 Override the default per-type colours with a two-column `type<TAB>hex` file via
 `--annotation-colors`.
