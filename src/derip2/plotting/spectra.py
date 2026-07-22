@@ -426,7 +426,7 @@ def plot_sbs96(
     percentage: bool = False,
     dpi: int = 300,
     sample: Optional[int] = None,
-    width: float = 7.4,
+    width: float = 11.0,
     bare: bool = False,
 ):
     """
@@ -450,7 +450,7 @@ def plot_sbs96(
         rather than one panel per sample. When ``None`` (default) every sample is
         drawn, one panel each.
     width : float, optional
-        Figure width in inches (default: 7.4). Widen to spread the 96
+        Figure width in inches (default: 11.0). Wider than a page so the 96
         trinucleotide ticks so they do not overlap.
     bare : bool, optional
         Omit the per-sample title and the context caption/suptitle (default:
@@ -511,7 +511,7 @@ def plot_downstream(
     percentage: bool = False,
     dpi: int = 300,
     sample: Optional[int] = None,
-    width: float = 7.4,
+    width: float = 11.0,
     bare: bool = False,
 ):
     """
@@ -539,7 +539,7 @@ def plot_downstream(
         :attr:`~derip2.stats.mutation_spectra.SpectraResult.sample_names`).
         When ``None`` (default) every sample is drawn, one panel each.
     width : float, optional
-        Figure width in inches (default: 7.4). Widen to spread the 96 downstream
+        Figure width in inches (default: 11.0). Wider than a page so the 96 downstream
         ticks so they do not overlap.
     bare : bool, optional
         Omit the per-sample title and the context caption/suptitle (default:
