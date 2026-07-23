@@ -345,6 +345,11 @@ _PSR_STYLE = """
 }
 .desc { color: var(--ink-2); margin: .1rem 0 .8rem; max-width: 74ch; font-size: 14px; }
 .note { color: var(--muted); font-size: 13px; }
+/* Compact flank-context comparison table (5 rows), not stretched full width. */
+.flank-compare { max-width: 62ch; width: auto; margin: .4rem 0; }
+.flank-compare td:not(:first-child), .flank-compare th:not(:first-child) {
+  text-align: right; font-variant-numeric: tabular-nums;
+}
 
 /* Colour key for the alignment-row figure. */
 .legend {
@@ -999,6 +1004,8 @@ def _panel_html(
     df,
     spectra,
     downstream,
+    flank,
+    flank_comparisons,
     row_index,
     panel_number,
     effects_by_seq,
@@ -1022,6 +1029,11 @@ def _panel_html(
         Per-row trinucleotide SBS-96 spectra (one sample column per sequence).
     downstream : derip2.stats.mutation_spectra.SpectraResult
         Per-row downstream-triplet spectra (one sample column per sequence).
+    flank : derip2.stats.flank_spectra.FlankSpectraResult
+        Per-row flanking-context spectra of RIP-like sites.
+    flank_comparisons : dict of str to dict
+        The five flank-context comparisons for this row (see
+        :func:`derip2.stats.flank_spectra.compare_flank_spectra`).
     row_index : int
         Alignment row index of the sequence.
     panel_number : int
@@ -1141,6 +1153,15 @@ def _panel_html(
     ds_svg = _figure_to_svg(ds, f's{row_index}ds-', tight=False)
     plt.close(ds)
 
+    # The six flank-context spectra (substrate/product x combined/fwd/rev) as one
+    # 2x3 grid, so a single unique id-prefix keeps the SVG glyph ids collision-free.
+    from derip2.plotting.flank_spectra import plot_flank_spectra_grid
+
+    flank_fig = plot_flank_spectra_grid(flank, sample=row_index, bare=True)
+    flank_svg = _figure_to_svg(flank_fig, f's{row_index}flank-', tight=True)
+    plt.close(flank_fig)
+    flank_table = _flank_comparison_table_html(flank_comparisons)
+
     # When this sequence is itself the chosen spectra reference, its spectrum is a
     # self-comparison and therefore empty by construction; flag that up front.
     ref_note = ''
@@ -1209,6 +1230,19 @@ def _panel_html(
         'plus its two downstream bases (pyrimidine-folded), which resolves the '
         'CHG-methylation signal C&gt;T in CpNpG context.</p>'
         f'<div class="spectrum-scroll">{ds_svg}</div>'
+        '<h3>Flanking-context spectra of RIP-like sites</h3>'
+        '<p class="desc">For every RIP-like dinucleotide this sequence carries, the '
+        'single base 1&nbsp;bp upstream and 1&nbsp;bp downstream is tallied as a '
+        '4&nbsp;bp motif (the two centre bases fixed, the flanks varying &rarr; 16 '
+        'channels). <b>Substrate</b> sites are surviving CpA (forward) / TpG '
+        '(reverse) counted anywhere in the sequence; <b>product</b> sites are TpA '
+        'in RIP-informative columns. Reverse-strand motifs are reverse-complemented '
+        'onto the CpA/TpA strand. The table tests whether the flank context of '
+        'surviving substrate differs from that of realised product &mdash; a '
+        'context-dependent protection signal &mdash; and whether the strands '
+        'differ.</p>'
+        f'<div class="spectrum-scroll">{flank_svg}</div>'
+        f'{flank_table}'
         '<h3>Summary statistics</h3>'
         f'{_stats_sections_html(row_stats)}'
         f'{effect_html}'
@@ -1445,6 +1479,142 @@ def _overview_spectrum_svg(derip, ancestor=None):
     return svg
 
 
+# Human-readable names for the five flank-context comparisons, in display order.
+_FLANK_COMPARISON_NAMES = {
+    'sub_vs_prod_combined': 'Substrate vs product (combined)',
+    'sub_vs_prod_fwd': 'Substrate vs product (forward)',
+    'sub_vs_prod_rev': 'Substrate vs product (reverse)',
+    'fwd_vs_rev_substrate': 'Forward vs reverse (substrate)',
+    'fwd_vs_rev_product': 'Forward vs reverse (product)',
+}
+
+
+def _nan_safe(value, digits=3):
+    """
+    Format a float to fixed digits, rendering ``nan`` as an en-dash.
+
+    Parameters
+    ----------
+    value : float
+        The value to format.
+    digits : int, optional
+        Decimal places (default: 3).
+
+    Returns
+    -------
+    str
+        The formatted number, or ``'&ndash;'`` when ``value`` is ``nan``.
+    """
+    return '&ndash;' if value != value else f'{value:.{digits}f}'
+
+
+def _flank_comparison_table_html(comparisons):
+    """
+    Render the five flank-context comparisons as a small HTML table.
+
+    Leads with the scale-free cosine similarity and Cramér's V effect sizes; the
+    chi-squared p-value is shown only when both spectra reached the minimum site
+    count (``chi2_reliable``), otherwise an en-dash, so sparse per-sequence counts
+    are not over-interpreted. A ``*`` marks a reliable p-value below 0.05.
+
+    Parameters
+    ----------
+    comparisons : dict of str to dict
+        The output of
+        :func:`derip2.stats.flank_spectra.compare_flank_spectra` (or its pooled
+        sibling), keyed by comparison name.
+
+    Returns
+    -------
+    str
+        The ``<table>`` element plus an explanatory caption paragraph.
+    """
+    import math
+
+    from derip2.stats.flank_spectra import COMPARISON_KEYS
+
+    rows = []
+    for key in COMPARISON_KEYS:
+        comp = comparisons[key]
+        name = _FLANK_COMPARISON_NAMES[key]
+        cosine = _nan_safe(comp['cosine_similarity'])
+        cramers = _nan_safe(comp['cramers_v'])
+        if comp['chi2_reliable']:
+            p = comp['pvalue']
+            if math.isnan(p):
+                p_txt = '&ndash;'
+            else:
+                star = ' *' if p < 0.05 else ''
+                p_txt = ('&lt;0.001' if p < 0.001 else f'{p:.3f}') + star
+        else:
+            p_txt = '&ndash;'
+        n_txt = f'{comp["n_a"]:.0f} / {comp["n_b"]:.0f}'
+        rows.append(
+            f'<tr><td>{name}</td><td>{cosine}</td><td>{cramers}</td>'
+            f'<td>{p_txt}</td><td>{n_txt}</td></tr>'
+        )
+    body = ''.join(rows)
+    return (
+        '<table class="flank-compare">'
+        '<thead><tr><th>Comparison</th><th>Cosine</th><th>Cram&eacute;r&rsquo;s V</th>'
+        '<th>&chi;&sup2; p</th><th>n (a / b)</th></tr></thead>'
+        f'<tbody>{body}</tbody></table>'
+        '<p class="note">Cosine similarity (1 = identical flank preference) is the '
+        'primary effect size; the &chi;&sup2; p-value is shown only where both '
+        'spectra have enough sites (otherwise &ndash;), and <code>*</code> marks '
+        'p &lt; 0.05.</p>'
+    )
+
+
+def _flank_skipped_note(flank):
+    """
+    Render the alignment-wide count of sites dropped for an unresolved flank.
+
+    Parameters
+    ----------
+    flank : derip2.stats.flank_spectra.FlankSpectraResult
+        The computed flank spectra.
+
+    Returns
+    -------
+    str
+        A ``<p class="note">`` summarising the per-state skipped counts, or an
+        empty string when nothing was skipped.
+    """
+    total = sum(flank.n_skipped_flank.values())
+    if total == 0:
+        return ''
+    parts = ', '.join(f'{state} {n}' for state, n in flank.n_skipped_flank.items())
+    return (
+        f'<p class="note">{total} site(s) were skipped for lacking a resolvable '
+        f'4&nbsp;bp flank context at an alignment edge ({parts}).</p>'
+    )
+
+
+def _overview_flank_svg(flank):
+    """
+    Render the pooled flank-context spectra grid for the overview page.
+
+    Parameters
+    ----------
+    flank : derip2.stats.flank_spectra.FlankSpectraResult
+        The computed flank spectra (pooled across all sequences here).
+
+    Returns
+    -------
+    str
+        The inline ``<svg>`` fragment (id-prefixed ``ovwflank-``).
+    """
+    import matplotlib.pyplot as plt
+
+    from derip2.plotting.flank_spectra import plot_flank_spectra_pooled
+
+    fig = plot_flank_spectra_pooled(flank, width=11.0, bare=True)
+    svg = _figure_to_svg(fig, 'ovwflank-', tight=True)
+    plt.close(fig)
+    return svg
+
+
 def _overview_html(
     derip,
     cds_tracks,
@@ -1454,6 +1624,7 @@ def _overview_html(
     row_to_panel=None,
     spectra_ref_ancestor=None,
     spectra_ref_label=None,
+    flank=None,
 ):
     """
     Build the report's front (overview) page: the full alignment + consensus.
@@ -1481,6 +1652,9 @@ def _overview_html(
     spectra_ref_label : str or None, optional
         The reference sequence's id, used in the spectrum prose. ``None`` = the
         deRIP-corrected consensus.
+    flank : derip2.stats.flank_spectra.FlankSpectraResult or None, optional
+        The flank-context spectra; when given, the pooled aggregate flank section
+        is added below the mutation spectrum.
 
     Returns
     -------
@@ -1515,6 +1689,28 @@ def _overview_html(
         f'<div class="spectrum-scroll">{spectrum_svg}</div>'
     )
 
+    # Pooled flank-context section: the alignment-wide 2x3 grid plus the same five
+    # substrate-vs-product / strand comparisons run on the pooled counts.
+    flank_section = ''
+    if flank is not None:
+        from derip2.stats.flank_spectra import compare_flank_spectra_pooled
+
+        flank_svg = _overview_flank_svg(flank)
+        pooled_cmp = compare_flank_spectra_pooled(flank)
+        flank_section = (
+            '<h3>Flanking-context spectra of RIP-like sites</h3>'
+            '<p class="desc">Pooled across all sequences: the flank context '
+            '(1&nbsp;bp each side, 16 channels) of surviving <b>substrate</b> '
+            '(CpA/TpG anywhere) and realised <b>product</b> (TpA in RIP columns) '
+            'dinucleotides, reverse-strand motifs folded onto the CpA/TpA strand. '
+            'A difference between the substrate and product flank distributions is '
+            'evidence that local context influences which substrates escape '
+            'RIP.</p>'
+            f'<div class="spectrum-scroll">{flank_svg}</div>'
+            f'{_flank_skipped_note(flank)}'
+            f'{_flank_comparison_table_html(pooled_cmp)}'
+        )
+
     stats_section = ''
     if df is not None:
         stats_section = (
@@ -1538,6 +1734,7 @@ def _overview_html(
         f'{toolbar}'
         f'<div class="aln-scroll">{svg}</div>'
         f'{spectrum_section}'
+        f'{flank_section}'
         f'{stats_section}'
         '</section>'
     )
@@ -1706,6 +1903,11 @@ def write_per_sequence_report(
     downstream = derip.calculate_spectra(
         partition_by='row', ancestor=spectra_ref_ancestor, context='downstream'
     )
+    # Flank-context spectra of RIP-like sites: one sample column per sequence,
+    # always measured against this sequence's own bases (independent of the
+    # spectra reference), so computed once here and reused across every panel.
+    logger.info('Computing per-sequence flanking-context spectra of RIP-like sites...')
+    flank = derip.calculate_flank_spectra()
 
     # FASTA payloads for the overview downloads + click-to-view popups. The deRIP
     # sequence is always available; CDS records are added when a GFF is supplied.
@@ -1823,6 +2025,11 @@ def write_per_sequence_report(
 
     indices, truncated = _select_rows(df, max_seqs)
 
+    # Per-sequence flank-context comparisons, computed only for the rendered rows.
+    from derip2.stats.flank_spectra import compare_flank_spectra
+
+    flank_cmp = {row: compare_flank_spectra(flank, row) for row in indices}
+
     # Map each rendered sequence's alignment-row index to its 1-based panel
     # position (panel 0 is the overview), so the overview stats table can link a
     # sequence name to its page. Sequences dropped by --max-report-seqs are absent
@@ -1843,6 +2050,7 @@ def write_per_sequence_report(
             row_to_panel,
             spectra_ref_ancestor,
             spectra_ref_label,
+            flank,
         )
     ]
     # The per-sequence panels dominate the runtime on large alignments (each is
@@ -1854,6 +2062,8 @@ def write_per_sequence_report(
             df,
             spectra,
             downstream,
+            flank,
+            flank_cmp[row_index],
             row_index,
             panel_number,
             effects_by_seq,

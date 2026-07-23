@@ -465,15 +465,85 @@ def compare_flank_spectra(
         :func:`derip2.stats.spectra_compare.compare_spectra` result augmented with
         ``n_a``, ``n_b`` (the two site totals) and ``chi2_reliable``.
     """
-    sub_f = result.sub_fwd[:, row_index]
-    sub_r = result.sub_rev[:, row_index]
-    prod_f = result.prod_fwd[:, row_index]
-    prod_r = result.prod_rev[:, row_index]
-    sub_c = sub_f + sub_r
-    prod_c = prod_f + prod_r
+    return _run_comparisons(
+        result.sub_fwd[:, row_index],
+        result.sub_rev[:, row_index],
+        result.prod_fwd[:, row_index],
+        result.prod_rev[:, row_index],
+        min_sites=min_sites,
+        top=top,
+    )
 
+
+def compare_flank_spectra_pooled(
+    result: FlankSpectraResult,
+    *,
+    min_sites: int = 20,
+    top: int = 6,
+) -> Dict[str, Dict]:
+    """
+    Run the five flank-context comparisons on the alignment-wide pooled spectra.
+
+    Same five comparisons as :func:`compare_flank_spectra`, but on the counts
+    summed across every sequence (:meth:`FlankSpectraResult.pooled`), for the
+    report's overview page.
+
+    Parameters
+    ----------
+    result : FlankSpectraResult
+        The computed spectra.
+    min_sites : int, optional
+        Minimum site count on both sides for the reliability flag (default: 20).
+    top : int, optional
+        Number of most-differentiating flank channels to report (default: 6).
+
+    Returns
+    -------
+    dict of str to dict
+        Keyed by :data:`COMPARISON_KEYS`, as in :func:`compare_flank_spectra`.
+    """
+    pooled = result.pooled()
+    return _run_comparisons(
+        pooled['sub_fwd'],
+        pooled['sub_rev'],
+        pooled['prod_fwd'],
+        pooled['prod_rev'],
+        min_sites=min_sites,
+        top=top,
+    )
+
+
+def _run_comparisons(
+    sub_f: np.ndarray,
+    sub_r: np.ndarray,
+    prod_f: np.ndarray,
+    prod_r: np.ndarray,
+    *,
+    min_sites: int,
+    top: int,
+) -> Dict[str, Dict]:
+    """
+    Run the five substrate/product/strand comparisons for a set of count vectors.
+
+    Parameters
+    ----------
+    sub_f, sub_r : numpy.ndarray
+        ``(16,)`` forward and reverse substrate counts.
+    prod_f, prod_r : numpy.ndarray
+        ``(16,)`` forward and reverse product counts.
+    min_sites : int
+        Minimum site count on both sides for the ``chi2_reliable`` flag.
+    top : int
+        Number of most-differentiating flank channels to report.
+
+    Returns
+    -------
+    dict of str to dict
+        Keyed by :data:`COMPARISON_KEYS`; each an augmented ``compare_spectra``
+        result.
+    """
     pairs = {
-        'sub_vs_prod_combined': (sub_c, prod_c),
+        'sub_vs_prod_combined': (sub_f + sub_r, prod_f + prod_r),
         'sub_vs_prod_fwd': (sub_f, prod_f),
         'sub_vs_prod_rev': (sub_r, prod_r),
         'fwd_vs_rev_substrate': (sub_f, sub_r),

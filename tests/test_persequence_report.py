@@ -284,6 +284,7 @@ def test_report_section_headings_and_scroll(mintest_derip, tmp_path):
         'GC content',
         'Mutation spectrum (SBS-96)',
         'Mutation spectrum (downstream context)',
+        'Flanking-context spectra of RIP-like sites',
         'Summary statistics',
     ):
         assert f'<h3>{heading}</h3>' in html, heading
@@ -295,6 +296,24 @@ def test_report_section_headings_and_scroll(mintest_derip, tmp_path):
     assert 'nt)' in html
     # The overview page embeds the full alignment figure in a both-axis scroller.
     assert 'aln-scroll' in html
+
+
+def test_report_flank_context_sections(mintest_derip, tmp_path):
+    """Every panel and the overview carry the flank-context spectra section."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    n = len(mintest_derip.alignment)
+    # One flank heading per sequence panel plus one on the overview page.
+    assert html.count('Flanking-context spectra of RIP-like sites') == n + 1
+    # The five-row comparison table appears once per panel and once pooled.
+    assert html.count('class="flank-compare"') == n + 1
+    # Each grid SVG has a globally unique id prefix (per-row and overview).
+    assert 's0flank-' in html
+    assert 'ovwflank-' in html
+    # The comparison rows are labelled.
+    assert 'Substrate vs product (combined)' in html
+    assert 'Forward vs reverse (product)' in html
 
 
 def test_report_transposed_stat_cards(mintest_derip, tmp_path):
