@@ -22,6 +22,8 @@ from html import escape
 import json
 import logging
 
+from tqdm import tqdm
+
 from derip2.plotting.persequence import (
     NONRIP_COLOR,
     PRODUCT_COLOR,
@@ -1597,9 +1599,16 @@ def write_per_sequence_report(
     a correspondingly large file; ``max_seqs`` is the recommended mitigation for
     large alignments.
     """
+    # This whole routine can take a while on large alignments (one panel of ~6
+    # figures per sequence, plus the per-row spectra and the overview figure), so
+    # each expensive stage announces itself and the per-panel loop shows a bar.
+    n_seqs = len(derip.alignment)
+    logger.info(f'Building per-sequence report for {n_seqs} sequences...')
+
     df = derip.summarize_stats(ambiguous=ambiguous)
     # One sample column per sequence, measured against the reconstructed
     # ancestor, in each context. Computed once and reused across every panel.
+    logger.info('Computing per-sequence mutation spectra...')
     spectra = derip.calculate_spectra(partition_by='row')
     downstream = derip.calculate_spectra(partition_by='row', context='downstream')
 
@@ -1644,6 +1653,7 @@ def write_per_sequence_report(
             warn_unmatched_seqids,
         )
 
+        logger.info(f'Computing gene effects from {gff}...')
         genes_by_seqid = parse_gff3(gff)
         warn_unmatched_seqids(genes_by_seqid, [rec.id for rec in derip.alignment])
         effects_by_seq = compute_effects_for_alignment(
@@ -1725,10 +1735,15 @@ def write_per_sequence_report(
     row_to_panel = {row_index: pos for pos, row_index in enumerate(indices, start=1)}
 
     # The front (overview) page — the full alignment + deRIP consensus — followed
-    # by one panel per sequence.
+    # by one panel per sequence. The overview renders the whole-alignment figure
+    # (slow on many rows/columns), so it gets its own message.
+    logger.info('Rendering overview page (full alignment + summary)...')
     panels = [
         _overview_html(derip, overview_track, fasta_data, downloads, df, row_to_panel)
     ]
+    # The per-sequence panels dominate the runtime on large alignments (each is
+    # ~6 matplotlib figures rendered to inline SVG), so show a progress bar.
+    logger.info(f'Rendering {len(indices)} sequence panels...')
     panels += [
         _panel_html(
             derip,
@@ -1743,8 +1758,16 @@ def write_per_sequence_report(
             cds_gene_cols,
             genetic_code,
         )
-        for panel_number, row_index in enumerate(indices, start=1)
+        for panel_number, row_index in tqdm(
+            enumerate(indices, start=1),
+            total=len(indices),
+            desc='Rendering sequence panels',
+            unit='seq',
+            ncols=80,
+            leave=False,
+        )
     ]
+    logger.info('Assembling HTML report...')
 
     heading = escape(title or 'deRIP2 per-sequence report')
     n_total = len(df)
