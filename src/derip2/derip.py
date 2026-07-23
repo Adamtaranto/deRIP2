@@ -1359,7 +1359,7 @@ class DeRIP:
 
     def plot_flank_spectra(self, output_file: Optional[str] = None, **kwargs):
         """
-        Draw the pooled flank-context spectra grid, computing spectra if needed.
+        Draw the pooled flank-context bihistograms, computing spectra if needed.
 
         Parameters
         ----------
@@ -1368,7 +1368,7 @@ class DeRIP:
             publication output.
         **kwargs
             Forwarded to
-            :func:`derip2.plotting.flank_spectra.plot_flank_spectra_pooled`
+            :func:`derip2.plotting.flank_spectra.plot_flank_bihistograms_pooled`
             (e.g. ``title``, ``percentage``, ``width``).
 
         Returns
@@ -1376,11 +1376,11 @@ class DeRIP:
         matplotlib.figure.Figure
             The figure.
         """
-        from derip2.plotting.flank_spectra import plot_flank_spectra_pooled
+        from derip2.plotting.flank_spectra import plot_flank_bihistograms_pooled
 
         if self.flank_spectra_result is None:
             self.calculate_flank_spectra()
-        return plot_flank_spectra_pooled(
+        return plot_flank_bihistograms_pooled(
             self.flank_spectra_result, output_file, **kwargs
         )
 

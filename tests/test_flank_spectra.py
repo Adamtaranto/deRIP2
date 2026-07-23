@@ -32,6 +32,7 @@ from derip2.stats.flank_spectra import (
     FlankSpectraResult,
     compare_flank_spectra,
     compute_flank_spectra,
+    differential_channels,
 )
 
 # Channel index for the up=G, down=T flank pair (2*4 + 3), used across tests.
@@ -283,6 +284,38 @@ def test_compare_all_zero_state_returns_nan_without_raising():
     prod_cmp = cmp['sub_vs_prod_combined']
     assert np.isnan(prod_cmp['pvalue'])
     assert prod_cmp['chi2_reliable'] is False
+
+
+def test_differential_channels_identical_distributions_none_flagged():
+    """Proportional substrate/product spectra flag no differentially enriched channel."""
+    sub = np.zeros(16)
+    prod = np.zeros(16)
+    sub[0] = 30.0
+    sub[5] = 30.0
+    prod[0] = 60.0
+    prod[5] = 60.0  # same shape, different totals
+    assert not differential_channels(sub, prod).any()
+
+
+def test_differential_channels_disjoint_high_counts_flagged():
+    """Non-overlapping high-count spectra flag the divergent channels."""
+    sub = np.zeros(16)
+    prod = np.zeros(16)
+    sub[0] = 50.0
+    prod[15] = 50.0
+    mask = differential_channels(sub, prod)
+    assert mask[0] and mask[15]
+
+
+def test_differential_channels_gated_by_min_sites():
+    """No channel is flagged when either state has fewer than min_sites sites."""
+    sub = np.zeros(16)
+    prod = np.zeros(16)
+    sub[0] = 5.0
+    prod[15] = 5.0
+    assert not differential_channels(sub, prod, min_sites=20).any()
+    # Lowering the gate below the totals lets the divergence show.
+    assert differential_channels(sub, prod, min_sites=4).any()
 
 
 def test_mintest_matches_golden():

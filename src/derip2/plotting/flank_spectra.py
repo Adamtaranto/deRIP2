@@ -1,26 +1,32 @@
 """
 Native matplotlib figures for flanking-context spectra of RIP-like sites.
 
-Each spectrum is a 16-bar histogram of the ``[up][center][down]`` flank context
-(the two centre bases fixed, the two flanks varying). The six spectra for one
-sequence — substrate and product site states, each as combined / forward /
-reverse strand views — are drawn as a single 2x3 grid so the whole set embeds as
-one figure (one SVG id-prefix in the per-sequence report).
+Each figure is three **bihistograms** — one per strand view (combined, forward,
+reverse) — comparing the two site states back to back: surviving **substrate**
+counts extend to the **left** and realised RIP **product** counts to the
+**right** of a shared centre line, one row per ``[up][centre][down]`` flank
+channel. Because a substrate ``CpA`` motif and its product ``TpA`` share the same
+flanks, every row is labelled by the **CA-state** motif (e.g. ``GCAG`` labels the
+substrate ``GCAG`` and the equivalent product ``GTAG``). Channels whose enrichment
+differs significantly between the two states are marked.
 
 The palette, typography and light publication surface are shared with the rest of
 the package: the substrate/product bar colours come from
 :mod:`derip2.plotting.persequence` (blue substrate, orange product, matching the
-per-sequence strand-bias strip), and the axis styling, motif-tick emphasis and
-save helpers are reused from :mod:`derip2.plotting.spectra`.
+per-sequence strand-bias strip), and the axis styling and save helpers are reused
+from :mod:`derip2.plotting.spectra`.
 """
 
 import logging
-from typing import List, Optional
+from typing import Optional
 
 import matplotlib
 
 matplotlib.use('Agg')
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 import numpy as np
 
 from derip2.plotting.persequence import PRODUCT_COLOR, SUBSTRATE_COLOR
@@ -30,189 +36,271 @@ from derip2.plotting.spectra import (
     _style_axes,
 )
 from derip2.plotting.strandbias import (
+    ANNOTATION_SIZE,
     AXIS_LABEL_SIZE,
     FONT_STACK,
     INK_PRIMARY,
     INK_SECONDARY,
+    LEGEND_SIZE,
     SURFACE,
     TITLE_SIZE,
 )
-from derip2.spectra.flank_channels import (
-    FLANK16_LABELS_CA,
-    FLANK16_LABELS_TA,
-)
+from derip2.spectra.flank_channels import FLANK16_LABELS_CA
+from derip2.stats.flank_spectra import differential_channels
 
 logger = logging.getLogger(__name__)
 
-# The 2x3 grid layout: rows are site states, columns are strand views.
-_STATES = ('substrate', 'product')
+# The three strand views, drawn left-to-right as separate bihistograms.
 _STRANDS = ('combined', 'forward', 'reverse')
 _STRAND_TITLES = {
     'combined': 'Combined',
     'forward': 'Forward',
     'reverse': 'Reverse',
 }
-_STATE_LABELS = {
-    'substrate': 'Substrate (CpA)',
-    'product': 'Product (TpA)',
-}
-_STATE_COLORS = {
-    'substrate': SUBSTRATE_COLOR,
-    'product': PRODUCT_COLOR,
-}
-_STATE_LABELS_LIST = {
-    'substrate': FLANK16_LABELS_CA,
-    'product': FLANK16_LABELS_TA,
-}
+
+# Accent for the significance markers on differentially enriched motifs (the
+# validated deRIP2 C>T red, so it reads as "changed" and stays colourblind-safe).
+SIG_COLOR = '#e34948'
 
 # Short caption distinguishing this context model in figure headings.
 _FLANK_CAPTION = (
     r'flank context of RIP-like sites (5$^\prime$-N[XY]N-3$^\prime$; '
-    r'centre XY fixed, flanks vary)'
+    r'substrate $\leftarrow$ | $\rightarrow$ product, CA-state labels)'
 )
 
 
-def _draw_flank_ticks(ax, x: np.ndarray, motifs: List[str]) -> None:
+def _abs_formatter(value, _pos):
     """
-    Draw monospace 4 bp motif tick labels with the two centre bases bolded.
-
-    Mirrors :func:`derip2.plotting.spectra._draw_motif_ticks` but bolds the two
-    fixed centre bases (indices 1 and 2) instead of a single mutated base. Each
-    label is drawn as two overlaid real-monospace layers — a regular-weight layer
-    carrying the flanks and a bold layer carrying the centre — so the emphasis
-    stays column-aligned and every 4 bp label keeps the same width.
+    Tick formatter rendering the magnitude of a signed count.
 
     Parameters
     ----------
-    ax : matplotlib.axes.Axes
-        The axes to label.
-    x : numpy.ndarray
-        The bar x positions, one per motif.
-    motifs : list of str
-        The 4-character motifs in bar order (e.g. ``'ACAA'``).
+    value : float
+        The (possibly negative) axis value.
+    _pos : int
+        Tick position (unused).
 
     Returns
     -------
-    None
-        The labels are drawn in place.
+    str
+        The absolute value formatted without a sign.
     """
-    bold_positions = {1, 2}
-
-    def _blank(motif: str, keep_center: bool) -> str:
-        # Keep either the centre dinucleotide (bold layer) or the two flanks
-        # (regular layer), blanking the rest so both layers stay aligned.
-        return ''.join(
-            ch if (i in bold_positions) == keep_center else ' '
-            for i, ch in enumerate(motif)
-        )
-
-    flanks = [_blank(m, keep_center=False) for m in motifs]
-    ax.set_xticks(x)
-    labels = ax.set_xticklabels(
-        flanks,
-        rotation=90,
-        fontsize=CONTEXT_TICK_SIZE,
-        family='monospace',
-        color=INK_SECONDARY,
-    )
-    for label, motif in zip(labels, motifs):
-        overlay = ax.text(0, 0, _blank(motif, keep_center=True))
-        overlay.update_from(label)
-        overlay.set_position(label.get_position())
-        overlay.set_transform(label.get_transform())
-        overlay.set_fontweight('bold')
-        overlay.set_color(INK_PRIMARY)
+    return f'{abs(value):g}'
 
 
-def _draw_flank_panel(
+def _draw_bihistogram(
     ax,
-    counts: np.ndarray,
-    state: str,
+    substrate: np.ndarray,
+    product: np.ndarray,
     *,
-    percentage: bool = False,
-    show_ticks: bool = True,
+    sig_mask: np.ndarray,
+    show_labels: bool,
+    percentage: bool,
 ) -> None:
     """
-    Draw one 16-bar flank-context panel.
+    Draw one back-to-back bihistogram of substrate (left) vs product (right).
 
     Parameters
     ----------
     ax : matplotlib.axes.Axes
         The axes to draw into.
-    counts : numpy.ndarray
-        ``(16,)`` channel counts in canonical flank order.
-    state : {'substrate', 'product'}
-        Which site state, selecting the bar colour and centre-dinucleotide label.
-    percentage : bool, optional
-        Rescale the bars so they sum to 100 (default: raw counts).
-    show_ticks : bool, optional
-        Draw the per-bar motif tick labels (default: True).
+    substrate, product : numpy.ndarray
+        ``(16,)`` channel counts for the two states, in canonical flank order.
+    sig_mask : numpy.ndarray
+        ``(16,)`` boolean mask of channels differentially enriched between the
+        states; those rows get a highlight band and a marker.
+    show_labels : bool
+        Draw the per-row CA-state motif tick labels (only the leftmost panel of a
+        multi-panel figure needs them, since the rows align).
+    percentage : bool
+        Rescale each state to sum to 100 before plotting (default is raw counts).
 
     Returns
     -------
     None
         The panel is drawn in place.
     """
-    values = counts.astype(float)
+    sub = np.asarray(substrate, dtype=float)
+    prod = np.asarray(product, dtype=float)
     if percentage:
-        total = values.sum()
-        if total > 0:
-            values = 100.0 * values / total
+        if sub.sum() > 0:
+            sub = 100.0 * sub / sub.sum()
+        if prod.sum() > 0:
+            prod = 100.0 * prod / prod.sum()
 
-    x = np.arange(16)
-    ax.bar(x, values, width=0.8, color=_STATE_COLORS[state], linewidth=0)
+    y = np.arange(16)
+    # Substrate grows left (negative), product grows right (positive).
+    ax.barh(y, -sub, height=0.8, color=SUBSTRATE_COLOR, linewidth=0, zorder=3)
+    ax.barh(y, prod, height=0.8, color=PRODUCT_COLOR, linewidth=0, zorder=3)
+
     _style_axes(ax)
-    ax.set_xlim(-0.75, 15.75)
-    ax.margins(x=0)
-    if show_ticks:
-        _draw_flank_ticks(ax, x, list(_STATE_LABELS_LIST[state]))
+    ax.axvline(0.0, color=INK_PRIMARY, linewidth=0.8, zorder=4)
+    span = max(float(sub.max(initial=0.0)), float(prod.max(initial=0.0)), 1.0)
+    ax.set_xlim(-span * 1.08, span * 1.08)
+    ax.set_ylim(-0.6, 15.6)
+    ax.invert_yaxis()  # first channel (ACAA) at the top
+    ax.xaxis.set_major_formatter(FuncFormatter(_abs_formatter))
+
+    # Mark the differentially enriched channels with a bold asterisk pinned just
+    # inside the right spine. (A full-row highlight is deliberately avoided: with
+    # very large pooled counts almost every context is significant, so a per-row
+    # band would flood the panel — the effect sizes in the table carry the nuance.)
+    trans = ax.get_yaxis_transform()  # x in axes fraction, y in data coords
+    for i in np.nonzero(sig_mask)[0]:
+        ax.text(
+            0.99,
+            i,
+            '*',
+            transform=trans,
+            ha='right',
+            va='center',
+            color=SIG_COLOR,
+            fontsize=AXIS_LABEL_SIZE + 2,
+            fontweight='bold',
+            zorder=5,
+        )
+
+    ax.set_yticks(y)
+    if show_labels:
+        labels = ax.set_yticklabels(
+            list(FLANK16_LABELS_CA),
+            fontsize=CONTEXT_TICK_SIZE,
+            family='monospace',
+            color=INK_SECONDARY,
+        )
+        # Bold + darken the labels of differentially enriched channels.
+        for i, label in enumerate(labels):
+            if sig_mask[i]:
+                label.set_color(INK_PRIMARY)
+                label.set_fontweight('bold')
     else:
-        ax.set_xticks([])
+        ax.set_yticklabels([])
 
 
-def _draw_grid(fig, axes, vectors, *, percentage: bool) -> None:
+def _strand_vectors(result, sample: Optional[int]):
     """
-    Populate a 2x3 axes grid with the six state x strand flank panels.
+    Assemble per-strand substrate/product count vectors for a bihistogram figure.
 
     Parameters
     ----------
-    fig : matplotlib.figure.Figure
-        The parent figure (styled to the shared surface).
-    axes : numpy.ndarray
-        ``(2, 3)`` array of axes: rows are :data:`_STATES`, columns
-        :data:`_STRANDS`.
-    vectors : dict
-        Maps ``(state, strand)`` to its ``(16,)`` count vector.
-    percentage : bool
-        Passed through to each panel.
+    result : derip2.stats.flank_spectra.FlankSpectraResult
+        The computed spectra.
+    sample : int or None
+        Alignment row (sample column) to draw; ``None`` pools every sequence.
 
     Returns
     -------
-    None
-        The grid is drawn in place.
+    dict
+        Maps each strand in :data:`_STRANDS` to ``(substrate, product)`` count
+        vectors, each ``(16,)``.
     """
-    fig.patch.set_facecolor(SURFACE)
-    for r, state in enumerate(_STATES):
+    if sample is None:
+        pooled = result.pooled()
+        sub = {
+            'forward': pooled['sub_fwd'],
+            'reverse': pooled['sub_rev'],
+            'combined': pooled['sub_fwd'] + pooled['sub_rev'],
+        }
+        prod = {
+            'forward': pooled['prod_fwd'],
+            'reverse': pooled['prod_rev'],
+            'combined': pooled['prod_fwd'] + pooled['prod_rev'],
+        }
+    else:
+        sub = {
+            strand: result.matrix('substrate', strand)[:, sample] for strand in _STRANDS
+        }
+        prod = {
+            strand: result.matrix('product', strand)[:, sample] for strand in _STRANDS
+        }
+    return {strand: (sub[strand], prod[strand]) for strand in _STRANDS}
+
+
+def _draw_bihistogram_figure(
+    vectors, *, title, percentage, width, panel_height, min_sites, alpha, bare
+):
+    """
+    Render the three-strand bihistogram figure from prepared count vectors.
+
+    Parameters
+    ----------
+    vectors : dict
+        Maps each strand to its ``(substrate, product)`` count vectors.
+    title : str or None
+        Figure heading (omitted when ``bare``).
+    percentage : bool
+        Plot each state as a percentage of its own total.
+    width : float
+        Figure width in inches.
+    panel_height : float
+        Height of the (single-row) figure in inches.
+    min_sites : int
+        Minimum sites per state for a channel to be eligible for significance.
+    alpha : float
+        Per-channel two-sided significance level.
+    bare : bool
+        Omit the caption/suptitle for embedding under an external heading.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The rendered figure.
+    """
+    with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
+        fig, axes = plt.subplots(1, 3, figsize=(width, panel_height), squeeze=False)
+        fig.patch.set_facecolor(SURFACE)
         for c, strand in enumerate(_STRANDS):
-            ax = axes[r, c]
-            _draw_flank_panel(
-                ax, vectors[(state, strand)], state, percentage=percentage
+            ax = axes[0, c]
+            sub, prod = vectors[strand]
+            sig = differential_channels(sub, prod, min_sites=min_sites, alpha=alpha)
+            _draw_bihistogram(
+                ax,
+                sub,
+                prod,
+                sig_mask=sig,
+                show_labels=(c == 0),
+                percentage=percentage,
             )
-            if r == 0:
-                ax.set_title(
-                    _STRAND_TITLES[strand],
-                    fontsize=AXIS_LABEL_SIZE,
-                    color=INK_PRIMARY,
-                )
-            if c == 0:
-                ax.set_ylabel(
-                    _STATE_LABELS[state],
-                    fontsize=AXIS_LABEL_SIZE,
-                    color=INK_PRIMARY,
-                )
+            ax.set_title(
+                _STRAND_TITLES[strand], fontsize=AXIS_LABEL_SIZE, color=INK_PRIMARY
+            )
+            ax.set_xlabel(
+                '% of state' if percentage else 'sites',
+                fontsize=ANNOTATION_SIZE,
+                color=INK_SECONDARY,
+            )
+
+        # Shared legend: colour = state (direction), plus the significance marker.
+        handles = [
+            Patch(facecolor=SUBSTRATE_COLOR, label='Substrate (CpA) ←'),
+            Patch(facecolor=PRODUCT_COLOR, label='→ Product (TpA)'),
+            Line2D(
+                [],
+                [],
+                marker='*',
+                markersize=8,
+                color=SIG_COLOR,
+                linestyle='none',
+                label='differentially enriched',
+            ),
+        ]
+        fig.legend(
+            handles=handles,
+            loc='lower center',
+            ncol=3,
+            frameon=False,
+            fontsize=LEGEND_SIZE,
+            bbox_to_anchor=(0.5, -0.02),
+        )
+
+        if not bare:
+            heading = f'{title}\n{_FLANK_CAPTION}' if title else _FLANK_CAPTION
+            fig.suptitle(heading, fontsize=TITLE_SIZE, color=INK_PRIMARY)
+        fig.tight_layout(rect=(0, 0.04, 1, 1))
+    return fig
 
 
-def plot_flank_spectra_grid(
+def plot_flank_bihistograms(
     result,
     sample: int,
     outfile: Optional[str] = None,
@@ -220,16 +308,20 @@ def plot_flank_spectra_grid(
     title: Optional[str] = None,
     percentage: bool = False,
     width: float = 11.0,
-    panel_height: float = 2.0,
+    panel_height: float = 5.2,
+    min_sites: int = 20,
+    alpha: float = 0.05,
     dpi: int = 300,
     bare: bool = False,
 ):
     """
-    Draw the six flank-context spectra for one sequence as a 2x3 grid.
+    Draw the three flank-context bihistograms for one sequence.
 
-    Rows are the two site states (substrate, product); columns are the three
-    strand views (combined, forward, reverse). Every panel is a 16-bar flank
-    histogram sharing the package palette and motif-tick styling.
+    One bihistogram per strand view (combined, forward, reverse): substrate
+    counts extend left, product counts right, one row per CA-state flank channel.
+    Channels differentially enriched between the two states (adjusted
+    standardised residual beyond the ``alpha`` critical value, when both states
+    have at least ``min_sites`` sites) are highlighted and marked.
 
     Parameters
     ----------
@@ -242,11 +334,16 @@ def plot_flank_spectra_grid(
     title : str or None, optional
         Figure heading (omitted when ``bare``).
     percentage : bool, optional
-        Plot each panel as a percentage of its own total (default: counts).
+        Plot each state as a percentage of its own total (default: counts).
     width : float, optional
-        Figure width in inches (default: 11.0), wide enough for the motif ticks.
+        Figure width in inches (default: 11.0).
     panel_height : float, optional
-        Height per grid row in inches (default: 2.0).
+        Figure height in inches (default: 5.2), tall enough for 16 rows.
+    min_sites : int, optional
+        Minimum sites per state for a channel to be eligible for a significance
+        mark (default: 20).
+    alpha : float, optional
+        Per-channel two-sided significance level (default: 0.05).
     dpi : int, optional
         Raster resolution (default: 300).
     bare : bool, optional
@@ -266,41 +363,40 @@ def plot_flank_spectra_grid(
     n_samples = len(result.sample_names)
     if not -n_samples <= sample < n_samples:
         raise IndexError(f'sample {sample} out of range for {n_samples} sample(s)')
-    s = sample % n_samples
-    vectors = {
-        (state, strand): result.matrix(state, strand)[:, s]
-        for state in _STATES
-        for strand in _STRANDS
-    }
-
-    with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
-        fig, axes = plt.subplots(2, 3, figsize=(width, panel_height * 2), squeeze=False)
-        _draw_grid(fig, axes, vectors, percentage=percentage)
-        if not bare:
-            heading = f'{title}\n{_FLANK_CAPTION}' if title else _FLANK_CAPTION
-            fig.suptitle(heading, fontsize=TITLE_SIZE, color=INK_PRIMARY)
-        fig.tight_layout()
-        _save(fig, outfile, dpi)
+    vectors = _strand_vectors(result, sample % n_samples)
+    fig = _draw_bihistogram_figure(
+        vectors,
+        title=title,
+        percentage=percentage,
+        width=width,
+        panel_height=panel_height,
+        min_sites=min_sites,
+        alpha=alpha,
+        bare=bare,
+    )
+    _save(fig, outfile, dpi)
     return fig
 
 
-def plot_flank_spectra_pooled(
+def plot_flank_bihistograms_pooled(
     result,
     outfile: Optional[str] = None,
     *,
     title: Optional[str] = None,
     percentage: bool = False,
     width: float = 11.0,
-    panel_height: float = 2.0,
+    panel_height: float = 5.2,
+    min_sites: int = 20,
+    alpha: float = 0.05,
     dpi: int = 300,
     bare: bool = False,
 ):
     """
-    Draw the six flank-context spectra pooled across every sequence.
+    Draw the three flank-context bihistograms pooled across every sequence.
 
-    Same 2x3 layout as :func:`plot_flank_spectra_grid`, but on the
-    alignment-wide row-summed counts (:meth:`FlankSpectraResult.pooled`), for the
-    report's overview page.
+    Same layout as :func:`plot_flank_bihistograms`, but on the alignment-wide
+    row-summed counts (:meth:`FlankSpectraResult.pooled`), for the report's
+    overview page.
 
     Parameters
     ----------
@@ -311,11 +407,16 @@ def plot_flank_spectra_pooled(
     title : str or None, optional
         Figure heading (omitted when ``bare``).
     percentage : bool, optional
-        Plot each panel as a percentage of its own total (default: counts).
+        Plot each state as a percentage of its own total (default: counts).
     width : float, optional
         Figure width in inches (default: 11.0).
     panel_height : float, optional
-        Height per grid row in inches (default: 2.0).
+        Figure height in inches (default: 5.2).
+    min_sites : int, optional
+        Minimum sites per state for a channel to be eligible for a significance
+        mark (default: 20).
+    alpha : float, optional
+        Per-channel two-sided significance level (default: 0.05).
     dpi : int, optional
         Raster resolution (default: 300).
     bare : bool, optional
@@ -326,23 +427,16 @@ def plot_flank_spectra_pooled(
     matplotlib.figure.Figure
         The rendered figure.
     """
-    pooled = result.pooled()
-    # Precompute combined vectors so the closure stays simple.
-    vectors = {
-        ('substrate', 'forward'): pooled['sub_fwd'],
-        ('substrate', 'reverse'): pooled['sub_rev'],
-        ('substrate', 'combined'): pooled['sub_fwd'] + pooled['sub_rev'],
-        ('product', 'forward'): pooled['prod_fwd'],
-        ('product', 'reverse'): pooled['prod_rev'],
-        ('product', 'combined'): pooled['prod_fwd'] + pooled['prod_rev'],
-    }
-
-    with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
-        fig, axes = plt.subplots(2, 3, figsize=(width, panel_height * 2), squeeze=False)
-        _draw_grid(fig, axes, vectors, percentage=percentage)
-        if not bare:
-            heading = f'{title}\n{_FLANK_CAPTION}' if title else _FLANK_CAPTION
-            fig.suptitle(heading, fontsize=TITLE_SIZE, color=INK_PRIMARY)
-        fig.tight_layout()
-        _save(fig, outfile, dpi)
+    vectors = _strand_vectors(result, None)
+    fig = _draw_bihistogram_figure(
+        vectors,
+        title=title,
+        percentage=percentage,
+        width=width,
+        panel_height=panel_height,
+        min_sites=min_sites,
+        alpha=alpha,
+        bare=bare,
+    )
+    _save(fig, outfile, dpi)
     return fig

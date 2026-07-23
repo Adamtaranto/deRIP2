@@ -95,19 +95,26 @@ states are counted:
   counted *anywhere* in the sequence (not only in RIP-informative columns).
 - **Product** — realised `TpA` sitting in a RIP-informative column.
 
-Reverse-strand motifs are reverse-complemented onto the `CpA`/`TpA` strand, so
-each state is shown three ways — **combined, forward, reverse** — as a 2×3 grid
-(substrate row in blue, product row in orange).
+Reverse-strand motifs are reverse-complemented onto the `CpA`/`TpA` strand, and
+each strand view — **combined, forward, reverse** — is drawn as a **bihistogram**:
+substrate counts (blue) extend left and product counts (orange) extend right of a
+shared centre line. Every row is labelled by its **CA-state** motif, so a single
+label covers both states — `GCAG` labels the substrate `GCAG` and the equivalent
+product `GTAG`. Motifs whose enrichment differs significantly between the two
+states (adjusted standardised residual beyond the 0.05 critical value, when both
+states have ≥ 20 sites) are marked with a red `*`.
 
 ![Flanking-context spectra of RIP-like sites](../img/flank_context_spectra.png)
 
-Beneath the grid, a small table reports the five comparisons that test the
+Beneath the bihistograms, a small table reports the five comparisons that test the
 protection hypothesis: substrate-vs-product flank distribution (combined /
 forward / reverse) and forward-vs-reverse (substrate / product). It leads with
 the scale-free **cosine similarity** (1 = identical flank preference) and
 **Cramér's V**; the χ² p-value is shown only where both spectra have enough
 sites (≥ 20 by default), and `*` marks `p < 0.05`. The overview page carries the
-same grid and table **pooled across all sequences**.
+same bihistograms and table **pooled across all sequences** — where, with very
+large pooled counts, almost every context is flagged, so read the effect sizes
+rather than the marks.
 
 Two companion tables are written alongside the report whenever
 `--per-seq-report` is set:

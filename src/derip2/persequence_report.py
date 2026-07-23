@@ -345,8 +345,10 @@ _PSR_STYLE = """
 }
 .desc { color: var(--ink-2); margin: .1rem 0 .8rem; max-width: 74ch; font-size: 14px; }
 .note { color: var(--muted); font-size: 13px; }
-/* Compact flank-context comparison table (5 rows), not stretched full width. */
-.flank-compare { max-width: 62ch; width: auto; margin: .4rem 0; }
+/* Compact flank-context comparison table (5 rows): size columns to their
+   content and never wrap a cell, so the long comparison names stay on one line. */
+.flank-compare { width: auto; table-layout: auto; margin: .4rem 0; }
+.flank-compare th, .flank-compare td { white-space: nowrap; }
 .flank-compare td:not(:first-child), .flank-compare th:not(:first-child) {
   text-align: right; font-variant-numeric: tabular-nums;
 }
@@ -1153,11 +1155,12 @@ def _panel_html(
     ds_svg = _figure_to_svg(ds, f's{row_index}ds-', tight=False)
     plt.close(ds)
 
-    # The six flank-context spectra (substrate/product x combined/fwd/rev) as one
-    # 2x3 grid, so a single unique id-prefix keeps the SVG glyph ids collision-free.
-    from derip2.plotting.flank_spectra import plot_flank_spectra_grid
+    # The three flank-context bihistograms (substrate left vs product right, one
+    # per strand) as one figure, so a single unique id-prefix keeps the SVG glyph
+    # ids collision-free.
+    from derip2.plotting.flank_spectra import plot_flank_bihistograms
 
-    flank_fig = plot_flank_spectra_grid(flank, sample=row_index, bare=True)
+    flank_fig = plot_flank_bihistograms(flank, sample=row_index, bare=True)
     flank_svg = _figure_to_svg(flank_fig, f's{row_index}flank-', tight=True)
     plt.close(flank_fig)
     flank_table = _flank_comparison_table_html(flank_comparisons)
@@ -1234,13 +1237,16 @@ def _panel_html(
         '<p class="desc">For every RIP-like dinucleotide this sequence carries, the '
         'single base 1&nbsp;bp upstream and 1&nbsp;bp downstream is tallied as a '
         '4&nbsp;bp motif (the two centre bases fixed, the flanks varying &rarr; 16 '
-        'channels). <b>Substrate</b> sites are surviving CpA (forward) / TpG '
-        '(reverse) counted anywhere in the sequence; <b>product</b> sites are TpA '
-        'in RIP-informative columns. Reverse-strand motifs are reverse-complemented '
-        'onto the CpA/TpA strand. The table tests whether the flank context of '
-        'surviving substrate differs from that of realised product &mdash; a '
-        'context-dependent protection signal &mdash; and whether the strands '
-        'differ.</p>'
+        'channels). Each strand view is a <b>bihistogram</b>: surviving '
+        '<b>substrate</b> counts (CpA forward / TpG reverse, counted anywhere) '
+        'extend left and realised RIP <b>product</b> counts (TpA in RIP-informative '
+        'columns) extend right, sharing a centre line. Reverse-strand motifs are '
+        'reverse-complemented onto the CpA/TpA strand and every row is labelled by '
+        'its <b>CA-state</b> motif (e.g. <code>GCAG</code> labels the substrate '
+        '<code>GCAG</code> and the equivalent product <code>GTAG</code>). Rows '
+        'marked <span style="color:#e34948">*</span> are differentially enriched '
+        'between the two states; the table below tests the same substrate-vs-product '
+        'question overall, and whether the strands differ.</p>'
         f'<div class="spectrum-scroll">{flank_svg}</div>'
         f'{flank_table}'
         '<h3>Summary statistics</h3>'
@@ -1607,9 +1613,9 @@ def _overview_flank_svg(flank):
     """
     import matplotlib.pyplot as plt
 
-    from derip2.plotting.flank_spectra import plot_flank_spectra_pooled
+    from derip2.plotting.flank_spectra import plot_flank_bihistograms_pooled
 
-    fig = plot_flank_spectra_pooled(flank, width=11.0, bare=True)
+    fig = plot_flank_bihistograms_pooled(flank, width=11.0, bare=True)
     svg = _figure_to_svg(fig, 'ovwflank-', tight=True)
     plt.close(fig)
     return svg
@@ -1699,13 +1705,13 @@ def _overview_html(
         pooled_cmp = compare_flank_spectra_pooled(flank)
         flank_section = (
             '<h3>Flanking-context spectra of RIP-like sites</h3>'
-            '<p class="desc">Pooled across all sequences: the flank context '
-            '(1&nbsp;bp each side, 16 channels) of surviving <b>substrate</b> '
-            '(CpA/TpG anywhere) and realised <b>product</b> (TpA in RIP columns) '
-            'dinucleotides, reverse-strand motifs folded onto the CpA/TpA strand. '
-            'A difference between the substrate and product flank distributions is '
-            'evidence that local context influences which substrates escape '
-            'RIP.</p>'
+            '<p class="desc">Pooled across all sequences, as three bihistograms '
+            '(surviving <b>substrate</b> CpA/TpG left, realised <b>product</b> TpA '
+            'right, one row per CA-state flank motif, reverse-strand motifs folded '
+            'onto the CpA/TpA strand). Rows marked '
+            '<span style="color:#e34948">*</span> are differentially enriched '
+            'between the states &mdash; evidence that local context influences which '
+            'substrates escape RIP.</p>'
             f'<div class="spectrum-scroll">{flank_svg}</div>'
             f'{_flank_skipped_note(flank)}'
             f'{_flank_comparison_table_html(pooled_cmp)}'

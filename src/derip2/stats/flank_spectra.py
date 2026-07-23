@@ -35,6 +35,7 @@ derip2.stats.mutation_spectra : The sibling trinucleotide SBS-96/192 spectra.
 
 from dataclasses import dataclass, field
 import logging
+import math
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -560,6 +561,141 @@ def _run_comparisons(
         comp['chi2_reliable'] = bool(n_a >= min_sites and n_b >= min_sites)
         out[name] = comp
     return out
+
+
+def differential_channels(
+    substrate: np.ndarray,
+    product: np.ndarray,
+    *,
+    min_sites: int = 20,
+    alpha: float = 0.05,
+) -> np.ndarray:
+    """
+    Flag flank channels differentially enriched between substrate and product.
+
+    For each of the 16 channels this computes the **adjusted standardised
+    residual** of the ``(16, 2)`` substrate/product contingency table
+    (Agresti/Haberman): under the null of a shared flank distribution these are
+    approximately standard normal, so a channel with ``|residual|`` beyond the
+    two-sided ``alpha`` critical value is enriched (or depleted) in one state
+    relative to the other. No multiple-testing correction is applied, consistent
+    with the effect-size-first stance of the rest of this module; the flags are
+    meant as visual guides on the spectra, read alongside the omnibus chi-squared.
+
+    The whole comparison is gated on reliability: if either state has fewer than
+    ``min_sites`` total sites, no channel is flagged (all ``False``).
+
+    Parameters
+    ----------
+    substrate, product : numpy.ndarray
+        ``(16,)`` channel count vectors for the two states (same flank order).
+    min_sites : int, optional
+        Minimum total sites required in *both* states for any flag (default: 20).
+    alpha : float, optional
+        Two-sided significance level for the per-channel test (default: 0.05).
+
+    Returns
+    -------
+    numpy.ndarray
+        ``(16,)`` boolean mask; ``True`` where the channel is differentially
+        enriched between the two states.
+    """
+    a = np.asarray(substrate, dtype=np.float64)
+    b = np.asarray(product, dtype=np.float64)
+    mask = np.zeros(a.shape, dtype=bool)
+    total_a = a.sum()
+    total_b = b.sum()
+    if total_a < min_sites or total_b < min_sites:
+        return mask
+
+    matrix = np.column_stack([a, b])  # (16, 2)
+    row = matrix.sum(axis=1)
+    col = matrix.sum(axis=0)
+    grand = matrix.sum()
+    if grand <= 0:
+        return mask
+
+    expected = np.outer(row, col) / grand
+    # Adjusted standardised (Haberman) residuals: ~N(0, 1) under independence.
+    denom = expected * (1.0 - row[:, None] / grand) * (1.0 - col[None, :] / grand)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        adj = np.where(denom > 0, (matrix - expected) / np.sqrt(denom), 0.0)
+
+    # Two-sided normal critical value for alpha; |z| >= z_crit is significant.
+    z_crit = _normal_ppf(1.0 - alpha / 2.0)
+    return np.abs(adj).max(axis=1) >= z_crit
+
+
+def _normal_ppf(p: float) -> float:
+    """
+    Inverse standard-normal CDF via the Acklam rational approximation.
+
+    Dependency-free (no SciPy), accurate to ~1e-9 over the open interval, which is
+    ample for turning a significance level into a critical z-value.
+
+    Parameters
+    ----------
+    p : float
+        Probability in ``(0, 1)``.
+
+    Returns
+    -------
+    float
+        The quantile ``z`` such that ``P(Z <= z) = p`` for ``Z ~ N(0, 1)``.
+    """
+    # Coefficients for the central and tail regions of Acklam's algorithm.
+    a = [
+        -3.969683028665376e01,
+        2.209460984245205e02,
+        -2.759285104469687e02,
+        1.383577518672690e02,
+        -3.066479806614716e01,
+        2.506628277459239e00,
+    ]
+    b = [
+        -5.447609879822406e01,
+        1.615858368580409e02,
+        -1.556989798598866e02,
+        6.680131188771972e01,
+        -1.328068155288572e01,
+    ]
+    c = [
+        -7.784894002430293e-03,
+        -3.223964580411365e-01,
+        -2.400758277161838e00,
+        -2.549732539343734e00,
+        4.374664141464968e00,
+        2.938163982698783e00,
+    ]
+    d = [
+        7.784695709041462e-03,
+        3.224671290700398e-01,
+        2.445134137142996e00,
+        3.754408661907416e00,
+    ]
+    p_low = 0.02425
+    p_high = 1.0 - p_low
+    if p <= 0.0:
+        return float('-inf')
+    if p >= 1.0:
+        return float('inf')
+    if p < p_low:
+        q = math.sqrt(-2.0 * math.log(p))
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+            (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0
+        )
+    if p <= p_high:
+        q = p - 0.5
+        r = q * q
+        return (
+            (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5])
+            * q
+            / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0)
+        )
+    q = math.sqrt(-2.0 * math.log(1.0 - p))
+    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+        (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0
+    )
 
 
 # The (state, strand, matrix-attribute) triples emitted by the tidy matrix file.

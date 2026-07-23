@@ -117,9 +117,9 @@ def test_write_comparisons_direct_helper(mintest_derip, tmp_path):
 
 
 def test_plot_flank_spectra_method_returns_figure(mintest_derip):
-    """DeRIP.plot_flank_spectra returns the pooled overview figure."""
+    """DeRIP.plot_flank_spectra returns the pooled three-panel bihistogram."""
     import matplotlib.pyplot as plt
 
     fig = mintest_derip.plot_flank_spectra()
-    assert len(fig.axes) == 6
+    assert len(fig.axes) == 3
     plt.close(fig)
