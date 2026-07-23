@@ -429,11 +429,13 @@ def drawMiniAlignment(
     width_padding = 0.2  # Add 0.2 inches of padding to width
     height_padding = 1  # Add 1 inch of padding to height
 
-    # Create the figure. The alignment always occupies the top row (ratio 4); an
-    # optional gene-annotation track and the optional deRIP-consensus row each add
-    # their own stacked sub-plot below it. Building them as separate axes (rather
-    # than drawing the track onto the alignment axis) keeps the SVG chrome clean
-    # and lets the track carry its own tooltips.
+    # Create the figure. The alignment always occupies the top row (ratio 4); the
+    # optional deRIP-consensus row sits directly below it, and the optional
+    # gene-annotation track sits below the consensus (inside the deRIP-consensus
+    # section) so a gene's exon/stop glyphs read against the corrected sequence
+    # they annotate. Building them as separate axes (rather than drawing the track
+    # onto the alignment axis) keeps the SVG chrome clean and lets the track carry
+    # its own tooltips.
     f = plt.figure(figsize=(width + width_padding, height + height_padding), dpi=dpi)
 
     n_ann_rows = 0
@@ -443,24 +445,25 @@ def drawMiniAlignment(
         n_ann_rows = max(row for *_rest, row in annotation_track) + 1
     ann_ratio = 0.5 * n_ann_rows if n_ann_rows else 0.0
 
+    # Stack order top -> bottom: alignment, consensus, annotation track.
     ratios = [4.0]
-    if ann_ratio:
-        ratios.append(ann_ratio)
     if consensus_seq is not None:
         ratios.append(1.0)
+    if ann_ratio:
+        ratios.append(ann_ratio)
 
     gs = f.add_gridspec(len(ratios), 1, height_ratios=ratios)
     a = f.add_subplot(gs[0])
 
     row_i = 1
-    ann_ax = None
-    if ann_ratio:
-        ann_ax = f.add_subplot(gs[row_i])
-        row_i += 1
-
     consensus_ax = None
     if consensus_seq is not None:
         consensus_ax = f.add_subplot(gs[row_i])
+        row_i += 1
+
+    ann_ax = None
+    if ann_ratio:
+        ann_ax = f.add_subplot(gs[row_i])
 
     # Position adjustments - keep the same relative positioning
     if consensus_ax is not None or ann_ax is not None:
@@ -617,8 +620,8 @@ def drawMiniAlignment(
     if column_ranges:
         addColumnRangeMarkers(a, column_ranges, ali_height)
 
-    # Add a gene-annotation track in its own sub-plot between the alignment and
-    # the deRIP consensus. Rich CDS tracks (rounded exon segments joined across
+    # Add a gene-annotation track in its own sub-plot below the deRIP consensus
+    # (within the consensus section). Rich CDS tracks (rounded exon segments joined across
     # introns by a coloured midline, a strand arrowhead, and a bold red '*' at
     # each stop codon in the projected reading frame) are preferred; a flat span
     # list is the fallback. The returned gid -> label map is attached to the
@@ -693,6 +696,24 @@ def drawMiniAlignment(
         # Hide spines
         for spine in consensus_ax.spines.values():
             spine.set_visible(False)
+
+        # A full-width, invisible patch over the consensus row carrying a gid so
+        # the HTML report can make the whole deRIP'd sequence clickable (a click
+        # opens its FASTA popup). Drawn at a high zorder so it stays vector even
+        # when a wide alignment rasterizes the consensus cells (zorder < 200) and
+        # its gid group survives in the SVG. In file output it is inert and unseen.
+        click_patch = matplotlib.patches.Rectangle(
+            (-0.5, -0.5),
+            len(consensus_seq),
+            2.0,
+            facecolor='none',
+            edgecolor='none',
+            zorder=250,
+        )
+        click_patch.set_gid('deripseq')
+        consensus_ax.add_patch(click_patch)
+        if isinstance(getattr(f, 'annotation_titles', None), dict):
+            f.annotation_titles['deripseq'] = 'deRIP consensus — click for FASTA'
 
         # Add vertical grid lines (only when columns are few enough to see them;
         # see the alignment-axis note above).

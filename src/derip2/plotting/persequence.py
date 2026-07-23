@@ -630,7 +630,11 @@ def _draw_annotation_tracks(ax, tracks, n_cols, fig_w, show_labels=True):
     ax : matplotlib.axes.Axes
         The annotation sub-plot axis (shares the column x-axis with the rows).
     tracks : list of tuple
-        ``(exon_spans, strand, stop_columns, label, colour)`` per gene.
+        ``(exon_spans, strand, stop_columns, label, colour[, cds_id])`` per gene.
+        ``label`` is the y-axis row label (the parent transcript / gene id); the
+        optional 6th element ``cds_id`` is the CDS ``ID`` attribute used for the
+        hover tooltip so distinct CDS isoforms sharing one transcript stay
+        distinguishable. Legacy 5-tuples fall back to ``label`` for the tooltip.
     n_cols : int
         Number of alignment columns (for the shared x-range).
     fig_w : float
@@ -660,7 +664,12 @@ def _draw_annotation_tracks(ax, tracks, n_cols, fig_w, show_labels=True):
     # after SVG export, an individual <title> tooltip. Exon counts are small.
     titles = {}
     gid_n = 0
-    for t, (exon_spans, strand, stop_cols, label, colour) in enumerate(tracks):
+    for t, track in enumerate(tracks):
+        exon_spans, strand, stop_cols, label, colour = track[:5]
+        # The hover tooltip identifies the CDS by its own ``ID`` (6th element);
+        # the y-axis row label keeps the parent transcript id. Legacy 5-tuples
+        # fall back to the transcript id for the tooltip too.
+        tip_id = track[5] if len(track) > 5 else label
         center = t + 0.55
         y0, y1 = center - half_h, center + half_h
         spans = [(float(s), float(e)) for s, e in exon_spans]
@@ -684,7 +693,7 @@ def _draw_annotation_tracks(ax, tracks, n_cols, fig_w, show_labels=True):
                 exon_no = n_exons - j if strand == '-' else j + 1
                 gid = f'anntip{gid_n}'
                 gid_n += 1
-                titles[gid] = f'{label} — CDS exon {exon_no}/{n_exons}'
+                titles[gid] = f'{tip_id} — CDS exon {exon_no}/{n_exons}'
                 patch = PathPatch(
                     _gene_exon_path(
                         s - 0.5, e + 0.5, y0, y1, strand, rx, half_h * 0.6, arrow_len
@@ -714,7 +723,7 @@ def _draw_annotation_tracks(ax, tracks, n_cols, fig_w, show_labels=True):
     if show_labels:
         ax.set_yticks([t + 0.55 for t in range(len(tracks))])
         ax.set_yticklabels(
-            [label for _s, _st, _sc, label, _c in tracks],
+            [track[3] for track in tracks],
             fontsize=TICK_LABEL_SIZE,
             color=INK_MUTED,
         )

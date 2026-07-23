@@ -93,7 +93,7 @@ derip2 -i tests/data/mintest.fa \
 
 ### With vizualization
 
-The `--plot` option will create a visualization of the alignment with RIP markup. The `--plot-rip-type` option can be used to specify the type of RIP events to be displayed in the alignment visualization `product`, `substrate`, or `both`.
+The `--plot` option will create a visualization of the alignment with RIP markup. The `--plot-rip-type` option can be used to specify the type of RIP events to be displayed in the alignment visualization `product`, `substrate`, or `both`. The `--plot-format` option selects the output file format: `svg` (default, scalable vector) or `png` (a fully rasterised, high-resolution image). For very wide alignments the SVG embeds its dense base grid as a raster that can blur at extreme zoom levels; choose `png` if you need a sharp image at any zoom.
 
 ```bash
 derip2 -i tests/data/mintest.fa \
@@ -193,6 +193,11 @@ reconstructed ancestor, and that sequence's statistics.
 derip2 -i tests/data/mintest.fa --per-seq-report -d results
 ```
 
+By default each sequence's mutation spectrum is measured against the deRIP-corrected
+consensus. Pass `--spectra-ref-index N` to compare against an alignment row instead
+(0-based; negatives count from the end). The chosen reference then has an empty
+self-comparison spectrum.
+
 Supply a GFF3 gene model with `--gff` (sequence ids must match the alignment;
 coordinates are auto-adjusted for gaps) to add a gene-annotation track to
 `--plot`, gene-effect panels (premature stops, non-synonymous changes,
@@ -264,6 +269,13 @@ Options:
                                   Specify the type of RIP events to be
                                   displayed in the alignment visualization.
                                   [default: both]
+  --plot-format [svg|png]         File format for the --plot alignment
+                                  visualization. "svg" is scalable vector
+                                  output (the dense base grid of wide
+                                  alignments is embedded as a raster and can
+                                  blur at extreme zoom); "png" is a fully
+                                  rasterised, high-resolution image that stays
+                                  sharp at any zoom level.  [default: svg]
   --plot-strand-bias              Create a diverging stacked-bar chart of per-
                                   column RIP strand bias.
   --strand-bias-scale [column|alignment|counts]
@@ -309,6 +321,13 @@ Options:
                                   more sequences, the strongest strand-bias
                                   sequences are kept. Unset renders every
                                   sequence.
+  --spectra-ref-index INTEGER     Alignment row index (0-based; negatives
+                                  allowed) of a sequence to use as the
+                                  reference for the per-sequence report
+                                  mutation spectra, instead of the deRIP-
+                                  corrected consensus. The chosen reference
+                                  has an empty (self-comparison) spectrum.
+                                  Unset compares against the deRIP consensus.
   --gff TEXT                      GFF3 gene model. Sequence ids must match
                                   alignment record ids. Enables a gene-
                                   annotation track on --plot, gene-effect

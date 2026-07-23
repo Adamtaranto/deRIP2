@@ -436,17 +436,214 @@ def test_gene_exon_path_arrow_direction():
 
 
 def test_report_annotation_tooltips(mintest_derip, gff_path, tmp_path):
-    """CDS exon segments carry a data-tip tooltip with id and exon number."""
+    """CDS exon segments carry a data-tip tooltip with the CDS id and exon number.
+
+    The tooltip identifies the CDS by its own ``ID`` attribute (``cds*``), not the
+    parent transcript (``mRNA*``), so distinct CDS isoforms sharing one transcript
+    stay distinguishable. All segments of a multi-exon CDS share the first
+    segment's ``ID``.
+    """
     out = tmp_path / 'per_seq.html'
     mintest_derip.write_per_sequence_report(str(out), gff=str(gff_path))
     html = out.read_text()
     # Custom tooltips replace native <title> (no browser delay; pin on click).
     assert '<div class="psr-tip" id="psr-tip"' in html
-    # mRNA3 is a two-exon plus-strand gene, so both exon numbers appear.
-    assert 'data-tip="mRNA3 — CDS exon 1/2"' in html
-    assert 'data-tip="mRNA3 — CDS exon 2/2"' in html
-    # A single-exon gene shows exon 1/1.
-    assert 'data-tip="mRNA1 — CDS exon 1/1"' in html
+    # cds3a/cds3b belong to two-exon plus-strand mRNA3; both segments tooltip to
+    # the first segment's CDS id (cds3a) with their exon numbers.
+    assert 'data-tip="cds3a — CDS exon 1/2"' in html
+    assert 'data-tip="cds3a — CDS exon 2/2"' in html
+    # A single-exon CDS shows exon 1/1 under its own id, not the parent transcript.
+    assert 'data-tip="cds1 — CDS exon 1/1"' in html
+    assert 'mRNA1 — CDS exon' not in html
+
+
+def test_overview_fasta_downloads_and_popup(mintest_derip, gff_path, tmp_path):
+    """The overview page offers FASTA downloads and click-to-view popup data.
+
+    With a GFF, the overview gets: a deRIP-sequence download, a CDS multi-FASTA
+    download, a 'View deRIP FASTA' button, the modal skeleton, and an embedded
+    JSON payload keyed by CDS id (with nucleotide + translation) and '__derip__'.
+    Clickable annotation groups and the consensus row carry data-fasta.
+    """
+    import json
+
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out), gff=str(gff_path), genetic_code=1)
+    html = out.read_text()
+
+    # Download buttons (self-contained data: URIs) + the view button + modal.
+    derip_id = mintest_derip.consensus.id  # default 'deRIPseq'
+    assert f'download="{derip_id}.fasta"' in html
+    assert 'download="deRIP_cds.fasta"' in html
+    assert 'data:text/plain;charset=utf-8;base64,' in html
+    assert 'data-fasta="__derip__">View deRIP FASTA</button>' in html
+    assert 'id="psr-modal"' in html and 'id="psr-fasta"' in html
+
+    # Clickable groups: the consensus row and each CDS carry data-fasta.
+    assert 'data-fasta="__derip__"' in html
+    for cds_id in ('cds1', 'cds2', 'cds3a'):
+        assert f'data-fasta="{cds_id}"' in html
+
+    # Embedded JSON payload: CDS entries carry nucleotide + translation + table;
+    # the deRIP entry has no translation.
+    m = re.search(r'id="psr-fasta-data">(.*?)</script>', html, re.S)
+    assert m
+    data = json.loads(m.group(1).replace('<\\/', '</'))
+    assert data['__derip__']['aa'] is None
+    assert data['cds1']['nt'].startswith('>cds1\n')
+    assert data['cds1']['aa'].startswith('>cds1\n')
+    assert data['cds1']['table'] == 1
+
+
+def test_overview_download_without_gff(mintest_derip, tmp_path):
+    """Without a GFF, the deRIP-sequence download/popup exist but no CDS export."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    assert f'download="{mintest_derip.consensus.id}.fasta"' in html
+    assert 'data-fasta="__derip__">View deRIP FASTA</button>' in html
+    # No CDS multi-FASTA download when there is no annotation.
+    assert 'deRIP_cds.fasta' not in html
+
+
+def test_overview_stats_table(mintest_derip, tmp_path):
+    """The overview carries a sortable all-sequence stats table + consensus row.
+
+    Rows: every input sequence plus a final deRIP-consensus row whose RIP-event
+    and RSI columns are not applicable (en-dash) while GC/CRI are computed. The
+    grouped headers mirror the per-sequence stat sections and every column is
+    click-to-sort.
+    """
+    from derip2.persequence_report import _STAT_SECTIONS, _overview_stats_table_html
+
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+
+    # The sortable table exists with grouped headers and a sort handler.
+    assert 'table class="psr-stats"' in html
+    for title, _desc, _cols in _STAT_SECTIONS:
+        assert f'>{title}<' in html
+    assert 'th.sortable' in html  # the JS sort wiring
+
+    # Build the table directly to assert on its structure.
+    df = mintest_derip.summarize_stats()
+    table = _overview_stats_table_html(df, mintest_derip)
+    body = re.search(r'<tbody>(.*)</tbody>', table, re.S).group(1)
+    rows = re.findall(r'<tr[^>]*>', body)
+    # One row per sequence plus the consensus row.
+    assert len(rows) == len(df) + 1
+    assert 'class="consensus-row"' in table
+
+    # Sortable column count = leading Sequence column + every flat stat column.
+    n_stats = sum(len(cols) for _t, _d, cols in _STAT_SECTIONS)
+    assert table.count('class="sortable') == n_stats + 1
+
+    # The consensus row: RIP/RSI columns are en-dashes; GC/CRI are numbers.
+    consensus = re.search(r'<tr class="consensus-row">(.*?)</tr>', table, re.S).group(1)
+    assert mintest_derip.consensus.id in consensus
+    assert '&ndash;' in consensus  # not-applicable RIP/RSI cells
+    cri, _pi, _si = mintest_derip.calculate_cri(mintest_derip.get_consensus_string())
+    assert f'{cri:.3f}' in consensus
+
+
+def test_overview_stats_table_green_flags(mintest_derip):
+    """CRI > 1 and a significant p-value are flagged green in the overview table."""
+    from derip2.persequence_report import _overview_stats_table_html
+
+    df = mintest_derip.summarize_stats().copy()
+    df.loc[df.index[0], 'CRI'] = 1.5  # > 1 -> green
+    df.loc[df.index[0], 'pvalue'] = 0.01  # < 0.05 -> green
+    df.loc[df.index[1], 'CRI'] = 0.5  # <= 1 -> not green
+    df.loc[df.index[1], 'pvalue'] = 0.5  # >= 0.05 -> not green
+    table = _overview_stats_table_html(df, mintest_derip)
+    rows = re.findall(r'<tr[^>]*>.*?</tr>', table, re.S)
+    # rows[0] header spans two <tr>; the first data row is the sequence at df row 0.
+    body_rows = [r for r in rows if 'scope="row"' in r]
+    r0, r1 = body_rows[0], body_rows[1]
+    assert 'class="value pos">1.500' in r0  # CRI 1.5 green (plain, no sign)
+    assert 'class="value pos">0.01' in r0  # pvalue 0.01 green
+    assert 'value pos">0.500' not in r1  # CRI 0.5 not green
+    assert 'value pos">0.5<' not in r1  # pvalue 0.5 not green
+
+
+def test_overview_stats_table_links_and_truncation(mintest_derip):
+    """Sequence names link to their page; sequences without a page stay unlinked."""
+    from derip2.persequence_report import _overview_stats_table_html
+
+    df = mintest_derip.summarize_stats()
+    # Simulate --max-report-seqs dropping rows: only rows 0 and 2 have panels.
+    table = _overview_stats_table_html(df, mintest_derip, row_to_panel={0: 1, 2: 2})
+    body = re.search(r'<tbody>(.*)</tbody>', table, re.S).group(1)
+    # Exactly two linked names, pointing at panels 1 and 2.
+    assert re.findall(r'data-goto="(\d+)"', body) == ['1', '2']
+    # The consensus row and dropped sequences carry no link.
+    consensus = re.search(r'<tr class="consensus-row">(.*?)</tr>', body, re.S).group(1)
+    assert 'seq-link' not in consensus
+
+
+def test_overview_aggregate_spectrum(mintest_derip, tmp_path):
+    """The overview page embeds a pooled SBS-96 spectrum (all seqs vs deRIP)."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    assert 'Mutation spectrum' in html
+    # The pooled spectrum figure is embedded with its own unique id prefix.
+    assert 'ovwsbs-' in html
+
+
+def test_overview_initial_fit_and_goto_js(mintest_derip, tmp_path):
+    """The overview JS fits the MSA figure on load and wires sequence-name jumps."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    assert 'function fitOverview' in html
+    assert "closest('[data-goto]')" in html
+
+
+def test_report_default_spectra_reference(mintest_derip, tmp_path):
+    """Without a reference index, spectra prose names the deRIP ancestor."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    assert 'the reconstructed deRIP' in html
+    assert 'reference sequence <code>' not in html
+    assert 'chosen spectra reference' not in html
+
+
+def test_report_alternative_spectra_reference(mintest_derip, tmp_path):
+    """A spectra_ref_index names the reference and flags its self-comparison.
+
+    The per-sequence and overview spectra prose name the chosen reference
+    sequence, and that sequence's own panel notes its spectrum is empty.
+    """
+    out = tmp_path / 'per_seq.html'
+    ref_id = mintest_derip.alignment[0].id
+    mintest_derip.write_per_sequence_report(str(out), spectra_ref_index=0)
+    html = out.read_text()
+    assert f'measured against reference sequence <code>{ref_id}</code>' in html
+    assert f'relative to reference sequence <code>{ref_id}</code>' in html
+    # The reference's own panel flags the empty self-comparison exactly once.
+    assert html.count('chosen spectra reference') == 1
+
+
+def test_report_spectra_reference_negative_index(mintest_derip, tmp_path):
+    """A negative reference index is normalised (e.g. -1 = last sequence)."""
+    out = tmp_path / 'per_seq.html'
+    last_id = mintest_derip.alignment[-1].id
+    mintest_derip.write_per_sequence_report(str(out), spectra_ref_index=-1)
+    html = out.read_text()
+    assert f'reference sequence <code>{last_id}</code>' in html
+
+
+def test_report_spectra_reference_out_of_range(mintest_derip, tmp_path):
+    """An out-of-range reference index raises a clear ValueError."""
+    out = tmp_path / 'per_seq.html'
+    n = len(mintest_derip.alignment)
+    with pytest.raises(ValueError, match='out of range'):
+        mintest_derip.write_per_sequence_report(str(out), spectra_ref_index=n)
+    with pytest.raises(ValueError, match='out of range'):
+        mintest_derip.write_per_sequence_report(str(out), spectra_ref_index=-n - 1)
 
 
 def test_report_total_rip_events(mintest_derip, tmp_path):
@@ -470,9 +667,9 @@ def test_report_has_legend_and_zoom(mintest_derip, tmp_path):
     assert 'zoom-in' in html and 'zoom-out' in html and 'applyZoom' in html
 
 
-def test_report_pvalue_bold_when_significant(mintest_path):
-    """A strand-asymmetry p-value below 0.05 gets the bold .sig class."""
-    from derip2.persequence_report import _stats_sections_html
+def test_report_pvalue_green_when_significant(mintest_path):
+    """A strand-asymmetry p-value below 0.05 gets the .sig class (styled green)."""
+    from derip2.persequence_report import _PSR_STYLE, _stats_sections_html
 
     derip = DeRIP(mintest_path)
     derip.calculate_rip()
@@ -481,6 +678,9 @@ def test_report_pvalue_bold_when_significant(mintest_path):
     assert 'sig">' in _stats_sections_html(row)
     row['pvalue'] = 0.5
     assert 'sig">' not in _stats_sections_html(row)
+    # The .sig class is coloured green, not bold.
+    assert '.stat-card td.value.sig { color: #007a3d; }' in _PSR_STYLE
+    assert '.stat-card td.value.sig { font-weight: 700; }' not in _PSR_STYLE
 
 
 def test_report_cri_highlighted_when_above_one(mintest_path, tmp_path):

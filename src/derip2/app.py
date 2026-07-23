@@ -130,6 +130,18 @@ logger = logging.getLogger(__name__)
     show_default=True,
     help='Specify the type of RIP events to be displayed in the alignment visualization.',
 )
+@click.option(
+    '--plot-format',
+    type=click.Choice(['svg', 'png']),
+    default='svg',
+    show_default=True,
+    help=(
+        'File format for the --plot alignment visualization. "svg" is scalable '
+        'vector output (the dense base grid of wide alignments is embedded as a '
+        'raster and can blur at extreme zoom); "png" is a fully rasterised, '
+        'high-resolution image that stays sharp at any zoom level.'
+    ),
+)
 # Strand bias options
 @click.option(
     '--plot-strand-bias',
@@ -231,6 +243,18 @@ logger = logging.getLogger(__name__)
         'kept. Unset renders every sequence.'
     ),
 )
+@click.option(
+    '--spectra-ref-index',
+    type=int,
+    default=None,
+    show_default=True,
+    help=(
+        'Alignment row index (0-based; negatives allowed) of a sequence to use '
+        'as the reference for the per-sequence report mutation spectra, instead '
+        'of the deRIP-corrected consensus. The chosen reference has an empty '
+        '(self-comparison) spectrum. Unset compares against the deRIP consensus.'
+    ),
+)
 # Gene annotation options
 @click.option(
     '--gff',
@@ -281,6 +305,7 @@ def main(
     prefix,
     plot,
     plot_rip_type,
+    plot_format,
     plot_strand_bias,
     strand_bias_scale,
     strand_bias_xaxis,
@@ -292,6 +317,7 @@ def main(
     html_report,
     per_seq_report,
     max_report_seqs,
+    spectra_ref_index,
     gff,
     genetic_code,
     annotation_colors,
@@ -350,6 +376,10 @@ def main(
     plot_rip_type : str
         Specify the type of RIP events to be displayed in the alignment visualization.
         One of: 'both', 'product', or 'substrate'. Default: 'both'.
+    plot_format : str
+        File format for the --plot alignment visualization. One of: 'svg' or 'png'.
+        'svg' is scalable vector output; 'png' is a fully rasterised high-resolution
+        image that stays sharp at any zoom level. Default: 'svg'.
     plot_strand_bias : bool
         If True, create a diverging stacked-bar chart of per-column RIP strand
         bias. Default: False.
@@ -381,6 +411,10 @@ def main(
     max_report_seqs : int or None
         Cap the number of sequence panels in the per-sequence report. If None,
         every sequence is rendered. Default: None.
+    spectra_ref_index : int or None
+        Alignment row index (0-based; negatives allowed) of a sequence to use as
+        the reference for the per-sequence report mutation spectra, instead of the
+        deRIP-corrected consensus. Default: None.
     gff : str or None
         Path to a GFF3 gene model. Enables the annotation track, gene-effect
         panels, and the SNP-effect summary. Default: None.
@@ -415,7 +449,7 @@ def main(
     if mask:
         out_path_aln = path.join(out_dir, f'{prefix}_masked_alignment.fasta')
     # Path for visualization - only used if plot is True
-    viz_path = path.join(out_dir, f'{prefix}_visualization.svg')
+    viz_path = path.join(out_dir, f'{prefix}_visualization.{plot_format}')
     strand_bias_path = path.join(out_dir, f'{prefix}_strand_bias.svg')
     stats_path = path.join(out_dir, f'{prefix}_stats.tsv')
     report_path = path.join(out_dir, f'{prefix}_report.html')
@@ -628,6 +662,14 @@ def main(
         )
 
     if per_seq_report:
+        if spectra_ref_index is not None:
+            n_aln = len(derip_obj.alignment)
+            if not -n_aln <= spectra_ref_index < n_aln:
+                raise click.BadParameter(
+                    f'{spectra_ref_index} is out of range for {n_aln} sequences '
+                    f'(valid: {-n_aln}..{n_aln - 1}).',
+                    param_hint='--spectra-ref-index',
+                )
         logger.info(
             f'Writing per-sequence HTML report to: \033[0m{per_seq_report_path}'
         )
@@ -638,6 +680,7 @@ def main(
             max_seqs=max_report_seqs,
             gff=gff,
             genetic_code=genetic_code,
+            spectra_ref_index=spectra_ref_index,
         )
 
 

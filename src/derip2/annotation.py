@@ -642,6 +642,33 @@ def translate_cds(
     return str(Seq(bases[:usable]).translate(table=genetic_code))
 
 
+def cds_display_id(gene: Gene) -> str:
+    """
+    Return the CDS ``ID`` attribute for display, falling back to the gene id.
+
+    :func:`parse_gff3` groups CDS rows by their ``Parent`` attribute, so
+    ``Gene.gene_id`` is the parent transcript rather than the CDS's own ``ID``.
+    All segments of one CDS share a single ``ID`` in GFF3, so the first segment's
+    ``feature_id`` identifies the CDS. This matters when one transcript owns
+    several distinct CDS records (isoforms): they must remain distinguishable in
+    the annotation-track tooltips.
+
+    Parameters
+    ----------
+    gene : Gene
+        The gene whose CDS ``ID`` is wanted.
+
+    Returns
+    -------
+    str
+        The first CDS segment's ``ID`` attribute, or ``gene.gene_id`` when the
+        CDS rows carried no ``ID``.
+    """
+    if gene.cds and gene.cds[0].feature_id:
+        return gene.cds[0].feature_id
+    return gene.gene_id
+
+
 def cds_alignment_columns(gene: Gene, ungapped_to_col: np.ndarray):
     """
     Project a gene's CDS onto its alignment columns, in transcription order.
