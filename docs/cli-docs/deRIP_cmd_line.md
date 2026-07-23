@@ -30,7 +30,7 @@ derip2 -i tests/data/mintest.fa \
 
 ### With vizualization
 
-The `--plot` option will create a visualization of the alignment with RIP markup. The `--plot-rip-type` option can be used to specify the type of RIP events to be displayed in the alignment visualization `product`, `substrate`, or `both`.
+The `--plot` option will create a visualization of the alignment with RIP markup. The `--plot-rip-type` option can be used to specify the type of RIP events to be displayed in the alignment visualization `product`, `substrate`, or `both`. The `--plot-format` option selects the output file format: `svg` (default, scalable vector) or `png` (a fully rasterised, high-resolution image). For very wide alignments the SVG embeds its dense base grid as a raster that can blur at extreme zoom levels; choose `png` if you need a sharp image at any zoom.
 
 ```bash
 derip2 -i tests/data/mintest.fa \
@@ -198,6 +198,13 @@ annotation-track colours with a two-column `type<TAB>hex` file.
                                   Specify the type of RIP events to be
                                   displayed in the alignment visualization.
                                   [default: both]
+  --plot-format [svg|png]         File format for the --plot alignment
+                                  visualization. "svg" is scalable vector
+                                  output (the dense base grid of wide
+                                  alignments is embedded as a raster and can
+                                  blur at extreme zoom); "png" is a fully
+                                  rasterised, high-resolution image that stays
+                                  sharp at any zoom level.  [default: svg]
   --plot-strand-bias              Create a diverging stacked-bar chart of per-
                                   column RIP strand bias.
   --strand-bias-scale [column|alignment|counts]

@@ -130,6 +130,18 @@ logger = logging.getLogger(__name__)
     show_default=True,
     help='Specify the type of RIP events to be displayed in the alignment visualization.',
 )
+@click.option(
+    '--plot-format',
+    type=click.Choice(['svg', 'png']),
+    default='svg',
+    show_default=True,
+    help=(
+        'File format for the --plot alignment visualization. "svg" is scalable '
+        'vector output (the dense base grid of wide alignments is embedded as a '
+        'raster and can blur at extreme zoom); "png" is a fully rasterised, '
+        'high-resolution image that stays sharp at any zoom level.'
+    ),
+)
 # Strand bias options
 @click.option(
     '--plot-strand-bias',
@@ -281,6 +293,7 @@ def main(
     prefix,
     plot,
     plot_rip_type,
+    plot_format,
     plot_strand_bias,
     strand_bias_scale,
     strand_bias_xaxis,
@@ -350,6 +363,10 @@ def main(
     plot_rip_type : str
         Specify the type of RIP events to be displayed in the alignment visualization.
         One of: 'both', 'product', or 'substrate'. Default: 'both'.
+    plot_format : str
+        File format for the --plot alignment visualization. One of: 'svg' or 'png'.
+        'svg' is scalable vector output; 'png' is a fully rasterised high-resolution
+        image that stays sharp at any zoom level. Default: 'svg'.
     plot_strand_bias : bool
         If True, create a diverging stacked-bar chart of per-column RIP strand
         bias. Default: False.
@@ -415,7 +432,7 @@ def main(
     if mask:
         out_path_aln = path.join(out_dir, f'{prefix}_masked_alignment.fasta')
     # Path for visualization - only used if plot is True
-    viz_path = path.join(out_dir, f'{prefix}_visualization.svg')
+    viz_path = path.join(out_dir, f'{prefix}_visualization.{plot_format}')
     strand_bias_path = path.join(out_dir, f'{prefix}_strand_bias.svg')
     stats_path = path.join(out_dir, f'{prefix}_stats.tsv')
     report_path = path.join(out_dir, f'{prefix}_report.html')

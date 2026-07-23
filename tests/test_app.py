@@ -1,6 +1,7 @@
 import os
 import tempfile
 
+import pytest
 from click.testing import CliRunner
 
 # Import the main function
@@ -122,6 +123,46 @@ def test_main_function_with_visualization():
             f'Output alignment file not found: {output_aln}'
         )
         assert os.path.exists(output_viz), f'Visualization file not found: {output_viz}'
+
+
+@pytest.mark.parametrize('plot_format', ['svg', 'png'])
+def test_plot_format_option(plot_format):
+    """The --plot-format option controls the visualization file extension.
+
+    ``svg`` keeps the default vector output; ``png`` writes a fully rasterised
+    image (sharp at any zoom). ``drawMiniAlignment`` derives the save format from
+    the output extension, so selecting the format here must produce a matching file.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        runner = CliRunner()
+        prefix = 'FmtDeRIP'
+        result = runner.invoke(
+            main,
+            [
+                '-i',
+                'tests/data/mintest.fa',
+                '--out-dir',
+                temp_dir,
+                '--prefix',
+                prefix,
+                '--plot',
+                '--plot-format',
+                plot_format,
+            ],
+        )
+        assert result.exit_code == 0, f'Command failed with output: {result.output}'
+
+        expected = os.path.join(temp_dir, f'{prefix}_visualization.{plot_format}')
+        assert os.path.exists(expected), f'Visualization not found: {expected}'
+        # The other-format file must NOT be produced.
+        other = 'png' if plot_format == 'svg' else 'svg'
+        assert not os.path.exists(
+            os.path.join(temp_dir, f'{prefix}_visualization.{other}')
+        )
+        if plot_format == 'png':
+            # PNG magic bytes: a real rasterised image, not an SVG mislabelled.
+            with open(expected, 'rb') as handle:
+                assert handle.read(8) == b'\x89PNG\r\n\x1a\n'
 
 
 def test_noappend_option():
