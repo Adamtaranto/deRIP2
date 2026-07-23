@@ -243,6 +243,18 @@ logger = logging.getLogger(__name__)
         'kept. Unset renders every sequence.'
     ),
 )
+@click.option(
+    '--spectra-ref-index',
+    type=int,
+    default=None,
+    show_default=True,
+    help=(
+        'Alignment row index (0-based; negatives allowed) of a sequence to use '
+        'as the reference for the per-sequence report mutation spectra, instead '
+        'of the deRIP-corrected consensus. The chosen reference has an empty '
+        '(self-comparison) spectrum. Unset compares against the deRIP consensus.'
+    ),
+)
 # Gene annotation options
 @click.option(
     '--gff',
@@ -305,6 +317,7 @@ def main(
     html_report,
     per_seq_report,
     max_report_seqs,
+    spectra_ref_index,
     gff,
     genetic_code,
     annotation_colors,
@@ -398,6 +411,10 @@ def main(
     max_report_seqs : int or None
         Cap the number of sequence panels in the per-sequence report. If None,
         every sequence is rendered. Default: None.
+    spectra_ref_index : int or None
+        Alignment row index (0-based; negatives allowed) of a sequence to use as
+        the reference for the per-sequence report mutation spectra, instead of the
+        deRIP-corrected consensus. Default: None.
     gff : str or None
         Path to a GFF3 gene model. Enables the annotation track, gene-effect
         panels, and the SNP-effect summary. Default: None.
@@ -645,6 +662,14 @@ def main(
         )
 
     if per_seq_report:
+        if spectra_ref_index is not None:
+            n_aln = len(derip_obj.alignment)
+            if not -n_aln <= spectra_ref_index < n_aln:
+                raise click.BadParameter(
+                    f'{spectra_ref_index} is out of range for {n_aln} sequences '
+                    f'(valid: {-n_aln}..{n_aln - 1}).',
+                    param_hint='--spectra-ref-index',
+                )
         logger.info(
             f'Writing per-sequence HTML report to: \033[0m{per_seq_report_path}'
         )
@@ -655,6 +680,7 @@ def main(
             max_seqs=max_report_seqs,
             gff=gff,
             genetic_code=genetic_code,
+            spectra_ref_index=spectra_ref_index,
         )
 
 

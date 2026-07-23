@@ -119,6 +119,19 @@ derip2 -i tests/data/sahana.fasta.gz \
   -d results
 ```
 
+By default every sequence's mutation spectrum is measured against the deRIP-corrected
+consensus. Use `--spectra-ref-index N` to compare against an alignment row instead
+(0-based; negative indices count from the end, so `-1` is the last sequence). The
+chosen reference then has an empty (self-comparison) spectrum, and the report prose
+names it.
+
+```bash
+derip2 -i tests/data/mintest.fa \
+  --per-seq-report \
+  --spectra-ref-index 0 \
+  -d results
+```
+
 ### Gene annotation and RIP effect reporting
 
 Supply a GFF3 gene model with `--gff`. Sequence ids in the GFF must match the
@@ -240,6 +253,13 @@ annotation-track colours with a two-column `type<TAB>hex` file.
                                   more sequences, the strongest strand-bias
                                   sequences are kept. Unset renders every
                                   sequence.
+  --spectra-ref-index INTEGER     Alignment row index (0-based; negatives
+                                  allowed) of a sequence to use as the
+                                  reference for the per-sequence report
+                                  mutation spectra, instead of the deRIP-
+                                  corrected consensus. The chosen reference
+                                  has an empty (self-comparison) spectrum.
+                                  Unset compares against the deRIP consensus.
   --gff TEXT                      GFF3 gene model. Sequence ids must match
                                   alignment record ids. Enables a gene-
                                   annotation track on --plot, gene-effect

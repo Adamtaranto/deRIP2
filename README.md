@@ -193,6 +193,11 @@ reconstructed ancestor, and that sequence's statistics.
 derip2 -i tests/data/mintest.fa --per-seq-report -d results
 ```
 
+By default each sequence's mutation spectrum is measured against the deRIP-corrected
+consensus. Pass `--spectra-ref-index N` to compare against an alignment row instead
+(0-based; negatives count from the end). The chosen reference then has an empty
+self-comparison spectrum.
+
 Supply a GFF3 gene model with `--gff` (sequence ids must match the alignment;
 coordinates are auto-adjusted for gaps) to add a gene-annotation track to
 `--plot`, gene-effect panels (premature stops, non-synonymous changes,
@@ -316,6 +321,13 @@ Options:
                                   more sequences, the strongest strand-bias
                                   sequences are kept. Unset renders every
                                   sequence.
+  --spectra-ref-index INTEGER     Alignment row index (0-based; negatives
+                                  allowed) of a sequence to use as the
+                                  reference for the per-sequence report
+                                  mutation spectra, instead of the deRIP-
+                                  corrected consensus. The chosen reference
+                                  has an empty (self-comparison) spectrum.
+                                  Unset compares against the deRIP consensus.
   --gff TEXT                      GFF3 gene model. Sequence ids must match
                                   alignment record ids. Enables a gene-
                                   annotation track on --plot, gene-effect

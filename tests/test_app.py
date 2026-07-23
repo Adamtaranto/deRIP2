@@ -165,6 +165,53 @@ def test_plot_format_option(plot_format):
                 assert handle.read(8) == b'\x89PNG\r\n\x1a\n'
 
 
+def test_spectra_ref_index_option():
+    """--spectra-ref-index selects an alternative spectra reference; bad values fail.
+
+    A valid row index produces the per-sequence report and names that reference in
+    the spectra prose; an out-of-range index is rejected as a bad CLI parameter.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        runner = CliRunner()
+        prefix = 'RefDeRIP'
+        result = runner.invoke(
+            main,
+            [
+                '-i',
+                'tests/data/mintest.fa',
+                '--out-dir',
+                temp_dir,
+                '--prefix',
+                prefix,
+                '--per-seq-report',
+                '--spectra-ref-index',
+                '0',
+            ],
+        )
+        assert result.exit_code == 0, f'Command failed with output: {result.output}'
+        report = os.path.join(temp_dir, f'{prefix}_per_sequence.html')
+        assert os.path.exists(report)
+        assert 'reference sequence' in open(report).read()
+
+        # Out-of-range index is rejected without writing a broken report.
+        bad = runner.invoke(
+            main,
+            [
+                '-i',
+                'tests/data/mintest.fa',
+                '--out-dir',
+                temp_dir,
+                '--prefix',
+                'BadRef',
+                '--per-seq-report',
+                '--spectra-ref-index',
+                '99',
+            ],
+        )
+        assert bad.exit_code != 0
+        assert 'out of range' in bad.output
+
+
 def test_noappend_option():
     """Test that the --no-append option works correctly."""
 

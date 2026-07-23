@@ -601,6 +601,51 @@ def test_overview_initial_fit_and_goto_js(mintest_derip, tmp_path):
     assert "closest('[data-goto]')" in html
 
 
+def test_report_default_spectra_reference(mintest_derip, tmp_path):
+    """Without a reference index, spectra prose names the deRIP ancestor."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    assert 'the reconstructed deRIP' in html
+    assert 'reference sequence <code>' not in html
+    assert 'chosen spectra reference' not in html
+
+
+def test_report_alternative_spectra_reference(mintest_derip, tmp_path):
+    """A spectra_ref_index names the reference and flags its self-comparison.
+
+    The per-sequence and overview spectra prose name the chosen reference
+    sequence, and that sequence's own panel notes its spectrum is empty.
+    """
+    out = tmp_path / 'per_seq.html'
+    ref_id = mintest_derip.alignment[0].id
+    mintest_derip.write_per_sequence_report(str(out), spectra_ref_index=0)
+    html = out.read_text()
+    assert f'measured against reference sequence <code>{ref_id}</code>' in html
+    assert f'relative to reference sequence <code>{ref_id}</code>' in html
+    # The reference's own panel flags the empty self-comparison exactly once.
+    assert html.count('chosen spectra reference') == 1
+
+
+def test_report_spectra_reference_negative_index(mintest_derip, tmp_path):
+    """A negative reference index is normalised (e.g. -1 = last sequence)."""
+    out = tmp_path / 'per_seq.html'
+    last_id = mintest_derip.alignment[-1].id
+    mintest_derip.write_per_sequence_report(str(out), spectra_ref_index=-1)
+    html = out.read_text()
+    assert f'reference sequence <code>{last_id}</code>' in html
+
+
+def test_report_spectra_reference_out_of_range(mintest_derip, tmp_path):
+    """An out-of-range reference index raises a clear ValueError."""
+    out = tmp_path / 'per_seq.html'
+    n = len(mintest_derip.alignment)
+    with pytest.raises(ValueError, match='out of range'):
+        mintest_derip.write_per_sequence_report(str(out), spectra_ref_index=n)
+    with pytest.raises(ValueError, match='out of range'):
+        mintest_derip.write_per_sequence_report(str(out), spectra_ref_index=-n - 1)
+
+
 def test_report_total_rip_events(mintest_derip, tmp_path):
     """The RIP-events card shows a total equal to forward + reverse."""
     out = tmp_path / 'per_seq.html'

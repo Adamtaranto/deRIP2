@@ -180,6 +180,26 @@ def _data_uri(text):
     return f'data:text/plain;charset=utf-8;base64,{b64}'
 
 
+def _reference_phrase(label):
+    """
+    Describe the mutation-spectrum reference for the report prose.
+
+    Parameters
+    ----------
+    label : str or None
+        The reference sequence's id when a specific alignment row was chosen, or
+        ``None`` to use the default deRIP-corrected consensus.
+
+    Returns
+    -------
+    str
+        An HTML phrase naming the reference (the label is code-formatted).
+    """
+    if label is None:
+        return 'the reconstructed deRIP&rsquo;d ancestor'
+    return f'reference sequence <code>{escape(str(label))}</code>'
+
+
 def _zoom_control():
     """
     Build the (class-based) zoom control for a panel header.
@@ -986,6 +1006,8 @@ def _panel_html(
     deripd_aa,
     cds_gene_cols=(),
     genetic_code=1,
+    spectra_ref_index=None,
+    spectra_ref_label=None,
 ):
     """
     Build the HTML for one sequence's panel.
@@ -1016,6 +1038,13 @@ def _panel_html(
         per-subject CDS track. Empty when no GFF was supplied.
     genetic_code : int, optional
         NCBI translation table for the projected stop-codon calls (default: 1).
+    spectra_ref_index : int, optional
+        Alignment row index of the sequence used as the spectra reference; when
+        it equals ``row_index`` this panel's spectrum is a self-comparison
+        (empty by definition) and a note is shown. ``None`` = deRIP consensus.
+    spectra_ref_label : str, optional
+        The reference sequence's id, used in the spectrum prose. ``None`` = the
+        default deRIP-corrected consensus.
 
     Returns
     -------
@@ -1112,6 +1141,15 @@ def _panel_html(
     ds_svg = _figure_to_svg(ds, f's{row_index}ds-', tight=False)
     plt.close(ds)
 
+    # When this sequence is itself the chosen spectra reference, its spectrum is a
+    # self-comparison and therefore empty by construction; flag that up front.
+    ref_note = ''
+    if spectra_ref_index is not None and row_index == spectra_ref_index:
+        ref_note = (
+            '<p class="note">This sequence is the chosen spectra reference, so its '
+            'spectrum is empty (every base matches itself).</p>'
+        )
+
     # Gene-effect panel: only shown when a GFF annotated this sequence.
     effect_html = ''
     if seq_id in genes_by_seqid:
@@ -1160,10 +1198,11 @@ def _panel_html(
         'converting C to T, so a low bar is consistent with heavy RIP.</p>'
         f'<div class="figure-fixed">{gc_svg}</div>'
         '<h3>Mutation spectrum (SBS-96)</h3>'
+        f'{ref_note}'
         '<p class="desc">The single-base-substitution spectrum of this sequence '
-        'measured against the reconstructed ancestor, in trinucleotide context '
-        '(5′-N[R&gt;A]N-3′). RIP shows up as a C&gt;T peak in CpA context. Scroll '
-        'horizontally if the 96 channels do not fit.</p>'
+        f'measured against {_reference_phrase(spectra_ref_label)}, in '
+        'trinucleotide context (5′-N[R&gt;A]N-3′). RIP shows up as a C&gt;T peak '
+        'in CpA context. Scroll horizontally if the 96 channels do not fit.</p>'
         f'<div class="spectrum-scroll">{sbs_svg}</div>'
         '<h3>Mutation spectrum (downstream context)</h3>'
         '<p class="desc">The same substitutions classified by the mutated base '
@@ -1370,20 +1409,23 @@ def _overview_stats_table_html(df, derip, row_to_panel=None):
     )
 
 
-def _overview_spectrum_svg(derip):
+def _overview_spectrum_svg(derip, ancestor=None):
     """
-    Render the pooled SBS-96 spectrum (all sequences vs the deRIP reference).
+    Render the pooled SBS-96 spectrum (all sequences vs the spectra reference).
 
-    Every alignment cell that differs from the deRIP-corrected reference is one
-    substitution event; pooling all sequences into a single sample gives the
-    alignment-wide mutation spectrum (dominated by the C→T / G→A RIP signature).
-    Rendered like the per-sequence spectra (wide, bare, fixed geometry) so it
-    scrolls on its own and reads consistently.
+    Every alignment cell that differs from the reference is one substitution
+    event; pooling all sequences into a single sample gives the alignment-wide
+    mutation spectrum (dominated by the C→T / G→A RIP signature). Rendered like
+    the per-sequence spectra (wide, bare, fixed geometry) so it scrolls on its own
+    and reads consistently.
 
     Parameters
     ----------
     derip : derip2.derip.DeRIP
         The analysed DeRIP object.
+    ancestor : str or None, optional
+        Reference sequence (one base per alignment column) to compare every
+        sequence against. ``None`` (default) uses the deRIP-corrected consensus.
 
     Returns
     -------
@@ -1395,7 +1437,7 @@ def _overview_spectrum_svg(derip):
 
     from derip2.plotting.spectra import plot_sbs96
 
-    spectra_all = derip.calculate_spectra(partition_by='none')
+    spectra_all = derip.calculate_spectra(partition_by='none', ancestor=ancestor)
     fig = plot_sbs96(spectra_all, sample=0, width=11.0, bare=True)
     _fix_spectrum_axes(fig)
     svg = _figure_to_svg(fig, 'ovwsbs-', tight=False)
@@ -1404,7 +1446,14 @@ def _overview_spectrum_svg(derip):
 
 
 def _overview_html(
-    derip, cds_tracks, fasta_data=None, downloads=(), df=None, row_to_panel=None
+    derip,
+    cds_tracks,
+    fasta_data=None,
+    downloads=(),
+    df=None,
+    row_to_panel=None,
+    spectra_ref_ancestor=None,
+    spectra_ref_label=None,
 ):
     """
     Build the report's front (overview) page: the full alignment + consensus.
@@ -1426,6 +1475,12 @@ def _overview_html(
     row_to_panel : dict of int to int, optional
         Row-index to panel-position map so the stats table can link each sequence
         name to its per-sequence page (see :func:`_overview_stats_table_html`).
+    spectra_ref_ancestor : str or None, optional
+        Reference sequence for the pooled spectrum (one base per column). ``None``
+        uses the deRIP consensus.
+    spectra_ref_label : str or None, optional
+        The reference sequence's id, used in the spectrum prose. ``None`` = the
+        deRIP-corrected consensus.
 
     Returns
     -------
@@ -1433,7 +1488,7 @@ def _overview_html(
         The overview ``<section class="seq-panel">`` (first page of the deck).
     """
     svg = _overview_svg(derip, cds_tracks, fasta_data)
-    spectrum_svg = _overview_spectrum_svg(derip)
+    spectrum_svg = _overview_spectrum_svg(derip, spectra_ref_ancestor)
     n_total = len(derip.alignment)
     n_cols = derip.alignment.get_alignment_length()
 
@@ -1455,8 +1510,8 @@ def _overview_html(
     spectrum_section = (
         '<h3>Mutation spectrum</h3>'
         '<p class="desc">SBS-96 trinucleotide spectrum of every substitution '
-        'across all sequences relative to the deRIP-corrected reference. The '
-        'C&rarr;T / G&rarr;A dominance is the RIP signature.</p>'
+        f'across all sequences relative to {_reference_phrase(spectra_ref_label)}. '
+        'The C&rarr;T / G&rarr;A dominance is the RIP signature.</p>'
         f'<div class="spectrum-scroll">{spectrum_svg}</div>'
     )
 
@@ -1562,6 +1617,7 @@ def write_per_sequence_report(
     max_seqs=None,
     gff=None,
     genetic_code=1,
+    spectra_ref_index=None,
 ):
     """
     Write a single-file, arrow-key-navigable per-sequence HTML report.
@@ -1587,11 +1643,22 @@ def write_per_sequence_report(
         gains a gene-effect table and the deRIP-restored protein.
     genetic_code : int, optional
         NCBI translation table for the effect prediction (default: 1).
+    spectra_ref_index : int, optional
+        Alignment row index of a sequence to use as the reference for the
+        mutation spectra (per-sequence and the pooled overview), instead of the
+        default deRIP-corrected consensus. Supports negative indexing. The
+        reference sequence's own panel then shows an empty (self-comparison)
+        spectrum.
 
     Returns
     -------
     str
         The path written.
+
+    Raises
+    ------
+    ValueError
+        If ``spectra_ref_index`` is out of range for the alignment.
 
     Notes
     -----
@@ -1606,11 +1673,39 @@ def write_per_sequence_report(
     logger.info(f'Building per-sequence report for {n_seqs} sequences...')
 
     df = derip.summarize_stats(ambiguous=ambiguous)
-    # One sample column per sequence, measured against the reconstructed
-    # ancestor, in each context. Computed once and reused across every panel.
-    logger.info('Computing per-sequence mutation spectra...')
-    spectra = derip.calculate_spectra(partition_by='row')
-    downstream = derip.calculate_spectra(partition_by='row', context='downstream')
+
+    # Resolve the mutation-spectra reference. By default every sequence is
+    # compared to the deRIP-corrected consensus; a user may instead pick an
+    # alignment row (its gapped sequence, one base per column) as the reference.
+    spectra_ref_ancestor = None
+    spectra_ref_label = None
+    if spectra_ref_index is not None:
+        if not -n_seqs <= spectra_ref_index < n_seqs:
+            raise ValueError(
+                f'spectra_ref_index {spectra_ref_index} is out of range for an '
+                f'alignment of {n_seqs} sequences (valid: '
+                f'{-n_seqs}..{n_seqs - 1}).'
+            )
+        # Normalise a negative index so row_index comparisons in the panels match.
+        spectra_ref_index %= n_seqs
+        ref_record = derip.alignment[spectra_ref_index]
+        spectra_ref_ancestor = str(ref_record.seq)
+        spectra_ref_label = ref_record.id
+        logger.info(
+            f'Computing mutation spectra against reference row '
+            f'{spectra_ref_index} ({spectra_ref_label}) instead of the deRIP '
+            f'consensus...'
+        )
+    else:
+        logger.info('Computing per-sequence mutation spectra...')
+
+    # One sample column per sequence, measured against the chosen reference (the
+    # reconstructed ancestor by default), in each context. Computed once and
+    # reused across every panel.
+    spectra = derip.calculate_spectra(partition_by='row', ancestor=spectra_ref_ancestor)
+    downstream = derip.calculate_spectra(
+        partition_by='row', ancestor=spectra_ref_ancestor, context='downstream'
+    )
 
     # FASTA payloads for the overview downloads + click-to-view popups. The deRIP
     # sequence is always available; CDS records are added when a GFF is supplied.
@@ -1739,7 +1834,16 @@ def write_per_sequence_report(
     # (slow on many rows/columns), so it gets its own message.
     logger.info('Rendering overview page (full alignment + summary)...')
     panels = [
-        _overview_html(derip, overview_track, fasta_data, downloads, df, row_to_panel)
+        _overview_html(
+            derip,
+            overview_track,
+            fasta_data,
+            downloads,
+            df,
+            row_to_panel,
+            spectra_ref_ancestor,
+            spectra_ref_label,
+        )
     ]
     # The per-sequence panels dominate the runtime on large alignments (each is
     # ~6 matplotlib figures rendered to inline SVG), so show a progress bar.
@@ -1757,6 +1861,8 @@ def write_per_sequence_report(
             deripd_aa,
             cds_gene_cols,
             genetic_code,
+            spectra_ref_index,
+            spectra_ref_label,
         )
         for panel_number, row_index in tqdm(
             enumerate(indices, start=1),
