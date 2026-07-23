@@ -697,6 +697,24 @@ def drawMiniAlignment(
         for spine in consensus_ax.spines.values():
             spine.set_visible(False)
 
+        # A full-width, invisible patch over the consensus row carrying a gid so
+        # the HTML report can make the whole deRIP'd sequence clickable (a click
+        # opens its FASTA popup). Drawn at a high zorder so it stays vector even
+        # when a wide alignment rasterizes the consensus cells (zorder < 200) and
+        # its gid group survives in the SVG. In file output it is inert and unseen.
+        click_patch = matplotlib.patches.Rectangle(
+            (-0.5, -0.5),
+            len(consensus_seq),
+            2.0,
+            facecolor='none',
+            edgecolor='none',
+            zorder=250,
+        )
+        click_patch.set_gid('deripseq')
+        consensus_ax.add_patch(click_patch)
+        if isinstance(getattr(f, 'annotation_titles', None), dict):
+            f.annotation_titles['deripseq'] = 'deRIP consensus — click for FASTA'
+
         # Add vertical grid lines (only when columns are few enough to see them;
         # see the alignment-axis note above).
         if len(consensus_seq) <= 500:

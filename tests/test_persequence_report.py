@@ -457,6 +457,55 @@ def test_report_annotation_tooltips(mintest_derip, gff_path, tmp_path):
     assert 'mRNA1 — CDS exon' not in html
 
 
+def test_overview_fasta_downloads_and_popup(mintest_derip, gff_path, tmp_path):
+    """The overview page offers FASTA downloads and click-to-view popup data.
+
+    With a GFF, the overview gets: a deRIP-sequence download, a CDS multi-FASTA
+    download, a 'View deRIP FASTA' button, the modal skeleton, and an embedded
+    JSON payload keyed by CDS id (with nucleotide + translation) and '__derip__'.
+    Clickable annotation groups and the consensus row carry data-fasta.
+    """
+    import json
+
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out), gff=str(gff_path), genetic_code=1)
+    html = out.read_text()
+
+    # Download buttons (self-contained data: URIs) + the view button + modal.
+    derip_id = mintest_derip.consensus.id  # default 'deRIPseq'
+    assert f'download="{derip_id}.fasta"' in html
+    assert 'download="deRIP_cds.fasta"' in html
+    assert 'data:text/plain;charset=utf-8;base64,' in html
+    assert 'data-fasta="__derip__">View deRIP FASTA</button>' in html
+    assert 'id="psr-modal"' in html and 'id="psr-fasta"' in html
+
+    # Clickable groups: the consensus row and each CDS carry data-fasta.
+    assert 'data-fasta="__derip__"' in html
+    for cds_id in ('cds1', 'cds2', 'cds3a'):
+        assert f'data-fasta="{cds_id}"' in html
+
+    # Embedded JSON payload: CDS entries carry nucleotide + translation + table;
+    # the deRIP entry has no translation.
+    m = re.search(r'id="psr-fasta-data">(.*?)</script>', html, re.S)
+    assert m
+    data = json.loads(m.group(1).replace('<\\/', '</'))
+    assert data['__derip__']['aa'] is None
+    assert data['cds1']['nt'].startswith('>cds1\n')
+    assert data['cds1']['aa'].startswith('>cds1\n')
+    assert data['cds1']['table'] == 1
+
+
+def test_overview_download_without_gff(mintest_derip, tmp_path):
+    """Without a GFF, the deRIP-sequence download/popup exist but no CDS export."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    assert f'download="{mintest_derip.consensus.id}.fasta"' in html
+    assert 'data-fasta="__derip__">View deRIP FASTA</button>' in html
+    # No CDS multi-FASTA download when there is no annotation.
+    assert 'deRIP_cds.fasta' not in html
+
+
 def test_report_total_rip_events(mintest_derip, tmp_path):
     """The RIP-events card shows a total equal to forward + reverse."""
     out = tmp_path / 'per_seq.html'
