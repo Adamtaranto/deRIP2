@@ -187,7 +187,8 @@ The `--per-seq-report` option writes a single self-contained
 `prefix_per_sequence.html` with one arrow-key-navigable panel per input
 sequence: the alignment row with RIP sites highlighted, a fixed-height
 per-sequence strand-bias strip, a per-sequence SBS-96 spectrum against the
-reconstructed ancestor, and that sequence's statistics.
+reconstructed ancestor, the flank-context spectra of RIP-like sites, and that
+sequence's statistics.
 
 ```bash
 derip2 -i tests/data/mintest.fa --per-seq-report -d results
@@ -197,6 +198,16 @@ By default each sequence's mutation spectrum is measured against the deRIP-corre
 consensus. Pass `--spectra-ref-index N` to compare against an alignment row instead
 (0-based; negatives count from the end). The chosen reference then has an empty
 self-comparison spectrum.
+
+The report also asks whether local context protects a substrate from RIP: for
+each sequence it classifies every RIP-like dinucleotide by its 1 bp upstream and
+downstream flanks (a 16-channel spectrum) and tests whether surviving **substrate**
+(`CpA`/`TpG`) sites have a different flank distribution from realised **product**
+(`TpA`) sites. `--per-seq-report` also writes tidy
+`prefix_rip_context_spectra.tsv` (counts) and
+`prefix_rip_context_comparisons.tsv` (cosine, Cramér's V, χ²) tables.
+
+![Flanking-context spectra of RIP-like sites](https://raw.githubusercontent.com/Adamtaranto/deRIP2/main/docs/img/flank_context_spectra.png)
 
 Supply a GFF3 gene model with `--gff` (sequence ids must match the alignment;
 coordinates are auto-adjusted for gaps) to add a gene-annotation track to

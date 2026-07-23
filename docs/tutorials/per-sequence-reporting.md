@@ -82,6 +82,43 @@ classifies each substitution by the mutated base plus its two downstream bases
 context shows up per sequence. Each spectrum scrolls horizontally on its own so
 the 96 channels never overlap.
 
+### Flanking-context spectra of RIP-like sites
+
+Not every substrate motif is converted to product in a RIP-affected sequence.
+To ask whether a **local sequence context protects** a substrate from RIP, this
+section classifies every RIP-like dinucleotide by the single base **1 bp
+upstream and 1 bp downstream** — a 4 bp motif `[up][centre][down]` with the two
+centre bases fixed and the flanks varying, giving **16 channels**. Two site
+states are counted:
+
+- **Substrate** — surviving `CpA` (forward strand) and `TpG` (reverse strand),
+  counted *anywhere* in the sequence (not only in RIP-informative columns).
+- **Product** — realised `TpA` sitting in a RIP-informative column.
+
+Reverse-strand motifs are reverse-complemented onto the `CpA`/`TpA` strand, so
+each state is shown three ways — **combined, forward, reverse** — as a 2×3 grid
+(substrate row in blue, product row in orange).
+
+![Flanking-context spectra of RIP-like sites](../img/flank_context_spectra.png)
+
+Beneath the grid, a small table reports the five comparisons that test the
+protection hypothesis: substrate-vs-product flank distribution (combined /
+forward / reverse) and forward-vs-reverse (substrate / product). It leads with
+the scale-free **cosine similarity** (1 = identical flank preference) and
+**Cramér's V**; the χ² p-value is shown only where both spectra have enough
+sites (≥ 20 by default), and `*` marks `p < 0.05`. The overview page carries the
+same grid and table **pooled across all sequences**.
+
+Two companion tables are written alongside the report whenever
+`--per-seq-report` is set:
+
+- `prefix_rip_context_spectra.tsv` — tidy counts, one row per
+  `sample × state × strand × channel` (the `combined` strand is the sum of
+  `forward` and `reverse`).
+- `prefix_rip_context_comparisons.tsv` — one row per `sample × comparison`
+  carrying the cosine, Cramér's V, χ², p-value, site totals, reliability flag
+  and most-differentiating channels.
+
 ### Summary statistics
 
 That sequence's statistics, split into described cards — RIP events (including a

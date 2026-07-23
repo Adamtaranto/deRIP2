@@ -8,6 +8,9 @@ easiest to trace; the reverse-strand cases are constructed so their fold lands o
 that same channel, which is exactly what the swap-and-complement rule predicts.
 """
 
+import json
+import os
+
 import numpy as np
 import pytest
 from Bio.Align import MultipleSeqAlignment
@@ -15,6 +18,7 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
 from derip2.aln_ops import classify_alignment
+from derip2.derip import DeRIP
 from derip2.spectra.flank_channels import (
     COMP_CODE,
     FLANK16_LABELS_CA,
@@ -32,6 +36,10 @@ from derip2.stats.flank_spectra import (
 
 # Channel index for the up=G, down=T flank pair (2*4 + 3), used across tests.
 GT_CHANNEL = 11
+
+HERE = os.path.dirname(__file__)
+GOLDEN_DIR = os.path.join(HERE, 'data', 'golden')
+MINTEST = os.path.join(HERE, 'data', 'mintest.fa')
 
 
 def make_alignment(seqs, ids=None):
@@ -275,6 +283,27 @@ def test_compare_all_zero_state_returns_nan_without_raising():
     prod_cmp = cmp['sub_vs_prod_combined']
     assert np.isnan(prod_cmp['pvalue'])
     assert prod_cmp['chi2_reliable'] is False
+
+
+def test_mintest_matches_golden():
+    """The assembled mintest flank spectra match the committed golden reference.
+
+    Regenerate with ``DERIP_REGEN=1 pytest tests/test_flank_spectra.py``.
+    """
+    d = DeRIP(MINTEST)
+    d.calculate_rip()
+    result = d.calculate_flank_spectra().as_dict()
+    golden_path = os.path.join(GOLDEN_DIR, 'mintest_flank_spectra.json')
+
+    if os.environ.get('DERIP_REGEN') or not os.path.exists(golden_path):
+        os.makedirs(GOLDEN_DIR, exist_ok=True)
+        with open(golden_path, 'w') as fh:
+            json.dump(result, fh, indent=2, sort_keys=True)
+        pytest.skip(f'Regenerated golden file: {golden_path}')
+
+    with open(golden_path) as fh:
+        golden = json.load(fh)
+    assert json.loads(json.dumps(result)) == golden
 
 
 def test_chi2_reliable_flag_respects_min_sites():

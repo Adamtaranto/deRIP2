@@ -155,6 +155,14 @@ def test_bench_compute_spectra(benchmark, sahana_alignment_small):
     benchmark(lambda: compute_spectra(cls, ancestor))
 
 
+def test_bench_compute_flank_spectra(benchmark, sahana_alignment_small):
+    """Benchmark the 16-channel flank-context spectra assembly."""
+    from derip2.stats.flank_spectra import compute_flank_spectra
+
+    cls = ao.classify_alignment(sahana_alignment_small, progress=False)
+    benchmark(lambda: compute_flank_spectra(cls))
+
+
 def test_bench_compute_spectra_downstream(benchmark, sahana_alignment_small):
     """Benchmark the tree-free downstream-triplet assembly against a reference."""
     from derip2.stats.mutation_spectra import compute_spectra
