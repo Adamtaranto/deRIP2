@@ -98,11 +98,17 @@ states are counted:
 Reverse-strand motifs are reverse-complemented onto the `CpA`/`TpA` strand, and
 each strand view — **combined, forward, reverse** — is drawn as a **bihistogram**:
 substrate counts (blue) extend left and product counts (orange) extend right of a
-shared centre line. Every row is labelled by its **CA-state** motif, so a single
-label covers both states — `GCAG` labels the substrate `GCAG` and the equivalent
-product `GTAG`. Motifs whose enrichment differs significantly between the two
-states (adjusted standardised residual beyond the 0.05 critical value, when both
-states have ≥ 20 sites) are marked with a red `*`.
+shared centre line. Each row is named on both sides — the **CA-state** (substrate)
+motif on the left y-axis and the equivalent **TA-state** (product) motif on the
+right (`GCAG` on the left ≡ `GTAG` on the right).
+
+A motif is marked with a red `*` when its enrichment differs significantly between
+the two states. For each of the 16 flank contexts the substrate and product counts
+form one row of a 16×2 table, and that cell's **adjusted standardised (Haberman)
+residual** is compared to the standard normal: the motif is flagged when
+`|z| ≥ 1.96` (two-sided *p* < 0.05), provided both states have ≥ 20 sites, with no
+multiple-testing correction. (On the pooled overview the counts are large enough
+that almost every context clears this bar, so lean on the effect sizes there.)
 
 ![Flanking-context spectra of RIP-like sites](../img/flank_context_spectra.png)
 

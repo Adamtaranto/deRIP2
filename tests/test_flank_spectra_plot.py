@@ -26,7 +26,7 @@ from derip2.plotting.flank_spectra import (
     plot_flank_bihistograms,
     plot_flank_bihistograms_pooled,
 )
-from derip2.spectra.flank_channels import FLANK16_LABELS_CA
+from derip2.spectra.flank_channels import FLANK16_LABELS_CA, FLANK16_LABELS_TA
 from derip2.stats.flank_spectra import FlankSpectraResult, compute_flank_spectra
 
 
@@ -111,6 +111,18 @@ def test_leftmost_panel_labels_are_ca_state():
     # The other panels share the rows, so they carry no y labels.
     other_labels = [t.get_text() for t in fig.axes[1].get_yticklabels()]
     assert set(other_labels) <= {''}
+
+
+def test_rightmost_panel_has_ta_state_labels():
+    """The rightmost panel carries the TA-state motif labels on its right side."""
+    result = make_result(['GCAT', 'GTAT'])
+    fig = plot_flank_bihistograms(result, sample=0)
+    right_ax = fig.axes[2]
+    texts = {t.get_text() for t in right_ax.texts}
+    # Every TA-state motif label appears as free text on the rightmost panel.
+    assert set(FLANK16_LABELS_TA) <= texts
+    # The CA-state (substrate) labels are not repeated there.
+    assert not (set(FLANK16_LABELS_CA) & texts)
 
 
 def test_significant_motifs_are_marked():

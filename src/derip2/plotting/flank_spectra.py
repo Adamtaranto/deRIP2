@@ -45,7 +45,7 @@ from derip2.plotting.strandbias import (
     SURFACE,
     TITLE_SIZE,
 )
-from derip2.spectra.flank_channels import FLANK16_LABELS_CA
+from derip2.spectra.flank_channels import FLANK16_LABELS_CA, FLANK16_LABELS_TA
 from derip2.stats.flank_spectra import differential_channels
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ SIG_COLOR = '#e34948'
 # Short caption distinguishing this context model in figure headings.
 _FLANK_CAPTION = (
     r'flank context of RIP-like sites (5$^\prime$-N[XY]N-3$^\prime$; '
-    r'substrate $\leftarrow$ | $\rightarrow$ product, CA-state labels)'
+    r'substrate $\leftarrow$ CA-state | TA-state $\rightarrow$ product)'
 )
 
 
@@ -95,6 +95,7 @@ def _draw_bihistogram(
     *,
     sig_mask: np.ndarray,
     show_labels: bool,
+    show_right_labels: bool,
     percentage: bool,
 ) -> None:
     """
@@ -108,10 +109,15 @@ def _draw_bihistogram(
         ``(16,)`` channel counts for the two states, in canonical flank order.
     sig_mask : numpy.ndarray
         ``(16,)`` boolean mask of channels differentially enriched between the
-        states; those rows get a highlight band and a marker.
+        states; those rows get a significance marker.
     show_labels : bool
-        Draw the per-row CA-state motif tick labels (only the leftmost panel of a
-        multi-panel figure needs them, since the rows align).
+        Draw the per-row **CA-state** (substrate) motif tick labels on the left
+        y-axis (only the leftmost panel of a multi-panel figure needs them, since
+        the rows align).
+    show_right_labels : bool
+        Draw the per-row **TA-state** (product) motif labels on a right-hand
+        y-axis (only the rightmost panel needs them), so each row is named by both
+        the substrate motif on the left and its product equivalent on the right.
     percentage : bool
         Rescale each state to sum to 100 before plotting (default is raw counts).
 
@@ -175,6 +181,24 @@ def _draw_bihistogram(
                 label.set_fontweight('bold')
     else:
         ax.set_yticklabels([])
+
+    # Right-hand y-axis: the equivalent TA-state (product) motif for each row,
+    # drawn as free text just outside the right spine so it needs no extra axes
+    # (keeping the figure at three panels). Significant rows are bolded to match.
+    if show_right_labels:
+        for i, motif in enumerate(FLANK16_LABELS_TA):
+            ax.text(
+                1.02,
+                i,
+                motif,
+                transform=trans,
+                ha='left',
+                va='center',
+                family='monospace',
+                fontsize=CONTEXT_TICK_SIZE,
+                color=INK_PRIMARY if sig_mask[i] else INK_SECONDARY,
+                fontweight='bold' if sig_mask[i] else 'normal',
+            )
 
 
 def _strand_vectors(result, sample: Optional[int]):
@@ -259,6 +283,7 @@ def _draw_bihistogram_figure(
                 prod,
                 sig_mask=sig,
                 show_labels=(c == 0),
+                show_right_labels=(c == len(_STRANDS) - 1),
                 percentage=percentage,
             )
             ax.set_title(
@@ -296,7 +321,10 @@ def _draw_bihistogram_figure(
         if not bare:
             heading = f'{title}\n{_FLANK_CAPTION}' if title else _FLANK_CAPTION
             fig.suptitle(heading, fontsize=TITLE_SIZE, color=INK_PRIMARY)
-        fig.tight_layout(rect=(0, 0.04, 1, 1))
+        # Reserve a right margin for the free-text TA-state labels (they sit
+        # outside the axes, so tight_layout does not account for them) and a
+        # bottom strip for the legend.
+        fig.tight_layout(rect=(0, 0.04, 0.955, 1))
     return fig
 
 
