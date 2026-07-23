@@ -506,6 +506,47 @@ def test_overview_download_without_gff(mintest_derip, tmp_path):
     assert 'deRIP_cds.fasta' not in html
 
 
+def test_overview_stats_table(mintest_derip, tmp_path):
+    """The overview carries a sortable all-sequence stats table + consensus row.
+
+    Rows: every input sequence plus a final deRIP-consensus row whose RIP-event
+    and RSI columns are not applicable (en-dash) while GC/CRI are computed. The
+    grouped headers mirror the per-sequence stat sections and every column is
+    click-to-sort.
+    """
+    from derip2.persequence_report import _STAT_SECTIONS, _overview_stats_table_html
+
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+
+    # The sortable table exists with grouped headers and a sort handler.
+    assert 'table class="psr-stats"' in html
+    for title, _desc, _cols in _STAT_SECTIONS:
+        assert f'>{title}<' in html
+    assert 'th.sortable' in html  # the JS sort wiring
+
+    # Build the table directly to assert on its structure.
+    df = mintest_derip.summarize_stats()
+    table = _overview_stats_table_html(df, mintest_derip)
+    body = re.search(r'<tbody>(.*)</tbody>', table, re.S).group(1)
+    rows = re.findall(r'<tr[^>]*>', body)
+    # One row per sequence plus the consensus row.
+    assert len(rows) == len(df) + 1
+    assert 'class="consensus-row"' in table
+
+    # Sortable column count = leading Sequence column + every flat stat column.
+    n_stats = sum(len(cols) for _t, _d, cols in _STAT_SECTIONS)
+    assert table.count('th class="sortable"') == n_stats + 1
+
+    # The consensus row: RIP/RSI columns are en-dashes; GC/CRI are numbers.
+    consensus = re.search(r'<tr class="consensus-row">(.*?)</tr>', table, re.S).group(1)
+    assert mintest_derip.consensus.id in consensus
+    assert '&ndash;' in consensus  # not-applicable RIP/RSI cells
+    cri, _pi, _si = mintest_derip.calculate_cri(mintest_derip.get_consensus_string())
+    assert f'{cri:.3f}' in consensus
+
+
 def test_report_total_rip_events(mintest_derip, tmp_path):
     """The RIP-events card shows a total equal to forward + reverse."""
     out = tmp_path / 'per_seq.html'

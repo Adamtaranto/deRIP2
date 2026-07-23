@@ -472,6 +472,37 @@ _PSR_STYLE = """
   border-radius: 6px;
 }
 .psr-copy:hover { border-color: var(--muted); }
+
+/* Overview all-sequence summary statistics table (sortable). */
+.stats-scroll { overflow-x: auto; margin: .2rem 0 1rem; }
+.psr-stats {
+  border-collapse: collapse; font-size: 13px; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.psr-stats th, .psr-stats td {
+  padding: .35rem .6rem; border-bottom: 1px solid var(--rule); text-align: right;
+}
+.psr-stats thead th {
+  background: var(--surface); position: sticky; top: 0;
+  border-bottom: 1px solid var(--rule);
+}
+.psr-stats thead th.grp {
+  text-align: center; font-weight: 600;
+  border-left: 1px solid var(--rule); border-right: 1px solid var(--rule);
+}
+.psr-stats th[scope="row"] { text-align: left; font-weight: 600; }
+.psr-stats th.sortable { cursor: pointer; user-select: none; }
+.psr-stats th.sortable:hover { color: var(--ink); }
+.psr-stats th.sortable::after { content: ''; margin-left: .3rem; color: var(--muted); }
+.psr-stats th.sortable[data-dir="asc"]::after { content: '▲'; }
+.psr-stats th.sortable[data-dir="desc"]::after { content: '▼'; }
+.psr-stats td.value.muted { color: var(--muted); }
+.psr-stats td.value.pos { color: #007a3d; }
+.psr-stats td.value.neg { color: #b4292a; }
+.psr-stats tbody tr:hover { background: var(--surface); }
+.psr-stats tr.consensus-row th[scope="row"],
+.psr-stats tr.consensus-row td { font-weight: 600; }
+.psr-stats tr.consensus-row { border-top: 2px solid var(--muted); }
 """
 
 # The click-to-view FASTA modal, injected once per report. Populated and shown by
@@ -738,6 +769,46 @@ _PSR_SCRIPT = """
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && !modal.hasAttribute('hidden')) { closeFastaModal(); }
+    });
+  }
+
+  // Sortable overview stats table. Each sortable header carries its column index
+  // (data-ci); a click sorts the tbody rows by that column. Cells are compared
+  // numerically when both parse as numbers (a leading '+' is stripped), otherwise
+  // as text; en-dash / empty cells (not-applicable stats) always sort last.
+  function cellVal(td) {
+    var t = (td.textContent || '').trim();
+    if (t === '' || t === '\\u2013' || t === '\\u2014') { return { n: null, s: '' }; }
+    var n = parseFloat(t.replace('+', ''));
+    return isNaN(n) ? { n: null, s: t } : { n: n, s: t };
+  }
+  var statsTable = document.querySelector('table.psr-stats');
+  if (statsTable && statsTable.tBodies.length) {
+    var statsBody = statsTable.tBodies[0];
+    var sortDir = null, sortCi = null;
+    Array.prototype.slice.call(
+      statsTable.querySelectorAll('th.sortable')).forEach(function (th) {
+      th.addEventListener('click', function () {
+        var ci = parseInt(th.getAttribute('data-ci'), 10);
+        var asc = !(sortCi === ci && sortDir === 'asc');
+        sortCi = ci; sortDir = asc ? 'asc' : 'desc';
+        var rows = Array.prototype.slice.call(statsBody.rows);
+        rows.sort(function (a, b) {
+          var x = cellVal(a.cells[ci]), y = cellVal(b.cells[ci]);
+          if (x.n === null && y.n === null) {
+            return asc ? x.s.localeCompare(y.s) : y.s.localeCompare(x.s);
+          }
+          if (x.n === null) { return 1; }   // not-applicable sorts last
+          if (y.n === null) { return -1; }
+          return asc ? x.n - y.n : y.n - x.n;
+        });
+        rows.forEach(function (r) { statsBody.appendChild(r); });
+        Array.prototype.slice.call(
+          statsTable.querySelectorAll('th.sortable')).forEach(function (h) {
+          h.removeAttribute('data-dir');
+        });
+        th.setAttribute('data-dir', asc ? 'asc' : 'desc');
+      });
     });
   }
 
@@ -1119,7 +1190,114 @@ def _overview_svg(derip, cds_tracks, fasta_data=None):
     return svg
 
 
-def _overview_html(derip, cds_tracks, fasta_data=None, downloads=()):
+def _overview_stats_table_html(df, derip):
+    """
+    Build the sortable all-sequence statistics table for the overview page.
+
+    One row per input sequence plus a final row for the deRIP-corrected
+    consensus, with the columns grouped exactly as the per-sequence stat cards
+    (:data:`_STAT_SECTIONS`). The consensus is the RIP-free reconstructed
+    ancestor, so its RIP-event and strand-bias (RSI) columns are not applicable
+    and render as an en-dash; only composition (GC) and the Composite RIP Index
+    (CRI/PI/SI) are computed for it. Every column is click-to-sort in the browser
+    (numeric-aware; en-dash cells sort last).
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The per-sequence statistics (:meth:`derip2.derip.DeRIP.summarize_stats`).
+    derip : derip2.derip.DeRIP
+        The analysed DeRIP object (for the consensus row's GC and CRI).
+
+    Returns
+    -------
+    str
+        The ``<table class="psr-stats">`` markup (with its wrapping scroll div).
+    """
+    from Bio.SeqUtils import gc_fraction
+
+    # Flatten the grouped layout into one ordered column list plus the group
+    # spans that head it. 'RIP_total' is derived (fwd + rev), as on the cards.
+    flat = []  # (column, label)
+    group_spans = []  # (group title, colspan)
+    for title, _desc, cols in _STAT_SECTIONS:
+        group_spans.append((title, len(cols)))
+        flat.extend(cols)
+
+    # Two-row header: group titles spanning their columns, then the stat labels.
+    grp_ths = ''.join(
+        f'<th class="grp" colspan="{span}">{escape(title)}</th>'
+        for title, span in group_spans
+    )
+    col_ths = ''.join(
+        f'<th class="sortable" data-ci="{i + 1}">{escape(label)}</th>'
+        for i, (_col, label) in enumerate(flat)
+    )
+    thead = (
+        '<thead>'
+        '<tr><th class="sortable" data-ci="0" rowspan="2">Sequence</th>'
+        f'{grp_ths}</tr>'
+        f'<tr>{col_ths}</tr>'
+        '</thead>'
+    )
+
+    def _row_html(label, values, is_consensus=False):
+        """
+        Build one table row: a leading label cell then a cell per flat column.
+
+        Parameters
+        ----------
+        label : str
+            The row header (a sequence id or the consensus id).
+        values : dict
+            Column-name to value; missing columns render as an en-dash.
+        is_consensus : bool, optional
+            Whether this is the deRIP-consensus row (adds a marker class).
+
+        Returns
+        -------
+        str
+            The ``<tr>`` element for this row.
+        """
+        cells = [f'<th scope="row">{escape(str(label))}</th>']
+        for col, _lab in flat:
+            value = values.get(col)
+            if col == 'RIP_total' and value is not None:
+                text, css = str(int(value)), ''
+            else:
+                text, css = _format_cell(col, value)
+            cls = f' class="value {css}"'.rstrip() if css else ' class="value"'
+            cells.append(f'<td{cls}>{text}</td>')
+        tr_cls = ' class="consensus-row"' if is_consensus else ''
+        return f'<tr{tr_cls}>{"".join(cells)}</tr>'
+
+    rows = []
+    for i in range(len(df)):
+        row = df.iloc[i]
+        values = {col: row[col] for col, _lab in flat if col in row.index}
+        values['RIP_total'] = int(row['RIP_fwd']) + int(row['RIP_rev'])
+        rows.append(_row_html(row['ID'], values))
+
+    # The deRIP consensus row: GC + CRI/PI/SI only; RIP/RSI columns stay None so
+    # _format_cell renders them as an en-dash (not applicable to the ancestor).
+    consensus_seq = derip.get_consensus_string()
+    cri, pi, si = derip.calculate_cri(consensus_seq)
+    consensus_values = {
+        'GC': gc_fraction(consensus_seq) * 100,
+        'CRI': cri,
+        'PI': pi,
+        'SI': si,
+    }
+    rows.append(_row_html(derip.consensus.id, consensus_values, is_consensus=True))
+
+    return (
+        '<div class="stats-scroll">'
+        f'<table class="psr-stats">{thead}<tbody>{"".join(rows)}</tbody></table>'
+        '</div>'
+    )
+
+
+def _overview_html(derip, cds_tracks, fasta_data=None, downloads=(), df=None):
     """
     Build the report's front (overview) page: the full alignment + consensus.
 
@@ -1134,6 +1312,9 @@ def _overview_html(derip, cds_tracks, fasta_data=None, downloads=()):
     downloads : sequence of tuple, optional
         ``(label, filename, text)`` download buttons rendered above the figure as
         self-contained ``data:`` links.
+    df : pandas.DataFrame, optional
+        The per-sequence statistics; when given, a sortable all-sequence stats
+        table (plus the deRIP consensus row) is added below the alignment figure.
 
     Returns
     -------
@@ -1159,6 +1340,17 @@ def _overview_html(derip, cds_tracks, fasta_data=None, downloads=()):
         )
     toolbar = f'<div class="psr-toolbar">{"".join(tools)}</div>' if tools else ''
 
+    stats_section = ''
+    if df is not None:
+        stats_section = (
+            '<h3>Summary statistics</h3>'
+            '<p class="desc">Per-sequence statistics for every sequence plus the '
+            'deRIP-corrected consensus (its RIP-event and strand-bias columns are '
+            'not applicable and shown as &ndash;). Click any column heading to '
+            'sort.</p>'
+            f'{_overview_stats_table_html(df, derip)}'
+        )
+
     return (
         '<section class="seq-panel" data-index="overview" hidden>'
         f'<h2>Overview <span class="seqlen">({n_total} sequences &times; '
@@ -1170,6 +1362,7 @@ def _overview_html(derip, cds_tracks, fasta_data=None, downloads=()):
         'annotation to view its FASTA.</p>'
         f'{toolbar}'
         f'<div class="aln-scroll">{svg}</div>'
+        f'{stats_section}'
         '</section>'
     )
 
@@ -1408,7 +1601,7 @@ def write_per_sequence_report(
 
     # The front (overview) page — the full alignment + deRIP consensus — followed
     # by one panel per sequence.
-    panels = [_overview_html(derip, overview_track, fasta_data, downloads)]
+    panels = [_overview_html(derip, overview_track, fasta_data, downloads, df)]
     panels += [
         _panel_html(
             derip,
