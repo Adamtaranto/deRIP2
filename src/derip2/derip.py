@@ -129,6 +129,7 @@ class DeRIP:
         self.column_classes = None
         self.rsi_result = None
         self.spectra_result = None
+        self.flank_spectra_result = None
 
         # Load the alignment
         self._load_alignment(alignment_input)
@@ -365,6 +366,7 @@ class DeRIP:
         self.column_classes = None
         self.rsi_result = None
         self.spectra_result = None
+        self.flank_spectra_result = None
 
     def _require_rip(self, action: str) -> None:
         """
@@ -1273,6 +1275,114 @@ class DeRIP:
         if kind not in plotters:
             raise ValueError(f'kind must be one of {sorted(plotters)}, got {kind!r}')
         return plotters[kind](self.spectra_result, output_file, **kwargs)
+
+    def calculate_flank_spectra(self):
+        """
+        Compute the flanking-context spectra of RIP-like sites.
+
+        Classifies every RIP-like dinucleotide by the single base one position
+        upstream and one downstream (a 4 bp motif). Surviving substrate sites
+        (``CpA``/``TpG`` anywhere in each sequence) and RIP product sites
+        (``TpA`` in RIP-informative columns) are counted separately, one sample
+        column per input sequence, folded onto ``CA``/``TA``-equivalent channels.
+        The result is cached on :attr:`flank_spectra_result`.
+
+        Returns
+        -------
+        derip2.stats.flank_spectra.FlankSpectraResult
+            The four ``(16, n_rows)`` count matrices and per-state skipped counts.
+
+        Raises
+        ------
+        ValueError
+            If :meth:`calculate_rip` has not been called first.
+
+        See Also
+        --------
+        derip2.stats.flank_spectra.compute_flank_spectra : The calculation.
+        """
+        from derip2.stats.flank_spectra import compute_flank_spectra
+
+        self._require_rip('calculating flank spectra')
+        sample_names = [record.id for record in self.alignment]
+        self.flank_spectra_result = compute_flank_spectra(
+            self.column_classes, sample_names=sample_names
+        )
+        return self.flank_spectra_result
+
+    def write_flank_spectra_matrix(self, output_file: str) -> str:
+        """
+        Write the flank-context spectra as a tidy TSV, computing them if needed.
+
+        Parameters
+        ----------
+        output_file : str
+            Destination path for the tab-separated matrix file.
+
+        Returns
+        -------
+        str
+            The path written.
+        """
+        from derip2.stats.flank_spectra import write_flank_matrix
+
+        if self.flank_spectra_result is None:
+            self.calculate_flank_spectra()
+        return write_flank_matrix(self.flank_spectra_result, output_file)
+
+    def write_flank_spectra_comparisons(
+        self, output_file: str, *, min_sites: int = 20
+    ) -> str:
+        """
+        Write the per-sequence flank-context comparison stats, computing if needed.
+
+        Parameters
+        ----------
+        output_file : str
+            Destination path for the tab-separated comparison file.
+        min_sites : int, optional
+            Minimum site count on both sides for the chi-squared reliability flag
+            (default: 20).
+
+        Returns
+        -------
+        str
+            The path written.
+        """
+        from derip2.stats.flank_spectra import write_flank_comparisons
+
+        if self.flank_spectra_result is None:
+            self.calculate_flank_spectra()
+        return write_flank_comparisons(
+            self.flank_spectra_result, output_file, min_sites=min_sites
+        )
+
+    def plot_flank_spectra(self, output_file: Optional[str] = None, **kwargs):
+        """
+        Draw the pooled flank-context spectra grid, computing spectra if needed.
+
+        Parameters
+        ----------
+        output_file : str, optional
+            Path to write the figure to. Use ``.svg`` or ``.pdf`` for
+            publication output.
+        **kwargs
+            Forwarded to
+            :func:`derip2.plotting.flank_spectra.plot_flank_spectra_pooled`
+            (e.g. ``title``, ``percentage``, ``width``).
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            The figure.
+        """
+        from derip2.plotting.flank_spectra import plot_flank_spectra_pooled
+
+        if self.flank_spectra_result is None:
+            self.calculate_flank_spectra()
+        return plot_flank_spectra_pooled(
+            self.flank_spectra_result, output_file, **kwargs
+        )
 
     def write_html_report(
         self,

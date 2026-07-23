@@ -4,6 +4,8 @@ from derip2.stats.flank_spectra import (
     FlankSpectraResult,
     compare_flank_spectra,
     compute_flank_spectra,
+    write_flank_comparisons,
+    write_flank_matrix,
 )
 from derip2.stats.mutation_spectra import SpectraResult, compute_spectra
 from derip2.stats.spectra_compare import (
@@ -28,4 +30,6 @@ __all__ = [
     'compute_spectra',
     'cosine_similarity',
     'pairwise_compare',
+    'write_flank_comparisons',
+    'write_flank_matrix',
 ]

@@ -490,3 +490,138 @@ def compare_flank_spectra(
         comp['chi2_reliable'] = bool(n_a >= min_sites and n_b >= min_sites)
         out[name] = comp
     return out
+
+
+# The (state, strand, matrix-attribute) triples emitted by the tidy matrix file.
+# Combined rows are written by summing the two per-strand matrices at write time.
+_MATRIX_ROWS: Tuple[Tuple[str, str], ...] = (
+    ('substrate', 'combined'),
+    ('substrate', 'forward'),
+    ('substrate', 'reverse'),
+    ('product', 'combined'),
+    ('product', 'forward'),
+    ('product', 'reverse'),
+)
+
+
+def _format_top_channels(top_channels: List[Dict]) -> str:
+    """
+    Render a comparison's ``top_channels`` list as a compact string.
+
+    Parameters
+    ----------
+    top_channels : list of dict
+        Each ``{'channel', 'a', 'b', 'residual'}`` as returned by
+        :func:`derip2.stats.spectra_compare.compare_spectra`.
+
+    Returns
+    -------
+    str
+        Semicolon-separated ``channel(a>b)`` entries, or an empty string.
+    """
+    return ';'.join(f'{t["channel"]}({t["a"]:.0f}>{t["b"]:.0f})' for t in top_channels)
+
+
+def write_flank_matrix(result: FlankSpectraResult, path: str) -> str:
+    """
+    Write the flank-context spectra as a tidy (long-form) TSV.
+
+    One row per ``sample x state x strand x channel``, so the file is trivial to
+    pivot or filter downstream. Combined-strand rows are the sum of the forward
+    and reverse counts.
+
+    Parameters
+    ----------
+    result : FlankSpectraResult
+        The computed spectra.
+    path : str
+        Destination path.
+
+    Returns
+    -------
+    str
+        The path written.
+    """
+    import csv
+
+    channels = {
+        'substrate': result.channels_substrate,
+        'product': result.channels_product,
+    }
+    with open(path, 'w', newline='') as handle:
+        writer = csv.writer(handle, delimiter='\t')
+        writer.writerow(['sample', 'state', 'strand', 'channel', 'count'])
+        for s, name in enumerate(result.sample_names):
+            for state, strand in _MATRIX_ROWS:
+                counts = result.matrix(state, strand)[:, s]
+                labels = channels[state]
+                for channel, value in zip(labels, counts):
+                    writer.writerow([name, state, strand, channel, f'{value:g}'])
+    logger.info('Flank-context spectra matrix written to %s', path)
+    return path
+
+
+def write_flank_comparisons(
+    result: FlankSpectraResult, path: str, *, min_sites: int = 20
+) -> str:
+    """
+    Write the per-sequence flank-context comparison statistics as a TSV.
+
+    One row per ``sample x comparison`` (:data:`COMPARISON_KEYS`), carrying the
+    cosine effect size, Cramér's V, the chi-squared statistic/p-value, the two
+    site totals, the reliability flag and the most-differentiating channels.
+
+    Parameters
+    ----------
+    result : FlankSpectraResult
+        The computed spectra.
+    path : str
+        Destination path.
+    min_sites : int, optional
+        Minimum site count on both sides for ``chi2_reliable`` (default: 20).
+
+    Returns
+    -------
+    str
+        The path written.
+    """
+    import csv
+
+    with open(path, 'w', newline='') as handle:
+        writer = csv.writer(handle, delimiter='\t')
+        writer.writerow(
+            [
+                'sample',
+                'comparison',
+                'cosine',
+                'cramers_v',
+                'chi2',
+                'dof',
+                'pvalue',
+                'n_a',
+                'n_b',
+                'chi2_reliable',
+                'top_channels',
+            ]
+        )
+        for s, name in enumerate(result.sample_names):
+            comparisons = compare_flank_spectra(result, s, min_sites=min_sites)
+            for key in COMPARISON_KEYS:
+                comp = comparisons[key]
+                writer.writerow(
+                    [
+                        name,
+                        key,
+                        f'{comp["cosine_similarity"]:.4f}',
+                        f'{comp["cramers_v"]:.4f}',
+                        f'{comp["chi2"]:.4f}',
+                        comp['dof'],
+                        f'{comp["pvalue"]:.4g}',
+                        f'{comp["n_a"]:g}',
+                        f'{comp["n_b"]:g}',
+                        comp['chi2_reliable'],
+                        _format_top_channels(comp['top_channels']),
+                    ]
+                )
+    logger.info('Flank-context spectra comparisons written to %s', path)
+    return path
