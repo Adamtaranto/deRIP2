@@ -300,6 +300,51 @@ def test_cds_tracks_rich_glyphs_and_stops(simple_alignment):
     plt.close(fig)
 
 
+def test_annotation_track_below_consensus(simple_alignment):
+    """The gene-annotation track sits below the deRIP consensus row.
+
+    The stack order is alignment -> consensus -> annotation, so a gene's glyphs
+    read against the corrected sequence they annotate.
+    """
+    from matplotlib.patches import PathPatch
+    import matplotlib.pyplot as plt
+
+    n_cols = simple_alignment.get_alignment_length()
+    fig = drawMiniAlignment(
+        simple_alignment,
+        'unused',
+        cds_tracks=[([(0, 0), (2, 3)], '+', [], 'geneX', '#efb700')],
+        consensus_seq='A' * n_cols,
+        corrected_positions=[],
+        return_figure=True,
+    )
+    consensus_ax = next(ax for ax in fig.axes if ax.get_title() == 'deRIP Consensus')
+    ann_ax = next(
+        ax for ax in fig.axes if [p for p in ax.patches if isinstance(p, PathPatch)]
+    )
+    # Lower axis => smaller y0 in figure coordinates.
+    assert ann_ax.get_position().y0 < consensus_ax.get_position().y0
+    plt.close(fig)
+
+
+def test_cds_track_tooltip_uses_cds_id(simple_alignment):
+    """A 6-tuple CDS track uses the 6th element (CDS id) for the hover tooltip.
+
+    The y-axis row label keeps the parent transcript id; the tooltip identifies
+    the CDS by its own id so isoforms sharing a transcript stay distinguishable.
+    """
+    import matplotlib.pyplot as plt
+
+    fig = drawMiniAlignment(
+        simple_alignment,
+        'unused',
+        cds_tracks=[([(0, 1)], '+', [], 'mRNA9', '#efb700', 'cds9')],
+        return_figure=True,
+    )
+    assert set(fig.annotation_titles.values()) == {'cds9 — CDS exon 1/1'}
+    plt.close(fig)
+
+
 @patch('matplotlib.figure.Figure.savefig')
 def test_drawMiniAlignment_with_title(mock_savefig, simple_alignment):
     """Test drawMiniAlignment with a title."""

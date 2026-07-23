@@ -684,13 +684,22 @@ def _panel_html(
     # premature stops). One track band per gene, drawn below the deRIP row.
     cds_tracks = []
     if cds_gene_cols:
-        from derip2.annotation import cds_stop_columns
+        from derip2.annotation import cds_display_id, cds_stop_columns
 
         for gene, cols, exon_spans, colour in cds_gene_cols:
             stops = cds_stop_columns(
                 gene, cls.arr[row_index], cols, genetic_code=genetic_code
             )
-            cds_tracks.append((exon_spans, gene.strand, stops, gene.gene_id, colour))
+            cds_tracks.append(
+                (
+                    exon_spans,
+                    gene.strand,
+                    stops,
+                    gene.gene_id,
+                    colour,
+                    cds_display_id(gene),
+                )
+            )
 
     strip = sequence_row_strip(
         cls,
@@ -868,7 +877,8 @@ def _overview_html(derip, cds_tracks):
         f'{n_cols} columns)</span>{_zoom_control()}</h2>'
         '<h3>Full alignment</h3>'
         '<p class="desc">The whole alignment with RIP markup and, beneath it, the '
-        'deRIP-corrected consensus with corrected positions.</p>'
+        'deRIP-corrected consensus with corrected positions; any gene-annotation '
+        'track is drawn below the consensus.</p>'
         f'<div class="aln-scroll">{svg}</div>'
         '</section>'
     )
@@ -1003,6 +1013,7 @@ def write_per_sequence_report(
         from derip2.annotation import (
             DEFAULT_ANNOTATION_COLORS,
             cds_alignment_columns,
+            cds_display_id,
             cds_exon_spans,
             cds_stop_columns,
             compute_effects_for_alignment,
@@ -1055,6 +1066,7 @@ def write_per_sequence_report(
                 cds_stop_columns(gene, consensus_row, cols, genetic_code=genetic_code),
                 gene.gene_id,
                 colour,
+                cds_display_id(gene),
             )
             for gene, cols, exon_spans, colour in cds_gene_cols
         ]

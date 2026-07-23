@@ -17,6 +17,7 @@ from derip2.annotation import (
     Feature,
     Gene,
     cds_alignment_columns,
+    cds_display_id,
     cds_stop_columns,
     parse_gff3,
     predict_gene_effects,
@@ -40,6 +41,30 @@ def cds_gene(gene_id, seqid, strand, exons, phase=0):
         for i, (s, e) in enumerate(exons)
     ]
     return Gene(gene_id=gene_id, seqid=seqid, strand=strand, cds=features)
+
+
+def test_cds_display_id_prefers_cds_id():
+    """cds_display_id returns the CDS ID (first segment), not the parent id.
+
+    parse_gff3 groups by Parent, so gene_id is the transcript; the CDS's own ID
+    lives on each segment's feature_id and all segments of one CDS share it.
+    """
+    # Parent 'mRNA3' owns a two-segment CDS whose ID is 'cds3'.
+    cds = [
+        Feature('S4', 'CDS', 1, 6, '+', 0, {}, 'cds3', 'mRNA3'),
+        Feature('S4', 'CDS', 13, 21, '+', 0, {}, 'cds3', 'mRNA3'),
+    ]
+    gene = Gene(gene_id='mRNA3', seqid='S4', strand='+', cds=cds)
+    assert cds_display_id(gene) == 'cds3'
+
+
+def test_cds_display_id_falls_back_to_gene_id():
+    """cds_display_id falls back to gene_id when the CDS carried no ID."""
+    cds = [Feature('S1', 'CDS', 1, 9, '+', 0, {}, None, 'mRNA1')]
+    gene = Gene(gene_id='mRNA1', seqid='S1', strand='+', cds=cds)
+    assert cds_display_id(gene) == 'mRNA1'
+    # A gene with no CDS at all also falls back safely.
+    assert cds_display_id(Gene('g', 'S1', '+', [])) == 'g'
 
 
 # --- parsing ---------------------------------------------------------------

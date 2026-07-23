@@ -436,17 +436,25 @@ def test_gene_exon_path_arrow_direction():
 
 
 def test_report_annotation_tooltips(mintest_derip, gff_path, tmp_path):
-    """CDS exon segments carry a data-tip tooltip with id and exon number."""
+    """CDS exon segments carry a data-tip tooltip with the CDS id and exon number.
+
+    The tooltip identifies the CDS by its own ``ID`` attribute (``cds*``), not the
+    parent transcript (``mRNA*``), so distinct CDS isoforms sharing one transcript
+    stay distinguishable. All segments of a multi-exon CDS share the first
+    segment's ``ID``.
+    """
     out = tmp_path / 'per_seq.html'
     mintest_derip.write_per_sequence_report(str(out), gff=str(gff_path))
     html = out.read_text()
     # Custom tooltips replace native <title> (no browser delay; pin on click).
     assert '<div class="psr-tip" id="psr-tip"' in html
-    # mRNA3 is a two-exon plus-strand gene, so both exon numbers appear.
-    assert 'data-tip="mRNA3 — CDS exon 1/2"' in html
-    assert 'data-tip="mRNA3 — CDS exon 2/2"' in html
-    # A single-exon gene shows exon 1/1.
-    assert 'data-tip="mRNA1 — CDS exon 1/1"' in html
+    # cds3a/cds3b belong to two-exon plus-strand mRNA3; both segments tooltip to
+    # the first segment's CDS id (cds3a) with their exon numbers.
+    assert 'data-tip="cds3a — CDS exon 1/2"' in html
+    assert 'data-tip="cds3a — CDS exon 2/2"' in html
+    # A single-exon CDS shows exon 1/1 under its own id, not the parent transcript.
+    assert 'data-tip="cds1 — CDS exon 1/1"' in html
+    assert 'mRNA1 — CDS exon' not in html
 
 
 def test_report_total_rip_events(mintest_derip, tmp_path):
