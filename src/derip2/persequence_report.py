@@ -336,8 +336,8 @@ _PSR_STYLE = """
 }
 .legend .lg b { font-size: 1rem; line-height: 1; }
 
-/* Significant strand-asymmetry p-value. */
-.stat-card td.value.sig { font-weight: 700; }
+/* Significant strand-asymmetry p-value (< 0.05): coloured green, not bold. */
+.stat-card td.value.sig { color: #007a3d; }
 
 /* Wide figures (alignment row, strand bias) keep their intrinsic width and
    scroll horizontally rather than being squashed to page width, so bars stay
@@ -473,36 +473,58 @@ _PSR_STYLE = """
 }
 .psr-copy:hover { border-color: var(--muted); }
 
-/* Overview all-sequence summary statistics table (sortable). */
-.stats-scroll { overflow-x: auto; margin: .2rem 0 1rem; }
+/* Overview all-sequence summary statistics table (sortable). The box scrolls in
+   both axes with a capped height; the two header rows stay pinned to the top and
+   the sequence-name column stays pinned to the left (via position: sticky). The
+   --h1 offset is the height of the first (group) header row, so the second header
+   row sits directly below it. */
+.stats-scroll {
+  --h1: 1.9rem;
+  overflow: auto; max-height: 70vh; margin: .2rem 0 1rem;
+}
 .psr-stats {
-  border-collapse: collapse; font-size: 13px; white-space: nowrap;
-  font-variant-numeric: tabular-nums;
+  border-collapse: separate; border-spacing: 0; font-size: 13px;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 .psr-stats th, .psr-stats td {
   padding: .35rem .6rem; border-bottom: 1px solid var(--rule); text-align: right;
 }
 .psr-stats thead th {
-  background: var(--surface); position: sticky; top: 0;
+  background: var(--surface); position: sticky; z-index: 3;
   border-bottom: 1px solid var(--rule);
 }
+.psr-stats thead tr:first-child th { top: 0; height: var(--h1); }
+.psr-stats thead tr:nth-child(2) th { top: var(--h1); }
 .psr-stats thead th.grp {
   text-align: center; font-weight: 600;
   border-left: 1px solid var(--rule); border-right: 1px solid var(--rule);
 }
-.psr-stats th[scope="row"] { text-align: left; font-weight: 600; }
+/* Sticky first column (sequence names) — header corner sits above everything. */
+.psr-stats th[scope="row"] {
+  text-align: left; font-weight: 600; position: sticky; left: 0; z-index: 2;
+  background: var(--page); border-right: 1px solid var(--rule);
+}
+.psr-stats thead th.corner { left: 0; z-index: 4; }
+.psr-stats tbody tr:hover th[scope="row"] { background: var(--surface); }
 .psr-stats th.sortable { cursor: pointer; user-select: none; }
 .psr-stats th.sortable:hover { color: var(--ink); }
 .psr-stats th.sortable::after { content: ''; margin-left: .3rem; color: var(--muted); }
 .psr-stats th.sortable[data-dir="asc"]::after { content: '▲'; }
 .psr-stats th.sortable[data-dir="desc"]::after { content: '▼'; }
+.psr-stats .seq-link {
+  color: inherit; text-decoration: underline; text-decoration-style: dotted;
+  text-underline-offset: 2px; cursor: pointer;
+}
+.psr-stats .seq-link:hover { text-decoration-style: solid; }
 .psr-stats td.value.muted { color: var(--muted); }
 .psr-stats td.value.pos { color: #007a3d; }
 .psr-stats td.value.neg { color: #b4292a; }
-.psr-stats tbody tr:hover { background: var(--surface); }
+.psr-stats tbody tr:hover td { background: var(--surface); }
 .psr-stats tr.consensus-row th[scope="row"],
 .psr-stats tr.consensus-row td { font-weight: 600; }
-.psr-stats tr.consensus-row { border-top: 2px solid var(--muted); }
+.psr-stats tr.consensus-row td, .psr-stats tr.consensus-row th[scope="row"] {
+  border-top: 2px solid var(--muted);
+}
 """
 
 # The click-to-view FASTA modal, injected once per report. Populated and shown by
@@ -812,7 +834,35 @@ _PSR_SCRIPT = """
     });
   }
 
+  // Sequence names in the overview stats table jump to that sequence's page.
+  // Scroll position is preserved (as with arrow-key navigation); the sticky nav
+  // and panel header keep the reader oriented.
+  document.addEventListener('click', function (e) {
+    var link = e.target.closest && e.target.closest('[data-goto]');
+    if (!link) { return; }
+    e.preventDefault();
+    show(parseInt(link.getAttribute('data-goto'), 10));
+  });
+
+  // Land on the overview with the whole MSA figure visible: shrink the shared
+  // zoom just enough to fit the alignment figure in its scroll box (never zoom in
+  // past 100%). Widths are then applied by applyZoom below.
+  function fitOverview() {
+    var box = document.querySelector(
+      '.seq-panel[data-index="overview"] .aln-scroll');
+    if (!box) { return; }
+    var svg = box.querySelector('svg');
+    if (!svg) { return; }
+    var base = svgBasePx(svg);
+    var avail = box.clientWidth - 12;   // minus the box padding
+    if (base > 0 && avail > 0 && avail < base) {
+      zoom = Math.max(0.25, avail / base);
+    }
+  }
+
   show(0);
+  fitOverview();
+  applyZoom();
 })();
 """
 
@@ -1190,7 +1240,7 @@ def _overview_svg(derip, cds_tracks, fasta_data=None):
     return svg
 
 
-def _overview_stats_table_html(df, derip):
+def _overview_stats_table_html(df, derip, row_to_panel=None):
     """
     Build the sortable all-sequence statistics table for the overview page.
 
@@ -1199,7 +1249,9 @@ def _overview_stats_table_html(df, derip):
     (:data:`_STAT_SECTIONS`). The consensus is the RIP-free reconstructed
     ancestor, so its RIP-event and strand-bias (RSI) columns are not applicable
     and render as an en-dash; only composition (GC) and the Composite RIP Index
-    (CRI/PI/SI) are computed for it. Every column is click-to-sort in the browser
+    (CRI/PI/SI) are computed for it. A positive-RIP CRI (> 1) is coloured green
+    and a significant strand-asymmetry p-value (< 0.05) is coloured green, as on
+    the per-sequence cards. Every column is click-to-sort in the browser
     (numeric-aware; en-dash cells sort last).
 
     Parameters
@@ -1208,6 +1260,11 @@ def _overview_stats_table_html(df, derip):
         The per-sequence statistics (:meth:`derip2.derip.DeRIP.summarize_stats`).
     derip : derip2.derip.DeRIP
         The analysed DeRIP object (for the consensus row's GC and CRI).
+    row_to_panel : dict of int to int, optional
+        Maps an alignment row index to the 1-based panel position of that
+        sequence's per-sequence page. Sequences present here get their name
+        linked to their page; sequences dropped by ``--max-report-seqs`` (absent
+        from the map) render as plain text.
 
     Returns
     -------
@@ -1215,6 +1272,8 @@ def _overview_stats_table_html(df, derip):
         The ``<table class="psr-stats">`` markup (with its wrapping scroll div).
     """
     from Bio.SeqUtils import gc_fraction
+
+    row_to_panel = row_to_panel or {}
 
     # Flatten the grouped layout into one ordered column list plus the group
     # spans that head it. 'RIP_total' is derived (fwd + rev), as on the cards.
@@ -1235,13 +1294,13 @@ def _overview_stats_table_html(df, derip):
     )
     thead = (
         '<thead>'
-        '<tr><th class="sortable" data-ci="0" rowspan="2">Sequence</th>'
+        '<tr><th class="sortable corner" data-ci="0" rowspan="2">Sequence</th>'
         f'{grp_ths}</tr>'
         f'<tr>{col_ths}</tr>'
         '</thead>'
     )
 
-    def _row_html(label, values, is_consensus=False):
+    def _row_html(label, values, is_consensus=False, panel=None):
         """
         Build one table row: a leading label cell then a cell per flat column.
 
@@ -1253,19 +1312,31 @@ def _overview_stats_table_html(df, derip):
             Column-name to value; missing columns render as an en-dash.
         is_consensus : bool, optional
             Whether this is the deRIP-consensus row (adds a marker class).
+        panel : int, optional
+            1-based panel position of this sequence's per-sequence page; when
+            given the name links to it. ``None`` leaves the name as plain text.
 
         Returns
         -------
         str
             The ``<tr>`` element for this row.
         """
-        cells = [f'<th scope="row">{escape(str(label))}</th>']
+        name = escape(str(label))
+        if panel is not None:
+            name = f'<a class="seq-link" href="#" data-goto="{panel}">{name}</a>'
+        cells = [f'<th scope="row">{name}</th>']
         for col, _lab in flat:
             value = values.get(col)
             if col == 'RIP_total' and value is not None:
                 text, css = str(int(value)), ''
             else:
                 text, css = _format_cell(col, value)
+            # Green flags, matching the per-sequence cards: a positive-RIP CRI
+            # (> 1) and a significant strand-asymmetry p-value (< 0.05).
+            if col == 'CRI' and isinstance(value, (int, float)) and value > 1:
+                css = 'pos'
+            elif col == 'pvalue' and isinstance(value, (int, float)) and value < 0.05:
+                css = 'pos'
             cls = f' class="value {css}"'.rstrip() if css else ' class="value"'
             cells.append(f'<td{cls}>{text}</td>')
         tr_cls = ' class="consensus-row"' if is_consensus else ''
@@ -1276,7 +1347,7 @@ def _overview_stats_table_html(df, derip):
         row = df.iloc[i]
         values = {col: row[col] for col, _lab in flat if col in row.index}
         values['RIP_total'] = int(row['RIP_fwd']) + int(row['RIP_rev'])
-        rows.append(_row_html(row['ID'], values))
+        rows.append(_row_html(row['ID'], values, panel=row_to_panel.get(i)))
 
     # The deRIP consensus row: GC + CRI/PI/SI only; RIP/RSI columns stay None so
     # _format_cell renders them as an en-dash (not applicable to the ancestor).
@@ -1297,7 +1368,42 @@ def _overview_stats_table_html(df, derip):
     )
 
 
-def _overview_html(derip, cds_tracks, fasta_data=None, downloads=(), df=None):
+def _overview_spectrum_svg(derip):
+    """
+    Render the pooled SBS-96 spectrum (all sequences vs the deRIP reference).
+
+    Every alignment cell that differs from the deRIP-corrected reference is one
+    substitution event; pooling all sequences into a single sample gives the
+    alignment-wide mutation spectrum (dominated by the C→T / G→A RIP signature).
+    Rendered like the per-sequence spectra (wide, bare, fixed geometry) so it
+    scrolls on its own and reads consistently.
+
+    Parameters
+    ----------
+    derip : derip2.derip.DeRIP
+        The analysed DeRIP object.
+
+    Returns
+    -------
+    str
+        The inline ``<svg>`` fragment (id-prefixed), or ``''`` if no substitution
+        events were observed.
+    """
+    import matplotlib.pyplot as plt
+
+    from derip2.plotting.spectra import plot_sbs96
+
+    spectra_all = derip.calculate_spectra(partition_by='none')
+    fig = plot_sbs96(spectra_all, sample=0, width=11.0, bare=True)
+    _fix_spectrum_axes(fig)
+    svg = _figure_to_svg(fig, 'ovwsbs-', tight=False)
+    plt.close(fig)
+    return svg
+
+
+def _overview_html(
+    derip, cds_tracks, fasta_data=None, downloads=(), df=None, row_to_panel=None
+):
     """
     Build the report's front (overview) page: the full alignment + consensus.
 
@@ -1315,6 +1421,9 @@ def _overview_html(derip, cds_tracks, fasta_data=None, downloads=(), df=None):
     df : pandas.DataFrame, optional
         The per-sequence statistics; when given, a sortable all-sequence stats
         table (plus the deRIP consensus row) is added below the alignment figure.
+    row_to_panel : dict of int to int, optional
+        Row-index to panel-position map so the stats table can link each sequence
+        name to its per-sequence page (see :func:`_overview_stats_table_html`).
 
     Returns
     -------
@@ -1322,6 +1431,7 @@ def _overview_html(derip, cds_tracks, fasta_data=None, downloads=(), df=None):
         The overview ``<section class="seq-panel">`` (first page of the deck).
     """
     svg = _overview_svg(derip, cds_tracks, fasta_data)
+    spectrum_svg = _overview_spectrum_svg(derip)
     n_total = len(derip.alignment)
     n_cols = derip.alignment.get_alignment_length()
 
@@ -1340,15 +1450,23 @@ def _overview_html(derip, cds_tracks, fasta_data=None, downloads=(), df=None):
         )
     toolbar = f'<div class="psr-toolbar">{"".join(tools)}</div>' if tools else ''
 
+    spectrum_section = (
+        '<h3>Mutation spectrum</h3>'
+        '<p class="desc">SBS-96 trinucleotide spectrum of every substitution '
+        'across all sequences relative to the deRIP-corrected reference. The '
+        'C&rarr;T / G&rarr;A dominance is the RIP signature.</p>'
+        f'<div class="spectrum-scroll">{spectrum_svg}</div>'
+    )
+
     stats_section = ''
     if df is not None:
         stats_section = (
             '<h3>Summary statistics</h3>'
             '<p class="desc">Per-sequence statistics for every sequence plus the '
             'deRIP-corrected consensus (its RIP-event and strand-bias columns are '
-            'not applicable and shown as &ndash;). Click any column heading to '
-            'sort.</p>'
-            f'{_overview_stats_table_html(df, derip)}'
+            'not applicable and shown as &ndash;). Click a sequence name to open '
+            'its page, or a column heading to sort.</p>'
+            f'{_overview_stats_table_html(df, derip, row_to_panel)}'
         )
 
     return (
@@ -1362,6 +1480,7 @@ def _overview_html(derip, cds_tracks, fasta_data=None, downloads=(), df=None):
         'annotation to view its FASTA.</p>'
         f'{toolbar}'
         f'<div class="aln-scroll">{svg}</div>'
+        f'{spectrum_section}'
         f'{stats_section}'
         '</section>'
     )
@@ -1599,9 +1718,17 @@ def write_per_sequence_report(
 
     indices, truncated = _select_rows(df, max_seqs)
 
+    # Map each rendered sequence's alignment-row index to its 1-based panel
+    # position (panel 0 is the overview), so the overview stats table can link a
+    # sequence name to its page. Sequences dropped by --max-report-seqs are absent
+    # and left unlinked.
+    row_to_panel = {row_index: pos for pos, row_index in enumerate(indices, start=1)}
+
     # The front (overview) page — the full alignment + deRIP consensus — followed
     # by one panel per sequence.
-    panels = [_overview_html(derip, overview_track, fasta_data, downloads, df)]
+    panels = [
+        _overview_html(derip, overview_track, fasta_data, downloads, df, row_to_panel)
+    ]
     panels += [
         _panel_html(
             derip,

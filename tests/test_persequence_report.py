@@ -537,7 +537,7 @@ def test_overview_stats_table(mintest_derip, tmp_path):
 
     # Sortable column count = leading Sequence column + every flat stat column.
     n_stats = sum(len(cols) for _t, _d, cols in _STAT_SECTIONS)
-    assert table.count('th class="sortable"') == n_stats + 1
+    assert table.count('class="sortable') == n_stats + 1
 
     # The consensus row: RIP/RSI columns are en-dashes; GC/CRI are numbers.
     consensus = re.search(r'<tr class="consensus-row">(.*?)</tr>', table, re.S).group(1)
@@ -545,6 +545,60 @@ def test_overview_stats_table(mintest_derip, tmp_path):
     assert '&ndash;' in consensus  # not-applicable RIP/RSI cells
     cri, _pi, _si = mintest_derip.calculate_cri(mintest_derip.get_consensus_string())
     assert f'{cri:.3f}' in consensus
+
+
+def test_overview_stats_table_green_flags(mintest_derip):
+    """CRI > 1 and a significant p-value are flagged green in the overview table."""
+    from derip2.persequence_report import _overview_stats_table_html
+
+    df = mintest_derip.summarize_stats().copy()
+    df.loc[df.index[0], 'CRI'] = 1.5  # > 1 -> green
+    df.loc[df.index[0], 'pvalue'] = 0.01  # < 0.05 -> green
+    df.loc[df.index[1], 'CRI'] = 0.5  # <= 1 -> not green
+    df.loc[df.index[1], 'pvalue'] = 0.5  # >= 0.05 -> not green
+    table = _overview_stats_table_html(df, mintest_derip)
+    rows = re.findall(r'<tr[^>]*>.*?</tr>', table, re.S)
+    # rows[0] header spans two <tr>; the first data row is the sequence at df row 0.
+    body_rows = [r for r in rows if 'scope="row"' in r]
+    r0, r1 = body_rows[0], body_rows[1]
+    assert 'class="value pos">1.500' in r0  # CRI 1.5 green (plain, no sign)
+    assert 'class="value pos">0.01' in r0  # pvalue 0.01 green
+    assert 'value pos">0.500' not in r1  # CRI 0.5 not green
+    assert 'value pos">0.5<' not in r1  # pvalue 0.5 not green
+
+
+def test_overview_stats_table_links_and_truncation(mintest_derip):
+    """Sequence names link to their page; sequences without a page stay unlinked."""
+    from derip2.persequence_report import _overview_stats_table_html
+
+    df = mintest_derip.summarize_stats()
+    # Simulate --max-report-seqs dropping rows: only rows 0 and 2 have panels.
+    table = _overview_stats_table_html(df, mintest_derip, row_to_panel={0: 1, 2: 2})
+    body = re.search(r'<tbody>(.*)</tbody>', table, re.S).group(1)
+    # Exactly two linked names, pointing at panels 1 and 2.
+    assert re.findall(r'data-goto="(\d+)"', body) == ['1', '2']
+    # The consensus row and dropped sequences carry no link.
+    consensus = re.search(r'<tr class="consensus-row">(.*?)</tr>', body, re.S).group(1)
+    assert 'seq-link' not in consensus
+
+
+def test_overview_aggregate_spectrum(mintest_derip, tmp_path):
+    """The overview page embeds a pooled SBS-96 spectrum (all seqs vs deRIP)."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    assert 'Mutation spectrum' in html
+    # The pooled spectrum figure is embedded with its own unique id prefix.
+    assert 'ovwsbs-' in html
+
+
+def test_overview_initial_fit_and_goto_js(mintest_derip, tmp_path):
+    """The overview JS fits the MSA figure on load and wires sequence-name jumps."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    assert 'function fitOverview' in html
+    assert "closest('[data-goto]')" in html
 
 
 def test_report_total_rip_events(mintest_derip, tmp_path):
@@ -568,9 +622,9 @@ def test_report_has_legend_and_zoom(mintest_derip, tmp_path):
     assert 'zoom-in' in html and 'zoom-out' in html and 'applyZoom' in html
 
 
-def test_report_pvalue_bold_when_significant(mintest_path):
-    """A strand-asymmetry p-value below 0.05 gets the bold .sig class."""
-    from derip2.persequence_report import _stats_sections_html
+def test_report_pvalue_green_when_significant(mintest_path):
+    """A strand-asymmetry p-value below 0.05 gets the .sig class (styled green)."""
+    from derip2.persequence_report import _PSR_STYLE, _stats_sections_html
 
     derip = DeRIP(mintest_path)
     derip.calculate_rip()
@@ -579,6 +633,9 @@ def test_report_pvalue_bold_when_significant(mintest_path):
     assert 'sig">' in _stats_sections_html(row)
     row['pvalue'] = 0.5
     assert 'sig">' not in _stats_sections_html(row)
+    # The .sig class is coloured green, not bold.
+    assert '.stat-card td.value.sig { color: #007a3d; }' in _PSR_STYLE
+    assert '.stat-card td.value.sig { font-weight: 700; }' not in _PSR_STYLE
 
 
 def test_report_cri_highlighted_when_above_one(mintest_path, tmp_path):
