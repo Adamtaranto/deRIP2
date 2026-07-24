@@ -320,6 +320,10 @@ def test_report_flank_context_sections(mintest_derip, tmp_path):
     assert 'data-motifsort="first"' in html
     assert 'data-motifsort="last"' in html
     assert '% RIP' in html
+    # Each row also visualises the RIP % as a stacked bar (one per motif per table,
+    # counting both populated "ripbar" and zero-site "ripbar empty" spans).
+    assert '>Conversion</th>' in html
+    assert html.count('<span class="ripbar') == 16 * (n + 1)
 
 
 def test_flank_data_table_percentage_and_sort_keys():
@@ -339,6 +343,12 @@ def test_flank_data_table_percentage_and_sort_keys():
     assert '<td data-val="25.0000">25.0</td>' in html
     # A motif with no sites has an en-dash % and an empty (last-sorting) value.
     assert '<td data-val="">&ndash;</td>' in html
+    # The stacked conversion bar sets the product (25%) width; substrate fills the
+    # rest.
+    assert '<i class="prod" style="width:25.000%"></i>' in html
+    assert '<i class="sub"></i>' in html
+    # Zero-site motifs get an empty bar rather than a split one.
+    assert 'class="ripbar empty"' in html
 
 
 def test_report_transposed_stat_cards(mintest_derip, tmp_path):

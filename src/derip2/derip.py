@@ -1357,7 +1357,13 @@ class DeRIP:
             self.flank_spectra_result, output_file, min_sites=min_sites
         )
 
-    def plot_flank_spectra(self, output_file: Optional[str] = None, **kwargs):
+    def plot_flank_spectra(
+        self,
+        output_file: Optional[str] = None,
+        *,
+        percentage: bool = False,
+        **kwargs,
+    ):
         """
         Draw the pooled flank-context bihistograms, computing spectra if needed.
 
@@ -1366,10 +1372,16 @@ class DeRIP:
         output_file : str, optional
             Path to write the figure to. Use ``.svg`` or ``.pdf`` for
             publication output.
+        percentage : bool, optional
+            When ``True``, plot **count-normalised proportions** instead of raw
+            counts: each state (substrate, product) is rescaled to sum to 100
+            across the 16 motifs, so the two spectra are compared on equal footing
+            regardless of how many substrate vs product sites there are (default:
+            ``False``, raw counts).
         **kwargs
             Forwarded to
             :func:`derip2.plotting.flank_spectra.plot_flank_bihistograms_pooled`
-            (e.g. ``title``, ``percentage``, ``width``).
+            (e.g. ``title``, ``strands``, ``width``).
 
         Returns
         -------
@@ -1381,7 +1393,7 @@ class DeRIP:
         if self.flank_spectra_result is None:
             self.calculate_flank_spectra()
         return plot_flank_bihistograms_pooled(
-            self.flank_spectra_result, output_file, **kwargs
+            self.flank_spectra_result, output_file, percentage=percentage, **kwargs
         )
 
     def write_html_report(

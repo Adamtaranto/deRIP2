@@ -84,9 +84,25 @@ fig.savefig("sahana_flank.png", dpi=150, bbox_inches="tight")
 
 ![Flank-context bihistograms](../img/flank_context_spectra.png)
 
+### Count-normalised proportions
+
+By default the bars are raw counts. There are usually far more substrate sites
+than product sites (substrate is counted everywhere, product only in RIP columns),
+so the raw bihistogram is dominated by that overall imbalance. Pass
+`percentage=True` to plot **count-normalised proportions** instead: each state is
+rescaled to sum to 100 % across the 16 motifs, so the substrate and product
+*shapes* are compared on equal footing and you can see which contexts are
+over- or under-represented in one state relative to the other.
+
+```python
+# Each state normalised to 100 % of its own sites (x-axis: "% of state"):
+fig = d.plot_flank_spectra(title="Sahana repeat family", percentage=True)
+fig.savefig("sahana_flank_proportions.png", dpi=150, bbox_inches="tight")
+```
+
 For finer control use the plotting functions directly. `strands` selects which
 panels to draw (the report overview uses `("combined",)`); `sample` picks one
-sequence:
+sequence; `percentage` works here too:
 
 ```python
 from derip2.plotting.flank_spectra import (
@@ -94,10 +110,12 @@ from derip2.plotting.flank_spectra import (
     plot_flank_bihistograms_pooled,   # all sequences pooled
 )
 
-# Just the combined panel, pooled across the alignment:
-plot_flank_bihistograms_pooled(result, strands=("combined",), outfile="combined.png")
+# Just the combined panel, pooled across the alignment, as proportions:
+plot_flank_bihistograms_pooled(
+    result, strands=("combined",), percentage=True, outfile="combined.png"
+)
 
-# All three strand panels for the first sequence:
+# All three strand panels for the first sequence (raw counts):
 plot_flank_bihistograms(result, sample=0, outfile="seq0_flank.png")
 ```
 
@@ -201,9 +219,10 @@ Counts scale with alignment size and RIP load, so be deliberate when comparing:
   the p-value as a yes/no on *whether* there is any difference, not *how much*.
 
 - **To compare composition across samples of different sizes**, normalise each
-  spectrum to proportions (divide by its own total, or use the `percentage=True`
-  option on the plot functions) before eyeballing them. Keep the raw counts for
-  the tests, which need integer frequencies.
+  spectrum to proportions (divide by its own total, or use the
+  [`percentage=True`](#count-normalised-proportions) option on the plot functions)
+  before eyeballing them. Keep the raw counts for the tests, which need integer
+  frequencies.
 
 - **Per-sequence spectra are small.** The `min_sites` gate (default 20) stops
   `differential_channels` and the report's per-motif marks from over-interpreting

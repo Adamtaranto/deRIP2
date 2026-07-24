@@ -114,9 +114,11 @@ that almost every context clears this bar, so lean on the effect sizes there.)
 
 Beneath the bihistograms, a **sortable per-motif table** lists each CA-state motif
 with its combined substrate count, product count, total, and **% RIP** (the
-product share of the total — how much of that context was converted). Sort the
-motif column by its 5′ or 3′ flanking base, or any numeric column by value, to
-find the most- and least-converted contexts. A second table reports the five
+product share of the total — how much of that context was converted). The final
+**Conversion** column draws that percentage as a stacked bar (orange = product,
+blue = surviving substrate), so a fully-converted context reads all-orange at a
+glance. Sort the motif column by its 5′ or 3′ flanking base, or any numeric column
+by value, to find the most- and least-converted contexts. A second table reports the five
 comparisons that test the protection hypothesis: substrate-vs-product flank
 distribution (combined / forward / reverse) and forward-vs-reverse (substrate /
 product). It leads with the scale-free **cosine similarity** (1 = identical flank

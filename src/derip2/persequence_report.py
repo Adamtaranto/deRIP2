@@ -375,6 +375,16 @@ _PSR_STYLE = """
 .flank-data .motif-sort button[data-active="1"] {
   color: var(--ink); border-color: var(--muted);
 }
+/* Stacked "% RIP" bar: orange product share against blue substrate share. */
+.flank-data td.ripbar-cell { text-align: left; }
+.flank-data .ripbar {
+  display: inline-flex; width: 88px; height: 11px; border-radius: 3px;
+  overflow: hidden; vertical-align: middle; border: 1px solid var(--rule);
+}
+.flank-data .ripbar i { display: block; height: 100%; }
+.flank-data .ripbar .prod { flex: 0 0 auto; background: #eb6834; }
+.flank-data .ripbar .sub { flex: 1 1 auto; background: #2a78d6; }
+.flank-data .ripbar.empty { background: var(--rule); }
 
 /* Colour key for the alignment-row figure. */
 .legend {
@@ -1653,15 +1663,26 @@ def _flank_data_table_html(substrate, product, motifs):
             conv = 100.0 * p / total
             conv_txt = f'{conv:.1f}'
             conv_val = f'{conv:.4f}'
+            # Stacked bar: the RIP product share (orange, explicit width) against
+            # the surviving substrate share (blue, fills the remainder so the two
+            # segments always meet exactly), so a fully-converted context reads
+            # all-orange.
+            bar = (
+                f'<span class="ripbar" title="{conv:.1f}% converted to product">'
+                f'<i class="prod" style="width:{conv:.3f}%"></i>'
+                f'<i class="sub"></i></span>'
+            )
         else:
             conv_txt = '&ndash;'
             conv_val = ''  # sorts last
+            bar = '<span class="ripbar empty" title="no sites"></span>'
         rows.append(
             f'<tr><td data-first="{motif[0]}" data-last="{motif[3]}">{motif}</td>'
             f'<td data-val="{s:.0f}">{s:.0f}</td>'
             f'<td data-val="{p:.0f}">{p:.0f}</td>'
             f'<td data-val="{total:.0f}">{total:.0f}</td>'
-            f'<td data-val="{conv_val}">{conv_txt}</td></tr>'
+            f'<td data-val="{conv_val}">{conv_txt}</td>'
+            f'<td class="ripbar-cell">{bar}</td></tr>'
         )
     body = ''.join(rows)
     return (
@@ -1677,12 +1698,16 @@ def _flank_data_table_html(substrate, product, motifs):
         '<th class="sortable-num" title="click to sort">Product</th>'
         '<th class="sortable-num" title="click to sort">Total</th>'
         '<th class="sortable-num" title="click to sort">% RIP</th>'
+        '<th title="RIP product (orange) vs surviving substrate (blue) share">'
+        'Conversion</th>'
         '</tr></thead>'
         f'<tbody>{body}</tbody></table>'
         '<p class="note">Counts pool the forward and reverse strands (combined). '
         '&ldquo;% RIP&rdquo; is the product share of the total &mdash; the fraction '
-        'of that flank context converted to RIP product. Sort the motif column by '
-        'its 5&prime; or 3&prime; flanking base, or any numeric column by value.</p>'
+        'of that flank context converted to RIP product, also shown as a stacked '
+        'bar (orange = product, blue = surviving substrate). Sort the motif column '
+        'by its 5&prime; or 3&prime; flanking base, or any numeric column by '
+        'value.</p>'
     )
 
 

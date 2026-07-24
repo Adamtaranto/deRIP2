@@ -209,3 +209,40 @@ def test_saves_to_file(tmp_path):
     out = tmp_path / 'flank.png'
     plot_flank_bihistograms(result, sample=0, outfile=str(out))
     assert out.exists() and out.stat().st_size > 0
+
+
+def test_percentage_normalises_each_state():
+    """percentage=True rescales each state's bars to sum to 100% within a panel."""
+    # A one-sample result with several populated substrate and product motifs.
+    sub_fwd = np.zeros((16, 1))
+    prod_fwd = np.zeros((16, 1))
+    sub_fwd[[0, 5, 10], 0] = [10.0, 20.0, 30.0]
+    prod_fwd[[1, 5], 0] = [4.0, 6.0]
+    result = FlankSpectraResult(
+        sub_fwd=sub_fwd,
+        sub_rev=np.zeros((16, 1)),
+        prod_fwd=prod_fwd,
+        prod_rev=np.zeros((16, 1)),
+        sample_names=['s'],
+        n_skipped_flank=dict.fromkeys(
+            ('sub_fwd', 'sub_rev', 'prod_fwd', 'prod_rev'), 0
+        ),
+    )
+    fig = plot_flank_bihistograms(result, sample=0, percentage=True)
+    ax = fig.axes[0]
+    rects = _bar_rects(ax)
+    substrate = sum(-r.get_width() for r in rects if r.get_width() < 0)
+    product = sum(r.get_width() for r in rects if r.get_width() > 0)
+    assert substrate == pytest.approx(100.0)
+    assert product == pytest.approx(100.0)
+    assert ax.get_xlabel() == '% of state'
+
+
+def test_percentage_via_derip_method(mintest_path):
+    """DeRIP.plot_flank_spectra(percentage=True) forwards the proportion option."""
+    from derip2.derip import DeRIP
+
+    d = DeRIP(mintest_path)
+    d.calculate_rip()
+    fig = d.plot_flank_spectra(percentage=True)
+    assert fig.axes[0].get_xlabel() == '% of state'
