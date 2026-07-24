@@ -9,14 +9,14 @@ output.
 import matplotlib
 
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from matplotlib.colors import to_hex
-from matplotlib.patches import Rectangle
-import numpy as np
-import pytest
 from Bio.Align import MultipleSeqAlignment
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
+from matplotlib.colors import to_hex
+from matplotlib.patches import Rectangle
+import matplotlib.pyplot as plt
+import numpy as np
+import pytest
 
 from derip2.aln_ops import classify_alignment
 from derip2.plotting.flank_spectra import (

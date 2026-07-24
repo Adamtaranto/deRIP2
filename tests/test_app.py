@@ -1,8 +1,8 @@
 import os
 import tempfile
 
-import pytest
 from click.testing import CliRunner
+import pytest
 
 # Import the main function
 from derip2.app import main

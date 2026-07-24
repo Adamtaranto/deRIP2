@@ -11,11 +11,11 @@ that same channel, which is exactly what the swap-and-complement rule predicts.
 import json
 import os
 
-import numpy as np
-import pytest
 from Bio.Align import MultipleSeqAlignment
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
+import numpy as np
+import pytest
 
 from derip2.aln_ops import classify_alignment
 from derip2.derip import DeRIP
