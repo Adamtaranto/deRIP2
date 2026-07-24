@@ -13,7 +13,7 @@
       
       
       
-        <link rel="prev" href="../mutation-spectra/">
+        <link rel="prev" href="../flank-context-spectra/">
       
       
         <link rel="next" href="../../api-docs/deRIP_API/">
@@ -358,6 +358,33 @@
       
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../flank-context-spectra/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Flank-context Spectra (API)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -470,6 +497,17 @@
     <span class="md-ellipsis">
       
         Mutation spectra
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flanking-context-spectra-of-rip-like-sites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flanking-context spectra of RIP-like sites
       
     </span>
   </a>
@@ -709,6 +747,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#flanking-context-spectra-of-rip-like-sites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flanking-context spectra of RIP-like sites
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#summary-statistics" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -875,6 +924,61 @@ classifies each substitution by the mutated base plus its two downstream bases
 (<code>calculate_spectra(partition_by='row')</code>), so RIP's <code>C&gt;T</code> signature in <code>CpA</code>
 context shows up per sequence. Each spectrum scrolls horizontally on its own so
 the 96 channels never overlap.</p>
+<h3 id="flanking-context-spectra-of-rip-like-sites">Flanking-context spectra of RIP-like sites</h3>
+<p>Not every substrate motif is converted to product in a RIP-affected sequence.
+To ask whether a <strong>local sequence context protects</strong> a substrate from RIP, this
+section classifies every RIP-like dinucleotide by the single base <strong>1 bp
+upstream and 1 bp downstream</strong> — a 4 bp motif <code>[up][centre][down]</code> with the two
+centre bases fixed and the flanks varying, giving <strong>16 channels</strong>. Two site
+states are counted:</p>
+<ul>
+<li><strong>Substrate</strong> — surviving <code>CpA</code> (forward strand) and <code>TpG</code> (reverse strand),
+  counted <em>anywhere</em> in the sequence (not only in RIP-informative columns).</li>
+<li><strong>Product</strong> — realised <code>TpA</code> sitting in a RIP-informative column.</li>
+</ul>
+<p>Reverse-strand motifs are reverse-complemented onto the <code>CpA</code>/<code>TpA</code> strand, and
+each strand view — <strong>combined, forward, reverse</strong> — is drawn as a <strong>bihistogram</strong>:
+substrate counts (blue) extend left and product counts (orange) extend right of a
+shared centre line. Each row is named on both sides — the <strong>CA-state</strong> (substrate)
+motif on the left y-axis and the equivalent <strong>TA-state</strong> (product) motif on the
+right (<code>GCAG</code> on the left ≡ <code>GTAG</code> on the right).</p>
+<p>A motif is marked with a red <code>*</code> when its enrichment differs significantly between
+the two states. For each of the 16 flank contexts the substrate and product counts
+form one row of a 16×2 table, and that cell's <strong>adjusted standardised (Haberman)
+residual</strong> is compared to the standard normal: the motif is flagged when
+<code>|z| ≥ 1.96</code> (two-sided <em>p</em> &lt; 0.05), provided both states have ≥ 20 sites, with no
+multiple-testing correction. (On the pooled overview the counts are large enough
+that almost every context clears this bar, so lean on the effect sizes there.)</p>
+<p><img alt="Flanking-context spectra of RIP-like sites" src="../../img/flank_context_spectra.png" /></p>
+<p>Beneath the bihistograms, a <strong>sortable per-motif table</strong> lists each CA-state motif
+with its combined substrate count, product count, total, and <strong>% RIP</strong> (the
+product share of the total — how much of that context was converted). The final
+<strong>Conversion</strong> column draws that percentage as a stacked bar (orange = product,
+blue = surviving substrate), so a fully-converted context reads all-orange at a
+glance. Sort the motif column by its 5′ or 3′ flanking base, or any numeric column
+by value, to find the most- and least-converted contexts. A second table reports the five
+comparisons that test the protection hypothesis: substrate-vs-product flank
+distribution (combined / forward / reverse) and forward-vs-reverse (substrate /
+product). It leads with the scale-free <strong>cosine similarity</strong> (1 = identical flank
+preference) and <strong>Cramér's V</strong>; the χ² p-value is shown only where both spectra
+have enough sites (≥ 20 by default), and <code>*</code> marks <code>p &lt; 0.05</code>.</p>
+<p>The overview page carries the same tables <strong>pooled across all sequences</strong>, with
+the bihistogram reduced to just the combined-strand panel (the per-sequence pages
+keep the forward and reverse panels). With very large pooled counts almost every
+context is flagged, so read the effect sizes rather than the marks.</p>
+<p>To drive this analysis from Python — extracting the spectra, ranking motifs by
+conversion, and comparing two spectra sets — see the
+<a href="../flank-context-spectra/">Flank-context Spectra (API)</a> tutorial.</p>
+<p>Two companion tables are written alongside the report whenever
+<code>--per-seq-report</code> is set:</p>
+<ul>
+<li><code>prefix_rip_context_spectra.tsv</code> — tidy counts, one row per
+  <code>sample × state × strand × channel</code> (the <code>combined</code> strand is the sum of
+  <code>forward</code> and <code>reverse</code>).</li>
+<li><code>prefix_rip_context_comparisons.tsv</code> — one row per <code>sample × comparison</code>
+  carrying the cosine, Cramér's V, χ², p-value, site totals, reliability flag
+  and most-differentiating channels.</li>
+</ul>
 <h3 id="summary-statistics">Summary statistics</h3>
 <p>That sequence's statistics, split into described cards — RIP events (including a
 <strong>total</strong>), the strand-bias/RSI components, the composite RIP index (CRI), and

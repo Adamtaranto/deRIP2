@@ -1,0 +1,1026 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Predict ancestral fungal transposon sequences by correcting for RIP-like mutations">
+      
+      
+        <meta name="author" content="adamtaranto">
+      
+      
+      
+        <link rel="prev" href="../mutation-spectra/">
+      
+      
+        <link rel="next" href="../per-sequence-reporting/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Flank-context Spectra (API) - deRIP2</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#flank-context-spectra-of-rip-like-sites-python-api" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="deRIP2" class="md-header__button md-logo" aria-label="deRIP2" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            deRIP2
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Flank-context Spectra (API)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/adamtaranto/deRIP2" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    adamtaranto/deRIP2
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="deRIP2" class="md-nav__button md-logo" aria-label="deRIP2" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    deRIP2
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/adamtaranto/deRIP2" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    adamtaranto/deRIP2
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Colab demo notebook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rip-strand-bias/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RIP Strand Bias
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rip-masking-phylogeny/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RIP Masking & Phylogeny
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mutation-spectra/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mutation Spectra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Flank-context Spectra (API)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Flank-context Spectra (API)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#extracting-the-spectra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extracting the spectra
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plotting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plotting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Plotting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#count-normalised-proportions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Count-normalised proportions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ranking-motifs-by-rip-conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ranking motifs by RIP conversion
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparing-two-sets-of-spectra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparing two sets of spectra
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#identifying-individually-different-motifs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Identifying individually-different motifs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#normalising-for-sample-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Normalising for sample size
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writing-the-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing the tables
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../per-sequence-reporting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Per-sequence Reporting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-docs/deRIP_API/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli-docs/deRIP_cmd_line/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#extracting-the-spectra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extracting the spectra
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plotting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plotting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Plotting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#count-normalised-proportions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Count-normalised proportions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ranking-motifs-by-rip-conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ranking motifs by RIP conversion
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparing-two-sets-of-spectra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparing two sets of spectra
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#identifying-individually-different-motifs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Identifying individually-different motifs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#normalising-for-sample-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Normalising for sample size
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writing-the-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing the tables
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="flank-context-spectra-of-rip-like-sites-python-api">Flank-context spectra of RIP-like sites (Python API)</h1>
+<p>Not every RIP substrate is converted. deRIP2 can ask whether a <strong>local sequence
+context protects</strong> a substrate from RIP by classifying every RIP-like
+dinucleotide by the single base <strong>1 bp upstream and 1 bp downstream</strong> — a 4 bp
+motif <code>[up][centre][down]</code> with the two centre bases fixed and the flanks varying,
+giving <strong>16 channels</strong>. Two site states are counted:</p>
+<ul>
+<li><strong>Substrate</strong> — surviving <code>CpA</code> (forward) / <code>TpG</code> (reverse), counted <em>anywhere</em>
+  in each sequence.</li>
+<li><strong>Product</strong> — realised <code>TpA</code> in a RIP-informative column.</li>
+</ul>
+<p>Reverse-strand motifs are reverse-complemented onto the <code>CpA</code>/<code>TpA</code> strand, so a
+substrate <code>GCAG</code> and its product <code>GTAG</code> share one flank channel (the <strong>CA-state</strong>
+label <code>GCAG</code>).</p>
+<p>The per-sequence HTML report renders this automatically (see
+<a href="../per-sequence-reporting/#flanking-context-spectra-of-rip-like-sites">Per-sequence Reporting</a>).
+This page shows how to drive the same analysis from Python: extract the spectra,
+plot them, rank motifs by conversion, compare two spectra sets, and flag the
+individual motifs that differ — with a note on normalising for sample size.</p>
+<h2 id="extracting-the-spectra">Extracting the spectra</h2>
+<p>Run RIP detection, then compute the flank spectra. The result is a
+<code>FlankSpectraResult</code> with one sample column per input sequence.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.derip</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeRIP</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">d</span> <span class="o">=</span> <span class="n">DeRIP</span><span class="p">(</span><span class="s2">&quot;tests/data/sahana.fasta.gz&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">d</span><span class="o">.</span><span class="n">calculate_rip</span><span class="p">()</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">result</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">calculate_flank_spectra</span><span class="p">()</span>      <span class="c1"># cached on d.flank_spectra_result</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">result</span><span class="o">.</span><span class="n">sample_names</span>          <span class="c1"># one label per aligned sequence</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="n">result</span><span class="o">.</span><span class="n">channels_substrate</span>    <span class="c1"># 16 CA-state motifs: [&#39;ACAA&#39;, &#39;ACAC&#39;, ..., &#39;TCAT&#39;]</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="n">result</span><span class="o">.</span><span class="n">channels_product</span>      <span class="c1"># the equivalent TA-state motifs: [&#39;ATAA&#39;, ...]</span>
+</code></pre></div>
+<p>Each state/strand is a <code>(16, n_sequences)</code> count matrix. Pull them with
+<code>.matrix(state, strand)</code>, or pool every sequence into a single alignment-wide
+spectrum with <code>.pooled()</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># Per-sequence, combined strands:</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">sub_by_seq</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">matrix</span><span class="p">(</span><span class="s2">&quot;substrate&quot;</span><span class="p">,</span> <span class="s2">&quot;combined&quot;</span><span class="p">)</span>   <span class="c1"># (16, n_sequences)</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">prod_by_seq</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">matrix</span><span class="p">(</span><span class="s2">&quot;product&quot;</span><span class="p">,</span> <span class="s2">&quot;combined&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># Alignment-wide (pooled) 16-vectors:</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">pooled</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">pooled</span><span class="p">()</span>                               <span class="c1"># dict of (16,) vectors</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">substrate</span> <span class="o">=</span> <span class="n">pooled</span><span class="p">[</span><span class="s2">&quot;sub_fwd&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">pooled</span><span class="p">[</span><span class="s2">&quot;sub_rev&quot;</span><span class="p">]</span>      <span class="c1"># combined substrate</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">product</span> <span class="o">=</span> <span class="n">pooled</span><span class="p">[</span><span class="s2">&quot;prod_fwd&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">pooled</span><span class="p">[</span><span class="s2">&quot;prod_rev&quot;</span><span class="p">]</span>      <span class="c1"># combined product</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="n">motifs</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">channels_substrate</span>
+</code></pre></div>
+<p><code>state</code> is <code>"substrate"</code> or <code>"product"</code>; <code>strand</code> is <code>"combined"</code>, <code>"forward"</code> or
+<code>"reverse"</code>. Substrate counts use the raw <code>CpA</code>/<code>TpG</code> masks (every surviving
+substrate), while product counts are gated to RIP-informative columns — this
+asymmetry is deliberate. Sites at an alignment edge that lack a resolvable 4 bp
+context are dropped and tallied in <code>result.n_skipped_flank</code>.</p>
+<p>To compute directly from a <code>ColumnClassification</code> (e.g. outside a <code>DeRIP</code>
+object), call the underlying function:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.stats.flank_spectra</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_flank_spectra</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">ids</span> <span class="o">=</span> <span class="p">[</span><span class="n">record</span><span class="o">.</span><span class="n">id</span> <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">d</span><span class="o">.</span><span class="n">alignment</span><span class="p">]</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">result</span> <span class="o">=</span> <span class="n">compute_flank_spectra</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">column_classes</span><span class="p">,</span> <span class="n">sample_names</span><span class="o">=</span><span class="n">ids</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="plotting">Plotting</h2>
+<p><code>DeRIP.plot_flank_spectra()</code> draws the pooled bihistograms (substrate left,
+product right; CA-state motif on the left axis, TA-state on the right; motifs that
+differ significantly between states marked <code>*</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">fig</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">plot_flank_spectra</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">&quot;Sahana repeat family&quot;</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="s2">&quot;sahana_flank.png&quot;</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="mi">150</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="s2">&quot;tight&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><img alt="Flank-context bihistograms" src="../../img/flank_context_spectra.png" /></p>
+<h3 id="count-normalised-proportions">Count-normalised proportions</h3>
+<p>By default the bars are raw counts. There are usually far more substrate sites
+than product sites (substrate is counted everywhere, product only in RIP columns),
+so the raw bihistogram is dominated by that overall imbalance. Pass
+<code>percentage=True</code> to plot <strong>count-normalised proportions</strong> instead: each state is
+rescaled to sum to 100 % across the 16 motifs, so the substrate and product
+<em>shapes</em> are compared on equal footing and you can see which contexts are
+over- or under-represented in one state relative to the other.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Each state normalised to 100 % of its own sites (x-axis: &quot;% of state&quot;):</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">fig</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">plot_flank_spectra</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">&quot;Sahana repeat family&quot;</span><span class="p">,</span> <span class="n">percentage</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="s2">&quot;sahana_flank_proportions.png&quot;</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="mi">150</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="s2">&quot;tight&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>For finer control use the plotting functions directly. <code>strands</code> selects which
+panels to draw (the report overview uses <code>("combined",)</code>); <code>sample</code> picks one
+sequence; <code>percentage</code> works here too:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.plotting.flank_spectra</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">plot_flank_bihistograms</span><span class="p">,</span>          <span class="c1"># one sequence</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">plot_flank_bihistograms_pooled</span><span class="p">,</span>   <span class="c1"># all sequences pooled</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="p">)</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1"># Just the combined panel, pooled across the alignment, as proportions:</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">plot_flank_bihistograms_pooled</span><span class="p">(</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">result</span><span class="p">,</span> <span class="n">strands</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;combined&quot;</span><span class="p">,),</span> <span class="n">percentage</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">outfile</span><span class="o">=</span><span class="s2">&quot;combined.png&quot;</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="p">)</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="c1"># All three strand panels for the first sequence (raw counts):</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="n">plot_flank_bihistograms</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">sample</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">outfile</span><span class="o">=</span><span class="s2">&quot;seq0_flank.png&quot;</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="ranking-motifs-by-rip-conversion">Ranking motifs by RIP conversion</h2>
+<p>The biologically interesting quantity is the <strong>product share</strong> of each flank
+context — <code>product / (substrate + product)</code> — i.e. how readily that context is
+converted to RIP product. Rank the motifs by it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">total</span> <span class="o">=</span> <span class="n">substrate</span> <span class="o">+</span> <span class="n">product</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">invalid</span><span class="o">=</span><span class="s2">&quot;ignore&quot;</span><span class="p">):</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">pct_converted</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">total</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">100.0</span> <span class="o">*</span> <span class="n">product</span> <span class="o">/</span> <span class="n">total</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">nan_to_num</span><span class="p">(</span><span class="n">pct_converted</span><span class="p">))</span>     <span class="c1"># most-converted first</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">order</span><span class="p">[:</span><span class="mi">5</span><span class="p">]:</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">motifs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="si">}</span><span class="s2">  </span><span class="si">{</span><span class="n">pct_converted</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="si">:</span><span class="s2">5.1f</span><span class="si">}</span><span class="s2">%  (n=</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">total</span><span class="p">[</span><span class="n">i</span><span class="p">])</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>CCAG   98.5%  (n=21591)
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>TCAG   98.4%  (n=17065)
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>TCAA   97.4%  (n=26980)
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>...
+</code></pre></div>
+<p>Always read the percentage next to the total <code>n</code>: a context with only a handful of
+sites can show an extreme conversion rate by chance. This is exactly the
+<code>Motif / Substrate / Product / Total / % RIP</code> table rendered (and sortable) in the
+HTML report.</p>
+<h2 id="comparing-two-sets-of-spectra">Comparing two sets of spectra</h2>
+<p>To ask whether two spectra differ — two families, two clades, or substrate vs
+product within one alignment — use
+<code>derip2.stats.spectra_compare.compare_spectra</code>, which returns a scale-free
+<strong>cosine similarity</strong> (shape), the <strong>χ² homogeneity</strong> test (significance) and
+<strong>Cramér's V</strong> (effect size):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.stats.spectra_compare</span><span class="w"> </span><span class="kn">import</span> <span class="n">compare_spectra</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">cmp</span> <span class="o">=</span> <span class="n">compare_spectra</span><span class="p">(</span><span class="n">substrate</span><span class="p">,</span> <span class="n">product</span><span class="p">,</span> <span class="n">channels</span><span class="o">=</span><span class="n">motifs</span><span class="p">)</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">cmp</span><span class="p">[</span><span class="s2">&quot;cosine_similarity&quot;</span><span class="p">]</span>   <span class="c1"># 1.0 = identical flank preference</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">cmp</span><span class="p">[</span><span class="s2">&quot;cramers_v&quot;</span><span class="p">]</span>           <span class="c1"># effect size in [0, 1]</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">cmp</span><span class="p">[</span><span class="s2">&quot;pvalue&quot;</span><span class="p">]</span>              <span class="c1"># chi-squared homogeneity p-value</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">cmp</span><span class="p">[</span><span class="s2">&quot;top_channels&quot;</span><span class="p">]</span>        <span class="c1"># the most-differentiating motifs</span>
+</code></pre></div>
+<p>For the five built-in substrate-vs-product / strand comparisons in one call, use
+<code>compare_flank_spectra</code> (per sequence) or <code>compare_flank_spectra_pooled</code>
+(alignment-wide):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.stats.flank_spectra</span><span class="w"> </span><span class="kn">import</span> <span class="n">compare_flank_spectra_pooled</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">comparisons</span> <span class="o">=</span> <span class="n">compare_flank_spectra_pooled</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">comparisons</span><span class="p">[</span><span class="s2">&quot;sub_vs_prod_combined&quot;</span><span class="p">][</span><span class="s2">&quot;cosine_similarity&quot;</span><span class="p">]</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">comparisons</span><span class="p">[</span><span class="s2">&quot;fwd_vs_rev_product&quot;</span><span class="p">][</span><span class="s2">&quot;cramers_v&quot;</span><span class="p">]</span>
+</code></pre></div>
+<p>Each comparison carries a <code>chi2_reliable</code> flag (both spectra have ≥ <code>min_sites</code>
+sites); the report only shows a p-value when it is set.</p>
+<h2 id="identifying-individually-different-motifs">Identifying individually-different motifs</h2>
+<p><code>differential_channels</code> flags <em>which</em> motifs drive a substrate-vs-product
+difference. For each of the 16 contexts it forms one row of a 16×2 table and tests
+that cell's <strong>adjusted standardised (Haberman) residual</strong> against the standard
+normal — a motif is flagged when <code>|z| ≥ z(α)</code> (two-sided), provided both states
+have at least <code>min_sites</code> sites, with no multiple-testing correction:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">derip2.stats.flank_spectra</span><span class="w"> </span><span class="kn">import</span> <span class="n">differential_channels</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">flagged</span> <span class="o">=</span> <span class="n">differential_channels</span><span class="p">(</span><span class="n">substrate</span><span class="p">,</span> <span class="n">product</span><span class="p">,</span> <span class="n">min_sites</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="p">[</span><span class="n">motifs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">flagged</span><span class="p">)[</span><span class="mi">0</span><span class="p">]]</span>     <span class="c1"># significantly enriched motifs</span>
+</code></pre></div>
+<p>These are the motifs marked <code>*</code> on the bihistograms. The same function works on
+any two 16-vectors, e.g. the product spectra of two different families.</p>
+<h2 id="normalising-for-sample-size">Normalising for sample size</h2>
+<p>Counts scale with alignment size and RIP load, so be deliberate when comparing:</p>
+<ul>
+<li><strong>Cosine similarity is already scale-free.</strong> It compares the <em>shape</em> of two
+  spectra, so <code>compare_spectra(a, b)</code> gives the same value whether <code>a</code>/<code>b</code> are raw
+  counts or proportions. Reach for it first when the two spectra have very
+  different totals.</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># identical cosine, whether counts or proportions:</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">sp</span><span class="p">,</span> <span class="n">pp</span> <span class="o">=</span> <span class="n">substrate</span> <span class="o">/</span> <span class="n">substrate</span><span class="o">.</span><span class="n">sum</span><span class="p">(),</span> <span class="n">product</span> <span class="o">/</span> <span class="n">product</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">compare_spectra</span><span class="p">(</span><span class="n">sp</span><span class="p">,</span> <span class="n">pp</span><span class="p">)[</span><span class="s2">&quot;cosine_similarity&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">compare_spectra</span><span class="p">(</span><span class="n">substrate</span><span class="p">,</span> <span class="n">product</span><span class="p">)[</span><span class="s2">&quot;cosine_similarity&quot;</span><span class="p">]</span>
+</code></pre></div>
+<ul>
+<li>
+<p><strong>The χ² p-value is powered by n.</strong> With large pooled counts almost every
+  context becomes "significant" (on the full Sahana family nearly all 16 motifs
+  flag), so lead with the effect sizes — <strong>cosine</strong> and <strong>Cramér's V</strong> — and treat
+  the p-value as a yes/no on <em>whether</em> there is any difference, not <em>how much</em>.</p>
+</li>
+<li>
+<p><strong>To compare composition across samples of different sizes</strong>, normalise each
+  spectrum to proportions (divide by its own total, or use the
+  <a href="#count-normalised-proportions"><code>percentage=True</code></a> option on the plot functions)
+  before eyeballing them. Keep the raw counts for the tests, which need integer
+  frequencies.</p>
+</li>
+<li>
+<p><strong>Per-sequence spectra are small.</strong> The <code>min_sites</code> gate (default 20) stops
+  <code>differential_channels</code> and the report's per-motif marks from over-interpreting
+  a sequence with only a few RIP-like sites; raise it for noisier data.</p>
+</li>
+</ul>
+<h2 id="writing-the-tables">Writing the tables</h2>
+<p>The tidy count matrix and comparison statistics can be written straight to TSV
+(these are also emitted next to the HTML report):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">d</span><span class="o">.</span><span class="n">write_flank_spectra_matrix</span><span class="p">(</span><span class="s2">&quot;rip_context_spectra.tsv&quot;</span><span class="p">)</span>        <span class="c1"># sample x state x strand x channel</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">d</span><span class="o">.</span><span class="n">write_flank_spectra_comparisons</span><span class="p">(</span><span class="s2">&quot;rip_context_comparisons.tsv&quot;</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="../per-sequence-reporting/">Per-sequence Reporting</a> — the HTML section that
+  renders these spectra, the sortable per-motif table, and the comparisons.</li>
+<li><a href="../mutation-spectra/">Mutation spectra</a> — the SBS-96/192 substitution spectra
+  (a different context model for the same substitutions).</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.top", "navigation.expand", "navigation.tabs.sticky", "navigation.sections"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

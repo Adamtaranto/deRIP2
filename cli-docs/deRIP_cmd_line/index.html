@@ -359,6 +359,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../../tutorials/flank-context-spectra/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Flank-context Spectra (API)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../tutorials/per-sequence-reporting/" class="md-nav__link">
         
   
@@ -977,13 +1004,22 @@ Non-RIP deamination events are also highlighted.</p>
 <code>prefix_per_sequence.html</code> with one panel per input sequence: the alignment row
 with its RIP sites highlighted, a fixed-height per-sequence strand-bias strip, a
 per-sequence SBS-96 mutation spectrum measured against the reconstructed
-ancestor, and that sequence's summary statistics. Step between sequences with
-the left/right arrow keys (or the Prev/Next buttons).</p>
+ancestor, the flank-context spectra of RIP-like sites, and that sequence's
+summary statistics. Step between sequences with the left/right arrow keys (or the
+Prev/Next buttons).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>derip2<span class="w"> </span>-i<span class="w"> </span>tests/data/mintest.fa<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--per-seq-report<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>-d<span class="w"> </span>results<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span>--prefix<span class="w"> </span>derip_output
 </code></pre></div>
+<p>The report's flank-context section tests whether a local sequence context
+protects a substrate from RIP: it classifies every RIP-like dinucleotide by its
+1 bp upstream and downstream flanks (16 channels) for surviving <strong>substrate</strong>
+(<code>CpA</code>/<code>TpG</code>, anywhere) and realised <strong>product</strong> (<code>TpA</code>, in RIP columns) sites,
+shown as a substrate/product × combined/forward/reverse grid with a
+cosine/Cramér's V/χ² comparison table (and a pooled version on the overview
+page). <code>--per-seq-report</code> also writes <code>prefix_rip_context_spectra.tsv</code> (tidy
+counts) and <code>prefix_rip_context_comparisons.tsv</code> (comparison statistics).</p>
 <p>For large alignments, <code>--max-report-seqs N</code> caps the report at the <code>N</code>
 sequences with the strongest strand bias (largest <code>|RSI|</code>) and notes the
 truncation.</p>
@@ -1027,6 +1063,8 @@ annotation-track colours with a two-column <code>type&lt;TAB&gt;hex</code> file.
 <p><strong>Output:</strong></p>
 <ul>
 <li><code>results/derip_output_per_sequence.html</code> - Interactive per-sequence report</li>
+<li><code>results/derip_output_rip_context_spectra.tsv</code> - Flank-context site counts</li>
+<li><code>results/derip_output_rip_context_comparisons.tsv</code> - Substrate-vs-product tests</li>
 <li><code>results/derip_output_snp_effects.txt</code> - Per-sequence + restored-CDS effects</li>
 <li><code>results/derip_output_visualization.svg</code> - Alignment figure with the track</li>
 </ul>
