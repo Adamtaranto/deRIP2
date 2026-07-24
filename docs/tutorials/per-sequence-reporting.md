@@ -112,15 +112,25 @@ that almost every context clears this bar, so lean on the effect sizes there.)
 
 ![Flanking-context spectra of RIP-like sites](../img/flank_context_spectra.png)
 
-Beneath the bihistograms, a small table reports the five comparisons that test the
-protection hypothesis: substrate-vs-product flank distribution (combined /
-forward / reverse) and forward-vs-reverse (substrate / product). It leads with
-the scale-free **cosine similarity** (1 = identical flank preference) and
-**Cramér's V**; the χ² p-value is shown only where both spectra have enough
-sites (≥ 20 by default), and `*` marks `p < 0.05`. The overview page carries the
-same bihistograms and table **pooled across all sequences** — where, with very
-large pooled counts, almost every context is flagged, so read the effect sizes
-rather than the marks.
+Beneath the bihistograms, a **sortable per-motif table** lists each CA-state motif
+with its combined substrate count, product count, total, and **% RIP** (the
+product share of the total — how much of that context was converted). Sort the
+motif column by its 5′ or 3′ flanking base, or any numeric column by value, to
+find the most- and least-converted contexts. A second table reports the five
+comparisons that test the protection hypothesis: substrate-vs-product flank
+distribution (combined / forward / reverse) and forward-vs-reverse (substrate /
+product). It leads with the scale-free **cosine similarity** (1 = identical flank
+preference) and **Cramér's V**; the χ² p-value is shown only where both spectra
+have enough sites (≥ 20 by default), and `*` marks `p < 0.05`.
+
+The overview page carries the same tables **pooled across all sequences**, with
+the bihistogram reduced to just the combined-strand panel (the per-sequence pages
+keep the forward and reverse panels). With very large pooled counts almost every
+context is flagged, so read the effect sizes rather than the marks.
+
+To drive this analysis from Python — extracting the spectra, ranking motifs by
+conversion, and comparing two spectra sets — see the
+[Flank-context Spectra (API)](flank-context-spectra.md) tutorial.
 
 Two companion tables are written alongside the report whenever
 `--per-seq-report` is set:

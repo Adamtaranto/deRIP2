@@ -241,15 +241,18 @@ def _strand_vectors(result, sample: Optional[int]):
 
 
 def _draw_bihistogram_figure(
-    vectors, *, title, percentage, width, panel_height, min_sites, alpha, bare
+    vectors, *, strands, title, percentage, width, panel_height, min_sites, alpha, bare
 ):
     """
-    Render the three-strand bihistogram figure from prepared count vectors.
+    Render the bihistogram figure from prepared count vectors.
 
     Parameters
     ----------
     vectors : dict
         Maps each strand to its ``(substrate, product)`` count vectors.
+    strands : tuple of str
+        Which strand views to draw, one panel each and in order (a subset of
+        :data:`_STRANDS`).
     title : str or None
         Figure heading (omitted when ``bare``).
     percentage : bool
@@ -271,9 +274,11 @@ def _draw_bihistogram_figure(
         The rendered figure.
     """
     with plt.rc_context({'font.family': 'sans-serif', 'font.sans-serif': FONT_STACK}):
-        fig, axes = plt.subplots(1, 3, figsize=(width, panel_height), squeeze=False)
+        fig, axes = plt.subplots(
+            1, len(strands), figsize=(width, panel_height), squeeze=False
+        )
         fig.patch.set_facecolor(SURFACE)
-        for c, strand in enumerate(_STRANDS):
+        for c, strand in enumerate(strands):
             ax = axes[0, c]
             sub, prod = vectors[strand]
             sig = differential_channels(sub, prod, min_sites=min_sites, alpha=alpha)
@@ -283,7 +288,7 @@ def _draw_bihistogram_figure(
                 prod,
                 sig_mask=sig,
                 show_labels=(c == 0),
-                show_right_labels=(c == len(_STRANDS) - 1),
+                show_right_labels=(c == len(strands) - 1),
                 percentage=percentage,
             )
             ax.set_title(
@@ -333,6 +338,7 @@ def plot_flank_bihistograms(
     sample: int,
     outfile: Optional[str] = None,
     *,
+    strands=_STRANDS,
     title: Optional[str] = None,
     percentage: bool = False,
     width: float = 11.0,
@@ -343,7 +349,7 @@ def plot_flank_bihistograms(
     bare: bool = False,
 ):
     """
-    Draw the three flank-context bihistograms for one sequence.
+    Draw the flank-context bihistograms for one sequence.
 
     One bihistogram per strand view (combined, forward, reverse): substrate
     counts extend left, product counts right, one row per CA-state flank channel.
@@ -359,6 +365,9 @@ def plot_flank_bihistograms(
         Column index into ``result.sample_names`` (the alignment row to draw).
     outfile : str or None, optional
         Output path; when ``None`` the figure is returned unsaved.
+    strands : tuple of str, optional
+        Which strand views to draw, one panel each (default: combined, forward,
+        reverse). Pass e.g. ``('combined',)`` for a single-panel figure.
     title : str or None, optional
         Figure heading (omitted when ``bare``).
     percentage : bool, optional
@@ -394,6 +403,7 @@ def plot_flank_bihistograms(
     vectors = _strand_vectors(result, sample % n_samples)
     fig = _draw_bihistogram_figure(
         vectors,
+        strands=strands,
         title=title,
         percentage=percentage,
         width=width,
@@ -410,6 +420,7 @@ def plot_flank_bihistograms_pooled(
     result,
     outfile: Optional[str] = None,
     *,
+    strands=_STRANDS,
     title: Optional[str] = None,
     percentage: bool = False,
     width: float = 11.0,
@@ -420,7 +431,7 @@ def plot_flank_bihistograms_pooled(
     bare: bool = False,
 ):
     """
-    Draw the three flank-context bihistograms pooled across every sequence.
+    Draw the flank-context bihistograms pooled across every sequence.
 
     Same layout as :func:`plot_flank_bihistograms`, but on the alignment-wide
     row-summed counts (:meth:`FlankSpectraResult.pooled`), for the report's
@@ -432,6 +443,9 @@ def plot_flank_bihistograms_pooled(
         The computed spectra.
     outfile : str or None, optional
         Output path; when ``None`` the figure is returned unsaved.
+    strands : tuple of str, optional
+        Which strand views to draw, one panel each (default: combined, forward,
+        reverse). The report overview passes ``('combined',)``.
     title : str or None, optional
         Figure heading (omitted when ``bare``).
     percentage : bool, optional
@@ -458,6 +472,7 @@ def plot_flank_bihistograms_pooled(
     vectors = _strand_vectors(result, None)
     fig = _draw_bihistogram_figure(
         vectors,
+        strands=strands,
         title=title,
         percentage=percentage,
         width=width,

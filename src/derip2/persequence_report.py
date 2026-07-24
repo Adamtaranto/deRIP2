@@ -352,6 +352,29 @@ _PSR_STYLE = """
 .flank-compare td:not(:first-child), .flank-compare th:not(:first-child) {
   text-align: right; font-variant-numeric: tabular-nums;
 }
+/* Sortable per-motif flank-context data table (16 rows). Columns fit content;
+   the motif column carries two small 5'/3' base-sort buttons, numeric columns
+   sort on click. */
+.flank-data { width: auto; table-layout: auto; margin: .4rem 0 .2rem; }
+.flank-data th, .flank-data td { white-space: nowrap; }
+.flank-data td:first-child { font-family: monospace; }
+.flank-data td:not(:first-child), .flank-data th:not(:first-child) {
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.flank-data th.sortable-num { cursor: pointer; }
+.flank-data th.sortable-num:hover { color: var(--ink); }
+.flank-data th[data-dir="asc"]::after { content: " \\2191"; }
+.flank-data th[data-dir="desc"]::after { content: " \\2193"; }
+.flank-data .motif-sort { margin-left: .3rem; font-weight: 400; }
+.flank-data .motif-sort button {
+  cursor: pointer; font: inherit; font-size: 11px; margin-left: 2px;
+  border: 1px solid var(--rule); background: transparent; border-radius: 3px;
+  padding: 0 3px; color: var(--ink-2);
+}
+.flank-data .motif-sort button:hover { color: var(--ink); }
+.flank-data .motif-sort button[data-active="1"] {
+  color: var(--ink); border-color: var(--muted);
+}
 
 /* Colour key for the alignment-row figure. */
 .legend {
@@ -863,6 +886,76 @@ _PSR_SCRIPT = """
     });
   }
 
+  // Sortable per-motif flank-context data tables (one per sequence panel plus
+  // the overview). The motif column sorts by its 5' (first) or 3' (last) flanking
+  // base; numeric columns sort by their data-val, with blank (%-not-applicable)
+  // cells always last. Delegated so every .flank-data table is handled.
+  function flankNumVal(td) {
+    var v = td.getAttribute('data-val');
+    if (v === null || v === '') { return null; }
+    var n = parseFloat(v);
+    return isNaN(n) ? null : n;
+  }
+  function flankReorder(table, keyFn, numeric, asc) {
+    var body = table.tBodies[0];
+    if (!body) { return; }
+    var rows = Array.prototype.slice.call(body.rows);
+    rows.sort(function (a, b) {
+      var x = keyFn(a), y = keyFn(b);
+      if (numeric) {
+        if (x === null && y === null) { return 0; }
+        if (x === null) { return 1; }   // not-applicable sorts last
+        if (y === null) { return -1; }
+        return asc ? x - y : y - x;
+      }
+      return asc ? x.localeCompare(y) : y.localeCompare(x);
+    });
+    rows.forEach(function (r) { body.appendChild(r); });
+  }
+  function flankToggle(table, key) {
+    var asc = !(table.getAttribute('data-sortkey') === key
+                && table.getAttribute('data-sortdir') === 'asc');
+    table.setAttribute('data-sortkey', key);
+    table.setAttribute('data-sortdir', asc ? 'asc' : 'desc');
+    return asc;
+  }
+  function flankClearHeaders(table) {
+    Array.prototype.slice.call(table.querySelectorAll('th')).forEach(function (h) {
+      h.removeAttribute('data-dir');
+    });
+    Array.prototype.slice.call(
+      table.querySelectorAll('.motif-sort button')).forEach(function (b) {
+      b.removeAttribute('data-active');
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var mb = e.target.closest && e.target.closest('.flank-data [data-motifsort]');
+    if (mb) {
+      var table = mb.closest('table.flank-data');
+      var which = mb.getAttribute('data-motifsort');       // 'first' | 'last'
+      var attr = which === 'first' ? 'data-first' : 'data-last';
+      var asc = flankToggle(table, 'motif-' + which);
+      flankReorder(table, function (row) {
+        var td = row.cells[0];
+        return (td.getAttribute(attr) || '') + td.textContent;
+      }, false, asc);
+      flankClearHeaders(table);
+      mb.setAttribute('data-active', '1');
+      return;
+    }
+    var th = e.target.closest && e.target.closest('table.flank-data th.sortable-num');
+    if (th) {
+      var t2 = th.closest('table.flank-data');
+      var ci = Array.prototype.indexOf.call(th.parentNode.cells, th);
+      var asc2 = flankToggle(t2, 'col-' + ci);
+      flankReorder(t2, function (row) {
+        return flankNumVal(row.cells[ci]);
+      }, true, asc2);
+      flankClearHeaders(t2);
+      th.setAttribute('data-dir', asc2 ? 'asc' : 'desc');
+    }
+  });
+
   // Sequence names in the overview stats table jump to that sequence's page.
   // Scroll position is preserved (as with arrow-key navigation); the sticky nav
   // and panel header keep the reader oriented.
@@ -1163,6 +1256,11 @@ def _panel_html(
     flank_fig = plot_flank_bihistograms(flank, sample=row_index, bare=True)
     flank_svg = _figure_to_svg(flank_fig, f's{row_index}flank-', tight=True)
     plt.close(flank_fig)
+    flank_data_table = _flank_data_table_html(
+        flank.matrix('substrate', 'combined')[:, row_index],
+        flank.matrix('product', 'combined')[:, row_index],
+        flank.channels_substrate,
+    )
     flank_table = _flank_comparison_table_html(flank_comparisons)
 
     # When this sequence is itself the chosen spectra reference, its spectrum is a
@@ -1256,6 +1354,7 @@ def _panel_html(
         '(via the &chi;&sup2; homogeneity of the whole 16-channel spectra), and '
         'whether the two strands differ.</p>'
         f'<div class="spectrum-scroll">{flank_svg}</div>'
+        f'{flank_data_table}'
         f'{flank_table}'
         '<h3>Summary statistics</h3>'
         f'{_stats_sections_html(row_stats)}'
@@ -1522,6 +1621,71 @@ def _nan_safe(value, digits=3):
     return '&ndash;' if value != value else f'{value:.{digits}f}'
 
 
+def _flank_data_table_html(substrate, product, motifs):
+    """
+    Render a sortable per-motif counts table for the flank-context section.
+
+    One row per CA-state flank motif with its combined-strand substrate and
+    product counts, their total, and the percentage of that total realised as RIP
+    product (the product share = ``product / (substrate + product)``), i.e. how
+    readily that flank context is converted. The motif column can be sorted by its
+    5' (first) or 3' (last) flanking base; the numeric columns sort by value.
+
+    Parameters
+    ----------
+    substrate, product : numpy.ndarray
+        ``(16,)`` combined-strand substrate and product counts, in canonical flank
+        order (aligned to ``motifs``).
+    motifs : sequence of str
+        The 16 CA-state motif labels (e.g. ``GCAG``), aligned to the counts.
+
+    Returns
+    -------
+    str
+        The sortable ``<table class="flank-data">`` element plus a caption.
+    """
+    rows = []
+    for motif, sub, prod in zip(motifs, substrate, product):
+        s = float(sub)
+        p = float(prod)
+        total = s + p
+        if total > 0:
+            conv = 100.0 * p / total
+            conv_txt = f'{conv:.1f}'
+            conv_val = f'{conv:.4f}'
+        else:
+            conv_txt = '&ndash;'
+            conv_val = ''  # sorts last
+        rows.append(
+            f'<tr><td data-first="{motif[0]}" data-last="{motif[3]}">{motif}</td>'
+            f'<td data-val="{s:.0f}">{s:.0f}</td>'
+            f'<td data-val="{p:.0f}">{p:.0f}</td>'
+            f'<td data-val="{total:.0f}">{total:.0f}</td>'
+            f'<td data-val="{conv_val}">{conv_txt}</td></tr>'
+        )
+    body = ''.join(rows)
+    return (
+        '<table class="flank-data">'
+        '<thead><tr>'
+        '<th>Motif <span class="motif-sort">'
+        '<button type="button" data-motifsort="first" '
+        'title="sort by 5&prime; (first) base">5&prime;</button>'
+        '<button type="button" data-motifsort="last" '
+        'title="sort by 3&prime; (last) base">3&prime;</button>'
+        '</span></th>'
+        '<th class="sortable-num" title="click to sort">Substrate</th>'
+        '<th class="sortable-num" title="click to sort">Product</th>'
+        '<th class="sortable-num" title="click to sort">Total</th>'
+        '<th class="sortable-num" title="click to sort">% RIP</th>'
+        '</tr></thead>'
+        f'<tbody>{body}</tbody></table>'
+        '<p class="note">Counts pool the forward and reverse strands (combined). '
+        '&ldquo;% RIP&rdquo; is the product share of the total &mdash; the fraction '
+        'of that flank context converted to RIP product. Sort the motif column by '
+        'its 5&prime; or 3&prime; flanking base, or any numeric column by value.</p>'
+    )
+
+
 def _flank_comparison_table_html(comparisons):
     """
     Render the five flank-context comparisons as a small HTML table.
@@ -1607,7 +1771,11 @@ def _flank_skipped_note(flank):
 
 def _overview_flank_svg(flank):
     """
-    Render the pooled flank-context spectra grid for the overview page.
+    Render the pooled flank-context bihistogram for the overview page.
+
+    The overview shows only the **combined**-strand bihistogram (the forward and
+    reverse panels are kept for the per-sequence pages), as a single, narrower
+    panel.
 
     Parameters
     ----------
@@ -1623,7 +1791,9 @@ def _overview_flank_svg(flank):
 
     from derip2.plotting.flank_spectra import plot_flank_bihistograms_pooled
 
-    fig = plot_flank_bihistograms_pooled(flank, width=11.0, bare=True)
+    fig = plot_flank_bihistograms_pooled(
+        flank, strands=('combined',), width=5.6, bare=True
+    )
     svg = _figure_to_svg(fig, 'ovwflank-', tight=True)
     plt.close(fig)
     return svg
@@ -1703,28 +1873,38 @@ def _overview_html(
         f'<div class="spectrum-scroll">{spectrum_svg}</div>'
     )
 
-    # Pooled flank-context section: the alignment-wide 2x3 grid plus the same five
-    # substrate-vs-product / strand comparisons run on the pooled counts.
+    # Pooled flank-context section: the alignment-wide combined-strand bihistogram,
+    # a per-motif counts/conversion table, and the five substrate-vs-product /
+    # strand comparisons run on the pooled counts.
     flank_section = ''
     if flank is not None:
         from derip2.stats.flank_spectra import compare_flank_spectra_pooled
 
         flank_svg = _overview_flank_svg(flank)
         pooled_cmp = compare_flank_spectra_pooled(flank)
+        pooled = flank.pooled()
+        flank_data_table = _flank_data_table_html(
+            pooled['sub_fwd'] + pooled['sub_rev'],
+            pooled['prod_fwd'] + pooled['prod_rev'],
+            flank.channels_substrate,
+        )
         flank_section = (
             '<h3>Flanking-context spectra of RIP-like sites</h3>'
-            '<p class="desc">Pooled across all sequences, as three bihistograms '
-            '(surviving <b>substrate</b> CpA/TpG left, realised <b>product</b> TpA '
-            'right; CA-state motif on the left axis, equivalent TA-state motif on '
-            'the right; reverse-strand motifs folded onto the CpA/TpA strand). A '
-            'motif is marked <span style="color:#e34948">*</span> when its '
-            'substrate-vs-product enrichment is significant (adjusted standardised '
-            'residual, |z|&nbsp;&ge;&nbsp;1.96) &mdash; evidence that local context '
+            '<p class="desc">Pooled across all sequences, as a combined-strand '
+            'bihistogram (surviving <b>substrate</b> CpA/TpG left, realised '
+            '<b>product</b> TpA right; CA-state motif on the left axis, equivalent '
+            'TA-state motif on the right; reverse-strand motifs folded onto the '
+            'CpA/TpA strand). The per-sequence pages additionally split this into '
+            'forward and reverse panels. A motif is marked '
+            '<span style="color:#e34948">*</span> when its substrate-vs-product '
+            'enrichment is significant (adjusted standardised residual, '
+            '|z|&nbsp;&ge;&nbsp;1.96) &mdash; evidence that local context '
             'influences which substrates escape RIP. At this pooled scale the site '
             'counts are large enough that almost every context is flagged, so read '
             'the effect sizes in the table rather than the marks.</p>'
             f'<div class="spectrum-scroll">{flank_svg}</div>'
             f'{_flank_skipped_note(flank)}'
+            f'{flank_data_table}'
             f'{_flank_comparison_table_html(pooled_cmp)}'
         )
 

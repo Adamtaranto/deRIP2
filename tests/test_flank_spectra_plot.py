@@ -190,6 +190,19 @@ def test_pooled_returns_three_panels():
     assert len(fig.axes) == 3
 
 
+def test_combined_only_single_panel():
+    """Passing strands=('combined',) draws a single Combined panel."""
+    result = make_result(['GCAT', 'GTAT', 'ATGC', 'ATAC'])
+    fig = plot_flank_bihistograms_pooled(result, strands=('combined',))
+    assert len(fig.axes) == 1
+    assert fig.axes[0].get_title() == 'Combined'
+    # The one panel still carries both CA (left) and TA (right) labels.
+    left = [t.get_text() for t in fig.axes[0].get_yticklabels()]
+    assert left == list(FLANK16_LABELS_CA)
+    right = {t.get_text() for t in fig.axes[0].texts}
+    assert set(FLANK16_LABELS_TA) <= right
+
+
 def test_saves_to_file(tmp_path):
     """An outfile path writes a figure to disk."""
     result = make_result(['GCAT', 'GTAT'])
