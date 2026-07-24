@@ -345,6 +345,46 @@ _PSR_STYLE = """
 }
 .desc { color: var(--ink-2); margin: .1rem 0 .8rem; max-width: 74ch; font-size: 14px; }
 .note { color: var(--muted); font-size: 13px; }
+/* Compact flank-context comparison table (5 rows): size columns to their
+   content and never wrap a cell, so the long comparison names stay on one line. */
+.flank-compare { width: auto; table-layout: auto; margin: .4rem 0; }
+.flank-compare th, .flank-compare td { white-space: nowrap; }
+.flank-compare td:not(:first-child), .flank-compare th:not(:first-child) {
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+/* Sortable per-motif flank-context data table (16 rows). Columns fit content;
+   the motif column carries two small 5'/3' base-sort buttons, numeric columns
+   sort on click. */
+.flank-data { width: auto; table-layout: auto; margin: .4rem 0 .2rem; }
+.flank-data th, .flank-data td { white-space: nowrap; }
+.flank-data td:first-child { font-family: monospace; }
+.flank-data td:not(:first-child), .flank-data th:not(:first-child) {
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.flank-data th.sortable-num { cursor: pointer; }
+.flank-data th.sortable-num:hover { color: var(--ink); }
+.flank-data th[data-dir="asc"]::after { content: " \\2191"; }
+.flank-data th[data-dir="desc"]::after { content: " \\2193"; }
+.flank-data .motif-sort { margin-left: .3rem; font-weight: 400; }
+.flank-data .motif-sort button {
+  cursor: pointer; font: inherit; font-size: 11px; margin-left: 2px;
+  border: 1px solid var(--rule); background: transparent; border-radius: 3px;
+  padding: 0 3px; color: var(--ink-2);
+}
+.flank-data .motif-sort button:hover { color: var(--ink); }
+.flank-data .motif-sort button[data-active="1"] {
+  color: var(--ink); border-color: var(--muted);
+}
+/* Stacked "% RIP" bar: orange product share against blue substrate share. */
+.flank-data td.ripbar-cell { text-align: left; }
+.flank-data .ripbar {
+  display: inline-flex; width: 88px; height: 11px; border-radius: 3px;
+  overflow: hidden; vertical-align: middle; border: 1px solid var(--rule);
+}
+.flank-data .ripbar i { display: block; height: 100%; }
+.flank-data .ripbar .prod { flex: 0 0 auto; background: #eb6834; }
+.flank-data .ripbar .sub { flex: 1 1 auto; background: #2a78d6; }
+.flank-data .ripbar.empty { background: var(--rule); }
 
 /* Colour key for the alignment-row figure. */
 .legend {
@@ -856,6 +896,76 @@ _PSR_SCRIPT = """
     });
   }
 
+  // Sortable per-motif flank-context data tables (one per sequence panel plus
+  // the overview). The motif column sorts by its 5' (first) or 3' (last) flanking
+  // base; numeric columns sort by their data-val, with blank (%-not-applicable)
+  // cells always last. Delegated so every .flank-data table is handled.
+  function flankNumVal(td) {
+    var v = td.getAttribute('data-val');
+    if (v === null || v === '') { return null; }
+    var n = parseFloat(v);
+    return isNaN(n) ? null : n;
+  }
+  function flankReorder(table, keyFn, numeric, asc) {
+    var body = table.tBodies[0];
+    if (!body) { return; }
+    var rows = Array.prototype.slice.call(body.rows);
+    rows.sort(function (a, b) {
+      var x = keyFn(a), y = keyFn(b);
+      if (numeric) {
+        if (x === null && y === null) { return 0; }
+        if (x === null) { return 1; }   // not-applicable sorts last
+        if (y === null) { return -1; }
+        return asc ? x - y : y - x;
+      }
+      return asc ? x.localeCompare(y) : y.localeCompare(x);
+    });
+    rows.forEach(function (r) { body.appendChild(r); });
+  }
+  function flankToggle(table, key) {
+    var asc = !(table.getAttribute('data-sortkey') === key
+                && table.getAttribute('data-sortdir') === 'asc');
+    table.setAttribute('data-sortkey', key);
+    table.setAttribute('data-sortdir', asc ? 'asc' : 'desc');
+    return asc;
+  }
+  function flankClearHeaders(table) {
+    Array.prototype.slice.call(table.querySelectorAll('th')).forEach(function (h) {
+      h.removeAttribute('data-dir');
+    });
+    Array.prototype.slice.call(
+      table.querySelectorAll('.motif-sort button')).forEach(function (b) {
+      b.removeAttribute('data-active');
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var mb = e.target.closest && e.target.closest('.flank-data [data-motifsort]');
+    if (mb) {
+      var table = mb.closest('table.flank-data');
+      var which = mb.getAttribute('data-motifsort');       // 'first' | 'last'
+      var attr = which === 'first' ? 'data-first' : 'data-last';
+      var asc = flankToggle(table, 'motif-' + which);
+      flankReorder(table, function (row) {
+        var td = row.cells[0];
+        return (td.getAttribute(attr) || '') + td.textContent;
+      }, false, asc);
+      flankClearHeaders(table);
+      mb.setAttribute('data-active', '1');
+      return;
+    }
+    var th = e.target.closest && e.target.closest('table.flank-data th.sortable-num');
+    if (th) {
+      var t2 = th.closest('table.flank-data');
+      var ci = Array.prototype.indexOf.call(th.parentNode.cells, th);
+      var asc2 = flankToggle(t2, 'col-' + ci);
+      flankReorder(t2, function (row) {
+        return flankNumVal(row.cells[ci]);
+      }, true, asc2);
+      flankClearHeaders(t2);
+      th.setAttribute('data-dir', asc2 ? 'asc' : 'desc');
+    }
+  });
+
   // Sequence names in the overview stats table jump to that sequence's page.
   // Scroll position is preserved (as with arrow-key navigation); the sticky nav
   // and panel header keep the reader oriented.
@@ -999,6 +1109,8 @@ def _panel_html(
     df,
     spectra,
     downstream,
+    flank,
+    flank_comparisons,
     row_index,
     panel_number,
     effects_by_seq,
@@ -1022,6 +1134,11 @@ def _panel_html(
         Per-row trinucleotide SBS-96 spectra (one sample column per sequence).
     downstream : derip2.stats.mutation_spectra.SpectraResult
         Per-row downstream-triplet spectra (one sample column per sequence).
+    flank : derip2.stats.flank_spectra.FlankSpectraResult
+        Per-row flanking-context spectra of RIP-like sites.
+    flank_comparisons : dict of str to dict
+        The five flank-context comparisons for this row (see
+        :func:`derip2.stats.flank_spectra.compare_flank_spectra`).
     row_index : int
         Alignment row index of the sequence.
     panel_number : int
@@ -1141,6 +1258,21 @@ def _panel_html(
     ds_svg = _figure_to_svg(ds, f's{row_index}ds-', tight=False)
     plt.close(ds)
 
+    # The three flank-context bihistograms (substrate left vs product right, one
+    # per strand) as one figure, so a single unique id-prefix keeps the SVG glyph
+    # ids collision-free.
+    from derip2.plotting.flank_spectra import plot_flank_bihistograms
+
+    flank_fig = plot_flank_bihistograms(flank, sample=row_index, bare=True)
+    flank_svg = _figure_to_svg(flank_fig, f's{row_index}flank-', tight=True)
+    plt.close(flank_fig)
+    flank_data_table = _flank_data_table_html(
+        flank.matrix('substrate', 'combined')[:, row_index],
+        flank.matrix('product', 'combined')[:, row_index],
+        flank.channels_substrate,
+    )
+    flank_table = _flank_comparison_table_html(flank_comparisons)
+
     # When this sequence is itself the chosen spectra reference, its spectrum is a
     # self-comparison and therefore empty by construction; flag that up front.
     ref_note = ''
@@ -1209,6 +1341,31 @@ def _panel_html(
         'plus its two downstream bases (pyrimidine-folded), which resolves the '
         'CHG-methylation signal C&gt;T in CpNpG context.</p>'
         f'<div class="spectrum-scroll">{ds_svg}</div>'
+        '<h3>Flanking-context spectra of RIP-like sites</h3>'
+        '<p class="desc">For every RIP-like dinucleotide this sequence carries, the '
+        'single base 1&nbsp;bp upstream and 1&nbsp;bp downstream is tallied as a '
+        '4&nbsp;bp motif (the two centre bases fixed, the flanks varying &rarr; 16 '
+        'channels). Each strand view is a <b>bihistogram</b>: surviving '
+        '<b>substrate</b> counts (CpA forward / TpG reverse, counted anywhere) '
+        'extend left and realised RIP <b>product</b> counts (TpA in RIP-informative '
+        'columns) extend right, sharing a centre line. Reverse-strand motifs are '
+        'reverse-complemented onto the CpA/TpA strand and every row is labelled on '
+        'the left by its <b>CA-state</b> (substrate) motif and on the right by the '
+        'equivalent <b>TA-state</b> (product) motif (e.g. <code>GCAG</code> '
+        '&equiv; <code>GTAG</code>). A motif is marked '
+        '<span style="color:#e34948">*</span> when its enrichment differs '
+        'significantly between the two states: for each of the 16 flank contexts '
+        'the substrate and product counts form one row of a 16&times;2 table, and '
+        'that cell&rsquo;s <b>adjusted standardised (Haberman) residual</b> is '
+        'tested against the standard normal &mdash; the motif is flagged when '
+        '|z|&nbsp;&ge;&nbsp;1.96 (two-sided <i>p</i>&nbsp;&lt;&nbsp;0.05), provided '
+        'both states have at least 20 sites, with no multiple-testing correction. '
+        'The table below tests the same substrate-vs-product question overall '
+        '(via the &chi;&sup2; homogeneity of the whole 16-channel spectra), and '
+        'whether the two strands differ.</p>'
+        f'<div class="spectrum-scroll">{flank_svg}</div>'
+        f'{flank_data_table}'
+        f'{flank_table}'
         '<h3>Summary statistics</h3>'
         f'{_stats_sections_html(row_stats)}'
         f'{effect_html}'
@@ -1445,6 +1602,228 @@ def _overview_spectrum_svg(derip, ancestor=None):
     return svg
 
 
+# Human-readable names for the five flank-context comparisons, in display order.
+_FLANK_COMPARISON_NAMES = {
+    'sub_vs_prod_combined': 'Substrate vs product (combined)',
+    'sub_vs_prod_fwd': 'Substrate vs product (forward)',
+    'sub_vs_prod_rev': 'Substrate vs product (reverse)',
+    'fwd_vs_rev_substrate': 'Forward vs reverse (substrate)',
+    'fwd_vs_rev_product': 'Forward vs reverse (product)',
+}
+
+
+def _nan_safe(value, digits=3):
+    """
+    Format a float to fixed digits, rendering ``nan`` as an en-dash.
+
+    Parameters
+    ----------
+    value : float
+        The value to format.
+    digits : int, optional
+        Decimal places (default: 3).
+
+    Returns
+    -------
+    str
+        The formatted number, or ``'&ndash;'`` when ``value`` is ``nan``.
+    """
+    return '&ndash;' if value != value else f'{value:.{digits}f}'
+
+
+def _flank_data_table_html(substrate, product, motifs):
+    """
+    Render a sortable per-motif counts table for the flank-context section.
+
+    One row per CA-state flank motif with its combined-strand substrate and
+    product counts, their total, and the percentage of that total realised as RIP
+    product (the product share = ``product / (substrate + product)``), i.e. how
+    readily that flank context is converted. The motif column can be sorted by its
+    5' (first) or 3' (last) flanking base; the numeric columns sort by value.
+
+    Parameters
+    ----------
+    substrate, product : numpy.ndarray
+        ``(16,)`` combined-strand substrate and product counts, in canonical flank
+        order (aligned to ``motifs``).
+    motifs : sequence of str
+        The 16 CA-state motif labels (e.g. ``GCAG``), aligned to the counts.
+
+    Returns
+    -------
+    str
+        The sortable ``<table class="flank-data">`` element plus a caption.
+    """
+    rows = []
+    for motif, sub, prod in zip(motifs, substrate, product):
+        s = float(sub)
+        p = float(prod)
+        total = s + p
+        if total > 0:
+            conv = 100.0 * p / total
+            conv_txt = f'{conv:.1f}'
+            conv_val = f'{conv:.4f}'
+            # Stacked bar: the RIP product share (orange, explicit width) against
+            # the surviving substrate share (blue, fills the remainder so the two
+            # segments always meet exactly), so a fully-converted context reads
+            # all-orange.
+            bar = (
+                f'<span class="ripbar" title="{conv:.1f}% converted to product">'
+                f'<i class="prod" style="width:{conv:.3f}%"></i>'
+                f'<i class="sub"></i></span>'
+            )
+        else:
+            conv_txt = '&ndash;'
+            conv_val = ''  # sorts last
+            bar = '<span class="ripbar empty" title="no sites"></span>'
+        rows.append(
+            f'<tr><td data-first="{motif[0]}" data-last="{motif[3]}">{motif}</td>'
+            f'<td data-val="{s:.0f}">{s:.0f}</td>'
+            f'<td data-val="{p:.0f}">{p:.0f}</td>'
+            f'<td data-val="{total:.0f}">{total:.0f}</td>'
+            f'<td data-val="{conv_val}">{conv_txt}</td>'
+            f'<td class="ripbar-cell">{bar}</td></tr>'
+        )
+    body = ''.join(rows)
+    return (
+        '<table class="flank-data">'
+        '<thead><tr>'
+        '<th>Motif <span class="motif-sort">'
+        '<button type="button" data-motifsort="first" '
+        'title="sort by 5&prime; (first) base">5&prime;</button>'
+        '<button type="button" data-motifsort="last" '
+        'title="sort by 3&prime; (last) base">3&prime;</button>'
+        '</span></th>'
+        '<th class="sortable-num" title="click to sort">Substrate</th>'
+        '<th class="sortable-num" title="click to sort">Product</th>'
+        '<th class="sortable-num" title="click to sort">Total</th>'
+        '<th class="sortable-num" title="click to sort">% RIP</th>'
+        '<th title="RIP product (orange) vs surviving substrate (blue) share">'
+        'Conversion</th>'
+        '</tr></thead>'
+        f'<tbody>{body}</tbody></table>'
+        '<p class="note">Counts pool the forward and reverse strands (combined). '
+        '&ldquo;% RIP&rdquo; is the product share of the total &mdash; the fraction '
+        'of that flank context converted to RIP product, also shown as a stacked '
+        'bar (orange = product, blue = surviving substrate). Sort the motif column '
+        'by its 5&prime; or 3&prime; flanking base, or any numeric column by '
+        'value.</p>'
+    )
+
+
+def _flank_comparison_table_html(comparisons):
+    """
+    Render the five flank-context comparisons as a small HTML table.
+
+    Leads with the scale-free cosine similarity and Cramér's V effect sizes; the
+    chi-squared p-value is shown only when both spectra reached the minimum site
+    count (``chi2_reliable``), otherwise an en-dash, so sparse per-sequence counts
+    are not over-interpreted. A ``*`` marks a reliable p-value below 0.05.
+
+    Parameters
+    ----------
+    comparisons : dict of str to dict
+        The output of
+        :func:`derip2.stats.flank_spectra.compare_flank_spectra` (or its pooled
+        sibling), keyed by comparison name.
+
+    Returns
+    -------
+    str
+        The ``<table>`` element plus an explanatory caption paragraph.
+    """
+    import math
+
+    from derip2.stats.flank_spectra import COMPARISON_KEYS
+
+    rows = []
+    for key in COMPARISON_KEYS:
+        comp = comparisons[key]
+        name = _FLANK_COMPARISON_NAMES[key]
+        cosine = _nan_safe(comp['cosine_similarity'])
+        cramers = _nan_safe(comp['cramers_v'])
+        if comp['chi2_reliable']:
+            p = comp['pvalue']
+            if math.isnan(p):
+                p_txt = '&ndash;'
+            else:
+                star = ' *' if p < 0.05 else ''
+                p_txt = ('&lt;0.001' if p < 0.001 else f'{p:.3f}') + star
+        else:
+            p_txt = '&ndash;'
+        n_txt = f'{comp["n_a"]:.0f} / {comp["n_b"]:.0f}'
+        rows.append(
+            f'<tr><td>{name}</td><td>{cosine}</td><td>{cramers}</td>'
+            f'<td>{p_txt}</td><td>{n_txt}</td></tr>'
+        )
+    body = ''.join(rows)
+    return (
+        '<table class="flank-compare">'
+        '<thead><tr><th>Comparison</th><th>Cosine</th><th>Cram&eacute;r&rsquo;s V</th>'
+        '<th>&chi;&sup2; p</th><th>n (a / b)</th></tr></thead>'
+        f'<tbody>{body}</tbody></table>'
+        '<p class="note">Cosine similarity (1 = identical flank preference) is the '
+        'primary effect size; the &chi;&sup2; p-value is shown only where both '
+        'spectra have enough sites (otherwise &ndash;), and <code>*</code> marks '
+        'p &lt; 0.05.</p>'
+    )
+
+
+def _flank_skipped_note(flank):
+    """
+    Render the alignment-wide count of sites dropped for an unresolved flank.
+
+    Parameters
+    ----------
+    flank : derip2.stats.flank_spectra.FlankSpectraResult
+        The computed flank spectra.
+
+    Returns
+    -------
+    str
+        A ``<p class="note">`` summarising the per-state skipped counts, or an
+        empty string when nothing was skipped.
+    """
+    total = sum(flank.n_skipped_flank.values())
+    if total == 0:
+        return ''
+    parts = ', '.join(f'{state} {n}' for state, n in flank.n_skipped_flank.items())
+    return (
+        f'<p class="note">{total} site(s) were skipped for lacking a resolvable '
+        f'4&nbsp;bp flank context at an alignment edge ({parts}).</p>'
+    )
+
+
+def _overview_flank_svg(flank):
+    """
+    Render the pooled flank-context bihistogram for the overview page.
+
+    The overview shows only the **combined**-strand bihistogram (the forward and
+    reverse panels are kept for the per-sequence pages), as a single, narrower
+    panel.
+
+    Parameters
+    ----------
+    flank : derip2.stats.flank_spectra.FlankSpectraResult
+        The computed flank spectra (pooled across all sequences here).
+
+    Returns
+    -------
+    str
+        The inline ``<svg>`` fragment (id-prefixed ``ovwflank-``).
+    """
+    import matplotlib.pyplot as plt
+
+    from derip2.plotting.flank_spectra import plot_flank_bihistograms_pooled
+
+    fig = plot_flank_bihistograms_pooled(
+        flank, strands=('combined',), width=5.6, bare=True
+    )
+    svg = _figure_to_svg(fig, 'ovwflank-', tight=True)
+    plt.close(fig)
+    return svg
+
+
 def _overview_html(
     derip,
     cds_tracks,
@@ -1454,6 +1833,7 @@ def _overview_html(
     row_to_panel=None,
     spectra_ref_ancestor=None,
     spectra_ref_label=None,
+    flank=None,
 ):
     """
     Build the report's front (overview) page: the full alignment + consensus.
@@ -1481,6 +1861,9 @@ def _overview_html(
     spectra_ref_label : str or None, optional
         The reference sequence's id, used in the spectrum prose. ``None`` = the
         deRIP-corrected consensus.
+    flank : derip2.stats.flank_spectra.FlankSpectraResult or None, optional
+        The flank-context spectra; when given, the pooled aggregate flank section
+        is added below the mutation spectrum.
 
     Returns
     -------
@@ -1515,6 +1898,41 @@ def _overview_html(
         f'<div class="spectrum-scroll">{spectrum_svg}</div>'
     )
 
+    # Pooled flank-context section: the alignment-wide combined-strand bihistogram,
+    # a per-motif counts/conversion table, and the five substrate-vs-product /
+    # strand comparisons run on the pooled counts.
+    flank_section = ''
+    if flank is not None:
+        from derip2.stats.flank_spectra import compare_flank_spectra_pooled
+
+        flank_svg = _overview_flank_svg(flank)
+        pooled_cmp = compare_flank_spectra_pooled(flank)
+        pooled = flank.pooled()
+        flank_data_table = _flank_data_table_html(
+            pooled['sub_fwd'] + pooled['sub_rev'],
+            pooled['prod_fwd'] + pooled['prod_rev'],
+            flank.channels_substrate,
+        )
+        flank_section = (
+            '<h3>Flanking-context spectra of RIP-like sites</h3>'
+            '<p class="desc">Pooled across all sequences, as a combined-strand '
+            'bihistogram (surviving <b>substrate</b> CpA/TpG left, realised '
+            '<b>product</b> TpA right; CA-state motif on the left axis, equivalent '
+            'TA-state motif on the right; reverse-strand motifs folded onto the '
+            'CpA/TpA strand). The per-sequence pages additionally split this into '
+            'forward and reverse panels. A motif is marked '
+            '<span style="color:#e34948">*</span> when its substrate-vs-product '
+            'enrichment is significant (adjusted standardised residual, '
+            '|z|&nbsp;&ge;&nbsp;1.96) &mdash; evidence that local context '
+            'influences which substrates escape RIP. At this pooled scale the site '
+            'counts are large enough that almost every context is flagged, so read '
+            'the effect sizes in the table rather than the marks.</p>'
+            f'<div class="spectrum-scroll">{flank_svg}</div>'
+            f'{_flank_skipped_note(flank)}'
+            f'{flank_data_table}'
+            f'{_flank_comparison_table_html(pooled_cmp)}'
+        )
+
     stats_section = ''
     if df is not None:
         stats_section = (
@@ -1538,6 +1956,7 @@ def _overview_html(
         f'{toolbar}'
         f'<div class="aln-scroll">{svg}</div>'
         f'{spectrum_section}'
+        f'{flank_section}'
         f'{stats_section}'
         '</section>'
     )
@@ -1706,6 +2125,11 @@ def write_per_sequence_report(
     downstream = derip.calculate_spectra(
         partition_by='row', ancestor=spectra_ref_ancestor, context='downstream'
     )
+    # Flank-context spectra of RIP-like sites: one sample column per sequence,
+    # always measured against this sequence's own bases (independent of the
+    # spectra reference), so computed once here and reused across every panel.
+    logger.info('Computing per-sequence flanking-context spectra of RIP-like sites...')
+    flank = derip.calculate_flank_spectra()
 
     # FASTA payloads for the overview downloads + click-to-view popups. The deRIP
     # sequence is always available; CDS records are added when a GFF is supplied.
@@ -1823,6 +2247,11 @@ def write_per_sequence_report(
 
     indices, truncated = _select_rows(df, max_seqs)
 
+    # Per-sequence flank-context comparisons, computed only for the rendered rows.
+    from derip2.stats.flank_spectra import compare_flank_spectra
+
+    flank_cmp = {row: compare_flank_spectra(flank, row) for row in indices}
+
     # Map each rendered sequence's alignment-row index to its 1-based panel
     # position (panel 0 is the overview), so the overview stats table can link a
     # sequence name to its page. Sequences dropped by --max-report-seqs are absent
@@ -1843,6 +2272,7 @@ def write_per_sequence_report(
             row_to_panel,
             spectra_ref_ancestor,
             spectra_ref_label,
+            flank,
         )
     ]
     # The per-sequence panels dominate the runtime on large alignments (each is
@@ -1854,6 +2284,8 @@ def write_per_sequence_report(
             df,
             spectra,
             downstream,
+            flank,
+            flank_cmp[row_index],
             row_index,
             panel_number,
             effects_by_seq,

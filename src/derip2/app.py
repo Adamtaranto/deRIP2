@@ -455,6 +455,8 @@ def main(
     report_path = path.join(out_dir, f'{prefix}_report.html')
     per_seq_report_path = path.join(out_dir, f'{prefix}_per_sequence.html')
     snp_effects_path = path.join(out_dir, f'{prefix}_snp_effects.txt')
+    flank_matrix_path = path.join(out_dir, f'{prefix}_rip_context_spectra.tsv')
+    flank_compare_path = path.join(out_dir, f'{prefix}_rip_context_comparisons.tsv')
 
     # ---------- Create DeRIP object and process alignment ----------
     logger.info(f'Processing alignment file: \033[0m{input}')
@@ -682,6 +684,11 @@ def main(
             genetic_code=genetic_code,
             spectra_ref_index=spectra_ref_index,
         )
+        # Companion tidy TSVs for the flank-context spectra of RIP-like sites:
+        # the 16-channel counts and the per-sequence substrate-vs-product tests.
+        logger.info(f'Writing RIP-context spectra to: \033[0m{flank_matrix_path}')
+        derip_obj.write_flank_spectra_matrix(flank_matrix_path)
+        derip_obj.write_flank_spectra_comparisons(flank_compare_path)
 
 
 if __name__ == '__main__':

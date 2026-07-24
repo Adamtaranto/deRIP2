@@ -82,6 +82,68 @@ classifies each substitution by the mutated base plus its two downstream bases
 context shows up per sequence. Each spectrum scrolls horizontally on its own so
 the 96 channels never overlap.
 
+### Flanking-context spectra of RIP-like sites
+
+Not every substrate motif is converted to product in a RIP-affected sequence.
+To ask whether a **local sequence context protects** a substrate from RIP, this
+section classifies every RIP-like dinucleotide by the single base **1 bp
+upstream and 1 bp downstream** — a 4 bp motif `[up][centre][down]` with the two
+centre bases fixed and the flanks varying, giving **16 channels**. Two site
+states are counted:
+
+- **Substrate** — surviving `CpA` (forward strand) and `TpG` (reverse strand),
+  counted *anywhere* in the sequence (not only in RIP-informative columns).
+- **Product** — realised `TpA` sitting in a RIP-informative column.
+
+Reverse-strand motifs are reverse-complemented onto the `CpA`/`TpA` strand, and
+each strand view — **combined, forward, reverse** — is drawn as a **bihistogram**:
+substrate counts (blue) extend left and product counts (orange) extend right of a
+shared centre line. Each row is named on both sides — the **CA-state** (substrate)
+motif on the left y-axis and the equivalent **TA-state** (product) motif on the
+right (`GCAG` on the left ≡ `GTAG` on the right).
+
+A motif is marked with a red `*` when its enrichment differs significantly between
+the two states. For each of the 16 flank contexts the substrate and product counts
+form one row of a 16×2 table, and that cell's **adjusted standardised (Haberman)
+residual** is compared to the standard normal: the motif is flagged when
+`|z| ≥ 1.96` (two-sided *p* < 0.05), provided both states have ≥ 20 sites, with no
+multiple-testing correction. (On the pooled overview the counts are large enough
+that almost every context clears this bar, so lean on the effect sizes there.)
+
+![Flanking-context spectra of RIP-like sites](../img/flank_context_spectra.png)
+
+Beneath the bihistograms, a **sortable per-motif table** lists each CA-state motif
+with its combined substrate count, product count, total, and **% RIP** (the
+product share of the total — how much of that context was converted). The final
+**Conversion** column draws that percentage as a stacked bar (orange = product,
+blue = surviving substrate), so a fully-converted context reads all-orange at a
+glance. Sort the motif column by its 5′ or 3′ flanking base, or any numeric column
+by value, to find the most- and least-converted contexts. A second table reports the five
+comparisons that test the protection hypothesis: substrate-vs-product flank
+distribution (combined / forward / reverse) and forward-vs-reverse (substrate /
+product). It leads with the scale-free **cosine similarity** (1 = identical flank
+preference) and **Cramér's V**; the χ² p-value is shown only where both spectra
+have enough sites (≥ 20 by default), and `*` marks `p < 0.05`.
+
+The overview page carries the same tables **pooled across all sequences**, with
+the bihistogram reduced to just the combined-strand panel (the per-sequence pages
+keep the forward and reverse panels). With very large pooled counts almost every
+context is flagged, so read the effect sizes rather than the marks.
+
+To drive this analysis from Python — extracting the spectra, ranking motifs by
+conversion, and comparing two spectra sets — see the
+[Flank-context Spectra (API)](flank-context-spectra.md) tutorial.
+
+Two companion tables are written alongside the report whenever
+`--per-seq-report` is set:
+
+- `prefix_rip_context_spectra.tsv` — tidy counts, one row per
+  `sample × state × strand × channel` (the `combined` strand is the sum of
+  `forward` and `reverse`).
+- `prefix_rip_context_comparisons.tsv` — one row per `sample × comparison`
+  carrying the cosine, Cramér's V, χ², p-value, site totals, reliability flag
+  and most-differentiating channels.
+
 ### Summary statistics
 
 That sequence's statistics, split into described cards — RIP events (including a

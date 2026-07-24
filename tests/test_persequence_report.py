@@ -284,6 +284,7 @@ def test_report_section_headings_and_scroll(mintest_derip, tmp_path):
         'GC content',
         'Mutation spectrum (SBS-96)',
         'Mutation spectrum (downstream context)',
+        'Flanking-context spectra of RIP-like sites',
         'Summary statistics',
     ):
         assert f'<h3>{heading}</h3>' in html, heading
@@ -295,6 +296,59 @@ def test_report_section_headings_and_scroll(mintest_derip, tmp_path):
     assert 'nt)' in html
     # The overview page embeds the full alignment figure in a both-axis scroller.
     assert 'aln-scroll' in html
+
+
+def test_report_flank_context_sections(mintest_derip, tmp_path):
+    """Every panel and the overview carry the flank-context spectra section."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    n = len(mintest_derip.alignment)
+    # One flank heading per sequence panel plus one on the overview page.
+    assert html.count('Flanking-context spectra of RIP-like sites') == n + 1
+    # The five-row comparison table appears once per panel and once pooled.
+    assert html.count('class="flank-compare"') == n + 1
+    # Each grid SVG has a globally unique id prefix (per-row and overview).
+    assert 's0flank-' in html
+    assert 'ovwflank-' in html
+    # The comparison rows are labelled.
+    assert 'Substrate vs product (combined)' in html
+    assert 'Forward vs reverse (product)' in html
+    # The sortable per-motif data table appears once per panel and once pooled.
+    assert html.count('class="flank-data"') == n + 1
+    # Its motif column offers 5'/3' base sorting; numeric columns include % RIP.
+    assert 'data-motifsort="first"' in html
+    assert 'data-motifsort="last"' in html
+    assert '% RIP' in html
+    # Each row also visualises the RIP % as a stacked bar (one per motif per table,
+    # counting both populated "ripbar" and zero-site "ripbar empty" spans).
+    assert '>Conversion</th>' in html
+    assert html.count('<span class="ripbar') == 16 * (n + 1)
+
+
+def test_flank_data_table_percentage_and_sort_keys():
+    """The per-motif data table computes % RIP and exposes motif sort keys."""
+    import numpy as np
+
+    from derip2.persequence_report import _flank_data_table_html
+    from derip2.spectra.flank_channels import FLANK16_LABELS_CA
+
+    sub = np.zeros(16)
+    prod = np.zeros(16)
+    sub[10] = 3.0  # channel 10 = GCAG (up=G, down=G)
+    prod[10] = 1.0  # total 4 -> 25.0% converted
+    html = _flank_data_table_html(sub, prod, list(FLANK16_LABELS_CA))
+    assert FLANK16_LABELS_CA[10] == 'GCAG'
+    assert 'data-first="G" data-last="G"' in html
+    assert '<td data-val="25.0000">25.0</td>' in html
+    # A motif with no sites has an en-dash % and an empty (last-sorting) value.
+    assert '<td data-val="">&ndash;</td>' in html
+    # The stacked conversion bar sets the product (25%) width; substrate fills the
+    # rest.
+    assert '<i class="prod" style="width:25.000%"></i>' in html
+    assert '<i class="sub"></i>' in html
+    # Zero-site motifs get an empty bar rather than a split one.
+    assert 'class="ripbar empty"' in html
 
 
 def test_report_transposed_stat_cards(mintest_derip, tmp_path):

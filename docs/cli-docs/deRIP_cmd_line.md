@@ -98,8 +98,9 @@ The `--per-seq-report` option writes an interactive, self-contained
 `prefix_per_sequence.html` with one panel per input sequence: the alignment row
 with its RIP sites highlighted, a fixed-height per-sequence strand-bias strip, a
 per-sequence SBS-96 mutation spectrum measured against the reconstructed
-ancestor, and that sequence's summary statistics. Step between sequences with
-the left/right arrow keys (or the Prev/Next buttons).
+ancestor, the flank-context spectra of RIP-like sites, and that sequence's
+summary statistics. Step between sequences with the left/right arrow keys (or the
+Prev/Next buttons).
 
 ```bash
 derip2 -i tests/data/mintest.fa \
@@ -107,6 +108,15 @@ derip2 -i tests/data/mintest.fa \
   -d results \
   --prefix derip_output
 ```
+
+The report's flank-context section tests whether a local sequence context
+protects a substrate from RIP: it classifies every RIP-like dinucleotide by its
+1 bp upstream and downstream flanks (16 channels) for surviving **substrate**
+(`CpA`/`TpG`, anywhere) and realised **product** (`TpA`, in RIP columns) sites,
+shown as a substrate/product × combined/forward/reverse grid with a
+cosine/Cramér's V/χ² comparison table (and a pooled version on the overview
+page). `--per-seq-report` also writes `prefix_rip_context_spectra.tsv` (tidy
+counts) and `prefix_rip_context_comparisons.tsv` (comparison statistics).
 
 For large alignments, `--max-report-seqs N` caps the report at the `N`
 sequences with the strongest strand bias (largest `|RSI|`) and notes the
@@ -161,6 +171,8 @@ annotation-track colours with a two-column `type<TAB>hex` file.
 **Output:**
 
 - `results/derip_output_per_sequence.html` - Interactive per-sequence report
+- `results/derip_output_rip_context_spectra.tsv` - Flank-context site counts
+- `results/derip_output_rip_context_comparisons.tsv` - Substrate-vs-product tests
 - `results/derip_output_snp_effects.txt` - Per-sequence + restored-CDS effects
 - `results/derip_output_visualization.svg` - Alignment figure with the track
 

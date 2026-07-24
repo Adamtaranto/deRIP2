@@ -1,8 +1,8 @@
 import os
 import tempfile
 
-import pytest
 from click.testing import CliRunner
+import pytest
 
 # Import the main function
 from derip2.app import main
@@ -210,6 +210,32 @@ def test_spectra_ref_index_option():
         )
         assert bad.exit_code != 0
         assert 'out of range' in bad.output
+
+
+def test_per_seq_report_writes_rip_context_spectra():
+    """--per-seq-report also emits the RIP-context spectra + comparison TSVs."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        runner = CliRunner()
+        prefix = 'CtxRun'
+        result = runner.invoke(
+            main,
+            [
+                '-i',
+                'tests/data/mintest.fa',
+                '--out-dir',
+                temp_dir,
+                '--prefix',
+                prefix,
+                '--per-seq-report',
+            ],
+        )
+        assert result.exit_code == 0, f'Command failed with output: {result.output}'
+        matrix = os.path.join(temp_dir, f'{prefix}_rip_context_spectra.tsv')
+        compare = os.path.join(temp_dir, f'{prefix}_rip_context_comparisons.tsv')
+        assert os.path.exists(matrix)
+        assert os.path.exists(compare)
+        header = open(matrix).readline().strip().split('\t')
+        assert header == ['sample', 'state', 'strand', 'channel', 'count']
 
 
 def test_noappend_option():
