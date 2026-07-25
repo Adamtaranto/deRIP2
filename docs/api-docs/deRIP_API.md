@@ -16,6 +16,10 @@
         - calculate_spectra
         - write_spectra_matrix
         - plot_spectra
+        - calculate_flank_spectra
+        - write_flank_spectra_matrix
+        - write_flank_spectra_comparisons
+        - plot_flank_spectra
         - write_alignment
         - write_consensus
         - write_stats
@@ -96,3 +100,112 @@
         - write_snp_effects
         - build_annotation_spans
         - load_annotation_colors
+
+# Mutation spectra statistics
+
+::: derip2.stats.mutation_spectra
+    options:
+      members:
+        - SpectraResult
+        - compute_spectra
+        - assemble_matrices
+        - assemble_downstream
+
+# Mutation spectra plotting
+
+::: derip2.plotting.spectra
+    options:
+      members:
+        - plot_sbs96
+        - plot_sbs192
+        - plot_downstream
+        - strand_asymmetry
+        - plot_strand_asymmetry
+        - plot_homoplasy
+
+# Spectra comparison
+
+::: derip2.stats.spectra_compare
+    options:
+      members:
+        - cosine_similarity
+        - chi2_homogeneity
+        - compare_spectra
+        - compare_matrix_files
+        - pairwise_compare
+
+# Flank-context spectra statistics
+
+::: derip2.stats.flank_spectra
+    options:
+      members:
+        - FlankSpectraResult
+        - compute_flank_spectra
+        - compare_flank_spectra
+        - compare_flank_spectra_pooled
+        - differential_channels
+        - write_flank_matrix
+        - write_flank_comparisons
+
+# Flank-context spectra plotting
+
+::: derip2.plotting.flank_spectra
+    options:
+      members:
+        - plot_flank_bihistograms
+        - plot_flank_bihistograms_pooled
+
+# Phylogenetic spectra (ancestral state reconstruction)
+
+::: derip2.spectra.tree_asr
+    options:
+      members:
+        - build_reconstruction
+        - reconstruct
+        - assign_clades
+        - assign_groups
+        - run_iqtree
+        - find_iqtree
+        - iqtree_version
+        - TreeReconstruction
+
+::: derip2.spectra.call_mutations
+    options:
+      members:
+        - compute_spectra_from_tree
+
+# Spectra channels and matrix IO
+
+::: derip2.spectra.channels
+    options:
+      members:
+        - sbs96_channel
+        - sbs192_channel
+        - downstream_channel
+        - trinucleotide_context
+        - downstream_context
+        - fold_to_pyrimidine
+        - revcomp_base
+
+::: derip2.spectra.flank_channels
+    options:
+      members:
+        - flank_channel_labels
+        - flank_pair_labels
+
+::: derip2.spectra.matrix_io
+    options:
+      members:
+        - write_sbs_matrix
+        - read_sbs_matrix
+        - write_matrix_metadata
+
+# Alignment QC for spectra
+
+::: derip2.spectra.qc
+    options:
+      members:
+        - ColumnProfile
+        - profile_alignment
+        - write_column_profile
+        - write_qc_report

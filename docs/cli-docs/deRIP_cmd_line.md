@@ -396,6 +396,95 @@ derip2-spectra -i family.fasta --groups groups.tsv -d results -p family
 derip2-spectra -i family.fasta --method phylo --groups groups.tsv -d results -p family
 ```
 
-Run `derip2-spectra --help` for the full option list (`--sbs`, `--rooting`,
-`--outgroup`, `--partition-by`, `--groups`, `--min-prob`, `--root-sensitivity`,
-`--threads`, …).
+### `derip2-spectra` options
+
+```code
+  --version                       Show the version and exit.
+  -i, --input TEXT                Multiple sequence alignment (FASTA,
+                                  optionally gzipped).  [required]
+  -d, --out-dir TEXT              Directory for spectrum output files.
+  -p, --prefix TEXT               Prefix for output files.  [default:
+                                  deRIPspectra]
+  --ancestor TEXT                 Optional FASTA of a hypothetical ancestor to
+                                  call against instead of the reconstructed
+                                  deRIP consensus. Must be the same length as
+                                  the alignment.
+  --reference-tag TEXT            Exact sequence ID of a pre-computed
+                                  ancestral reference already present in the
+                                  input alignment (e.g. a deRIP consensus you
+                                  appended with derip2). When found (baseline
+                                  method), that row is used as the ancestor
+                                  and excluded from the counted sequences
+                                  instead of re-running deRIP. Overridden by
+                                  --ancestor.  [default: deRIPseq]
+  --context [trinucleotide|downstream]
+                                  Sequence context to classify substitutions
+                                  by: the 5'/3' trinucleotide flanks
+                                  (SBS-96/192), or the mutated base plus its
+                                  two downstream bases (pyrimidine-folded
+                                  96-channel, CHG-aware). The downstream
+                                  context produces a single folded matrix, so
+                                  --sbs 192/both do not apply.  [default:
+                                  trinucleotide]
+  --sbs [96|192|both]             Which SBS matrices/plots to produce
+                                  (trinucleotide context only).  [default:
+                                  both]
+  --partition-by [none|row|clade]
+                                  Split spectra into one pooled sample, one
+                                  per sequence (baseline) or one per root
+                                  clade (phylo).  [default: none]
+  --groups TEXT                   Path to a two-column (name, group) file
+                                  mapping sequences to group labels (e.g.
+                                  species). Reports one spectrum per group;
+                                  works for both methods and tolerates IQ-TREE
+                                  name reformatting. Overrides --partition-by.
+  --percentage                    Plot spectra as a percentage of each sample
+                                  total.
+  --min-hits INTEGER              Minimum independent hits for a site in the
+                                  homoplasy report.  [default: 2]
+  --no-plots                      Write matrices and tables only; skip
+                                  figures.
+  --method [baseline|phylo]       Spectrum method: tree-free single-reference
+                                  baseline, or phylogenetic branch-by-branch
+                                  calling via IQ-TREE ancestral
+                                  reconstruction.  [default: baseline]
+  --tree TEXT                     Fixed Newick tree for the phylo path; IQ-
+                                  TREE reconstructs ancestral states on this
+                                  topology instead of inferring a new tree.
+  --iqtree-model TEXT             Substitution model passed to IQ-TREE (-m)
+                                  for the phylo path.  [default: MFP]
+  --threads TEXT                  IQ-TREE thread count (-T). AUTO benchmarks
+                                  the best value; pass an integer to skip the
+                                  benchmark (faster on small alignments).
+                                  [default: AUTO]
+  --rooting [midpoint|outgroup|none]
+                                  How to root the tree for the phylo path
+                                  (sets substitution direction).  [default:
+                                  midpoint]
+  --outgroup TEXT                 Outgroup tip name(s) for --rooting outgroup;
+                                  comma-separate a clade.
+  --min-prob FLOAT                Drop phylo events whose parent x child
+                                  ancestral posterior is below this threshold.
+                                  [default: 0.0]
+  --root-sensitivity              Also report the fraction of edges whose
+                                  direction flips under midpoint rooting
+                                  (phylo path).
+  -g, --max-gaps FLOAT            Maximum gap proportion in a column before it
+                                  is gapped in the consensus.  [default: 0.7]
+  -a, --reaminate                 Correct all deamination events regardless of
+                                  RIP context when building the ancestor.
+  --max-snp-noise FLOAT           Maximum proportion of conflicting SNPs
+                                  before a column is excluded from RIP
+                                  assessment.  [default: 0.5]
+  --min-rip-like FLOAT            Minimum proportion of RIP-context
+                                  deamination for a column to be corrected.
+                                  [default: 0.1]
+  --fill-max-gc                   Fill uncorrected positions from the highest-
+                                  GC sequence rather than the least-RIP'd one.
+  --fill-index INTEGER            Force the fill row by index (overrides
+                                  --fill-max-gc).
+  --loglevel [DEBUG|INFO|WARNING|ERROR|CRITICAL]
+                                  Set logging level.  [default: INFO]
+  --logfile TEXT                  Log file path.
+  -h, --help                      Show this message and exit.
+```

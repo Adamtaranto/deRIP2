@@ -22,6 +22,12 @@ Use deRIP2 to:
 
 - Mask RIP or deamination events as ambiguous bases to remove RIP signal from phylogenetic analyses.
 
+- Analyse mutation spectra in aligned sequences for evidence of RIP or other mutational processes.
+
+- Generate an interactive per-sequence HTML report, and — with a GFF3 gene model
+  — report how RIP alters the encoded protein (premature stops, non-synonymous
+  changes, frameshifts, broken splice sites).
+
 ## Table of contents
 
 - [Installation](#installation)
