@@ -24,8 +24,8 @@ keywords:
   - RIP
   - bioinformatics
 license: GPL-3.0-or-later
-version: 0.5.1
-date-released: 2026-07-19
+version: 0.5.2
+date-released: 2026-07-25
 preferred-citation:
   type: software
   authors:
