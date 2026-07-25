@@ -61,13 +61,16 @@ version-file = "src/derip2/_version.py"
 # `iqtree3`/`iqtree2`/`iqtree` is on PATH. The ete4 Python dependency it uses is
 # a core dependency above.
 
+# Docs are built with Zensical (the successor to Material for MkDocs).
+# mkdocstrings is installed separately here because Zensical does not bundle it;
+# notebook/nbconvert are kept to regenerate docs/tutorial.md from tutorial.ipynb
+# (Zensical does not support the mkdocs-jupyter plugin).
 docs = [
-    "mkdocs-jupyter",
-    "mkdocs-material",
-    "mkdocs",
+    "zensical>=0.0.51",
     "mkdocstrings-python",
     "mkdocstrings",
     "notebook",
+    "nbconvert",
     "pymdown-extensions>=10.21.2,<11",
     "seaborn",
 ]
