@@ -1,6 +1,7 @@
 # Sandpit
 .ideas/
 .plans/
+experiments/
 
 # Agent configs
 .claude/

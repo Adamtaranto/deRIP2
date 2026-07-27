@@ -30,7 +30,7 @@ dynamic = ["version"]
 
 [project.urls]
 homepage = "https://github.com/adamtaranto/derip2"
-documentation = "https://github.com/adamtaranto/derip2"
+documentation = "https://adamtaranto.github.io/deRIP2/"
 repository = "https://github.com/adamtaranto/derip2"
 
 [project.scripts]
@@ -40,7 +40,7 @@ derip2-spectra = "derip2.app_spectra:main"
 [tool.hatch.build]
 source = "src"
 
-exclude = ["environment.yml", ".github", ".vscode"]
+exclude = [".github", ".vscode", "docs", "environment.yml", "experiments"]
 
 [tool.hatch.version]
 source = "vcs"

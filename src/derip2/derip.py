@@ -1276,21 +1276,30 @@ class DeRIP:
             raise ValueError(f'kind must be one of {sorted(plotters)}, got {kind!r}')
         return plotters[kind](self.spectra_result, output_file, **kwargs)
 
-    def calculate_flank_spectra(self):
+    def calculate_flank_spectra(self, flank_length: int = 1):
         """
         Compute the flanking-context spectra of RIP-like sites.
 
-        Classifies every RIP-like dinucleotide by the single base one position
-        upstream and one downstream (a 4 bp motif). Surviving substrate sites
-        (``CpA``/``TpG`` anywhere in each sequence) and RIP product sites
-        (``TpA`` in RIP-informative columns) are counted separately, one sample
-        column per input sequence, folded onto ``CA``/``TA``-equivalent channels.
-        The result is cached on :attr:`flank_spectra_result`.
+        Classifies every RIP-like dinucleotide by the ``flank_length`` bases
+        upstream and downstream (a ``2 + 2 * flank_length`` bp motif; a 4 bp motif
+        for the default 1 bp flank). Surviving substrate sites (``CpA``/``TpG``
+        anywhere in each sequence) and RIP product sites (``TpA`` in RIP-informative
+        columns) are counted separately, one sample column per input sequence,
+        folded onto ``CA``/``TA``-equivalent channels. The result is cached on
+        :attr:`flank_spectra_result` and recomputed if a different ``flank_length``
+        is requested.
+
+        Parameters
+        ----------
+        flank_length : int, optional
+            Number of flanking bases resolved on each side of the centre
+            dinucleotide (default 1), giving ``4 ** (2 * flank_length)`` channels.
 
         Returns
         -------
         derip2.stats.flank_spectra.FlankSpectraResult
-            The four ``(16, n_rows)`` count matrices and per-state skipped counts.
+            The four ``(4 ** (2 * flank_length), n_rows)`` count matrices and
+            per-state skipped counts.
 
         Raises
         ------
@@ -1304,9 +1313,12 @@ class DeRIP:
         from derip2.stats.flank_spectra import compute_flank_spectra
 
         self._require_rip('calculating flank spectra')
+        cached = self.flank_spectra_result
+        if cached is not None and cached.flank_length == flank_length:
+            return cached
         sample_names = [record.id for record in self.alignment]
         self.flank_spectra_result = compute_flank_spectra(
-            self.column_classes, sample_names=sample_names
+            self.column_classes, sample_names=sample_names, flank_length=flank_length
         )
         return self.flank_spectra_result
 
@@ -1394,6 +1406,45 @@ class DeRIP:
             self.calculate_flank_spectra()
         return plot_flank_bihistograms_pooled(
             self.flank_spectra_result, output_file, percentage=percentage, **kwargs
+        )
+
+    def plot_flank_conversion_heatmap(
+        self,
+        output_file: Optional[str] = None,
+        *,
+        flank_length: int = 1,
+        **kwargs,
+    ):
+        """
+        Draw the pooled flank-context RIP-conversion heatmap, computing if needed.
+
+        Each cell of the ``4 ** flank_length`` x ``4 ** flank_length`` grid shows
+        the percentage of a RIP target CpA converted to TpA (the product share) as
+        a joint function of the upstream (rows) and downstream (columns) flank
+        bases.
+
+        Parameters
+        ----------
+        output_file : str, optional
+            Path to write the figure to (``.svg``/``.png``/``.pdf``).
+        flank_length : int, optional
+            Flank width; recomputes the spectra if it differs from the cached
+            result (default 1).
+        **kwargs
+            Forwarded to
+            :func:`derip2.plotting.flank_spectra.plot_flank_conversion_heatmap`
+            (e.g. ``title``, ``bare``).
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            The heatmap figure.
+        """
+        from derip2.plotting.flank_spectra import plot_flank_conversion_heatmap
+
+        result = self.calculate_flank_spectra(flank_length=flank_length)
+        return plot_flank_conversion_heatmap(
+            result, sample=None, outfile=output_file, **kwargs
         )
 
     def write_html_report(

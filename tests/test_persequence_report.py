@@ -752,3 +752,36 @@ def test_report_cri_highlighted_when_above_one(mintest_path, tmp_path):
     row['CRI'] = 0.5
     html_low = _stats_sections_html(row)
     assert 'value pos">0.500' not in html_low and 'value pos">+0.500' not in html_low
+
+
+def test_report_flank_conversion_heatmap_present(mintest_derip, tmp_path):
+    """The flank-conversion heatmap is embedded per panel and on the overview."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html = out.read_text()
+    # Heatmap figures carry their own unique id prefixes (distinct from the
+    # bihistogram 's0flank-' / 'ovwflank-' prefixes).
+    assert 's0flankheat-' in html
+    assert 'ovwflankheat-' in html
+    # Its explanatory caption is present.
+    assert 'interaction heatmap' in html
+    # The 1 bp bihistogram is still shown alongside the heatmap.
+    assert 's0flank-' in html
+    assert 'ovwflank-' in html
+
+
+def test_report_wide_flank_omits_bihistogram(mintest_derip, tmp_path):
+    """At flank_length=2 the report shows the heatmap but omits the bihistogram."""
+    import re
+
+    out = tmp_path / 'per_seq_w2.html'
+    mintest_derip.write_per_sequence_report(str(out), flank_length=2)
+    html = out.read_text()
+    # Heatmap present; 16-row bihistogram omitted for the wide flank.
+    assert 's0flankheat-' in html
+    assert 'ovwflankheat-' in html
+    assert 's0flank-' not in html
+    assert 'ovwflank-' not in html
+    # Embedded-SVG ids stay globally unique.
+    ids = re.findall(r'id="([^"]+)"', html)
+    assert len(ids) == len(set(ids))

@@ -1104,6 +1104,32 @@ def _effects_table_html(effects, deripd_aa):
     return table + aa_blocks
 
 
+# Bihistogram description, shown only for the 1 bp flank (16-channel) view.
+_FLANK_BIHIST_DESC = (
+    '<p class="desc">For every RIP-like dinucleotide this sequence carries, the '
+    'single base 1&nbsp;bp upstream and 1&nbsp;bp downstream is tallied as a '
+    '4&nbsp;bp motif (the two centre bases fixed, the flanks varying &rarr; 16 '
+    'channels). Each strand view is a <b>bihistogram</b>: surviving '
+    '<b>substrate</b> counts (CpA forward / TpG reverse, counted anywhere) '
+    'extend left and realised RIP <b>product</b> counts (TpA in RIP-informative '
+    'columns) extend right, sharing a centre line. Reverse-strand motifs are '
+    'reverse-complemented onto the CpA/TpA strand and every row is labelled on '
+    'the left by its <b>CA-state</b> (substrate) motif and on the right by the '
+    'equivalent <b>TA-state</b> (product) motif (e.g. <code>GCAG</code> '
+    '&equiv; <code>GTAG</code>). A motif is marked '
+    '<span style="color:#e34948">*</span> when its enrichment differs '
+    'significantly between the two states: for each of the 16 flank contexts '
+    'the substrate and product counts form one row of a 16&times;2 table, and '
+    'that cell&rsquo;s <b>adjusted standardised (Haberman) residual</b> is '
+    'tested against the standard normal &mdash; the motif is flagged when '
+    '|z|&nbsp;&ge;&nbsp;1.96 (two-sided <i>p</i>&nbsp;&lt;&nbsp;0.05), provided '
+    'both states have at least 20 sites, with no multiple-testing correction. '
+    'The table below tests the same substrate-vs-product question overall '
+    '(via the &chi;&sup2; homogeneity of the whole 16-channel spectra), and '
+    'whether the two strands differ.</p>'
+)
+
+
 def _panel_html(
     derip,
     df,
@@ -1261,11 +1287,28 @@ def _panel_html(
     # The three flank-context bihistograms (substrate left vs product right, one
     # per strand) as one figure, so a single unique id-prefix keeps the SVG glyph
     # ids collision-free.
-    from derip2.plotting.flank_spectra import plot_flank_bihistograms
+    from derip2.plotting.flank_spectra import (
+        plot_flank_bihistograms,
+        plot_flank_conversion_heatmap,
+    )
 
-    flank_fig = plot_flank_bihistograms(flank, sample=row_index, bare=True)
-    flank_svg = _figure_to_svg(flank_fig, f's{row_index}flank-', tight=True)
-    plt.close(flank_fig)
+    # The 16-row bihistogram is only legible for the 1 bp flank (16 channels); for
+    # wider flanks the heatmap carries the signal and the bihistogram is omitted.
+    flank_bihist_html = ''
+    if flank.flank_length == 1:
+        flank_fig = plot_flank_bihistograms(flank, sample=row_index, bare=True)
+        flank_svg = _figure_to_svg(flank_fig, f's{row_index}flank-', tight=True)
+        plt.close(flank_fig)
+        flank_bihist_html = (
+            _FLANK_BIHIST_DESC + f'<div class="spectrum-scroll">{flank_svg}</div>'
+        )
+    # Interaction heatmap of the same data: % of each flank motif converted
+    # substrate -> product. Unique id prefix keeps embedded-SVG glyph ids distinct.
+    flank_heat_fig = plot_flank_conversion_heatmap(flank, sample=row_index, bare=True)
+    flank_heat_svg = _figure_to_svg(
+        flank_heat_fig, f's{row_index}flankheat-', tight=True
+    )
+    plt.close(flank_heat_fig)
     flank_data_table = _flank_data_table_html(
         flank.matrix('substrate', 'combined')[:, row_index],
         flank.matrix('product', 'combined')[:, row_index],
@@ -1342,28 +1385,12 @@ def _panel_html(
         'CHG-methylation signal C&gt;T in CpNpG context.</p>'
         f'<div class="spectrum-scroll">{ds_svg}</div>'
         '<h3>Flanking-context spectra of RIP-like sites</h3>'
-        '<p class="desc">For every RIP-like dinucleotide this sequence carries, the '
-        'single base 1&nbsp;bp upstream and 1&nbsp;bp downstream is tallied as a '
-        '4&nbsp;bp motif (the two centre bases fixed, the flanks varying &rarr; 16 '
-        'channels). Each strand view is a <b>bihistogram</b>: surviving '
-        '<b>substrate</b> counts (CpA forward / TpG reverse, counted anywhere) '
-        'extend left and realised RIP <b>product</b> counts (TpA in RIP-informative '
-        'columns) extend right, sharing a centre line. Reverse-strand motifs are '
-        'reverse-complemented onto the CpA/TpA strand and every row is labelled on '
-        'the left by its <b>CA-state</b> (substrate) motif and on the right by the '
-        'equivalent <b>TA-state</b> (product) motif (e.g. <code>GCAG</code> '
-        '&equiv; <code>GTAG</code>). A motif is marked '
-        '<span style="color:#e34948">*</span> when its enrichment differs '
-        'significantly between the two states: for each of the 16 flank contexts '
-        'the substrate and product counts form one row of a 16&times;2 table, and '
-        'that cell&rsquo;s <b>adjusted standardised (Haberman) residual</b> is '
-        'tested against the standard normal &mdash; the motif is flagged when '
-        '|z|&nbsp;&ge;&nbsp;1.96 (two-sided <i>p</i>&nbsp;&lt;&nbsp;0.05), provided '
-        'both states have at least 20 sites, with no multiple-testing correction. '
-        'The table below tests the same substrate-vs-product question overall '
-        '(via the &chi;&sup2; homogeneity of the whole 16-channel spectra), and '
-        'whether the two strands differ.</p>'
-        f'<div class="spectrum-scroll">{flank_svg}</div>'
+        f'{flank_bihist_html}'
+        '<p class="desc">The same data as an interaction heatmap: for a RIP target '
+        'CpA, the percentage of that flank motif converted from the substrate '
+        '(CpA) to the product (TpA) state, as a joint function of the base(s) '
+        'immediately 5&prime; (rows) and 3&prime; (columns) of the target.</p>'
+        f'<div class="spectrum-scroll">{flank_heat_svg}</div>'
         f'{flank_data_table}'
         f'{flank_table}'
         '<h3>Summary statistics</h3>'
@@ -1824,6 +1851,30 @@ def _overview_flank_svg(flank):
     return svg
 
 
+def _overview_flank_heatmap_svg(flank):
+    """
+    Render the pooled flank-context RIP-conversion heatmap for the overview page.
+
+    Parameters
+    ----------
+    flank : derip2.stats.flank_spectra.FlankSpectraResult
+        The computed flank spectra (pooled across all sequences here).
+
+    Returns
+    -------
+    str
+        The inline ``<svg>`` fragment (id-prefixed ``ovwflankheat-``).
+    """
+    import matplotlib.pyplot as plt
+
+    from derip2.plotting.flank_spectra import plot_flank_conversion_heatmap
+
+    fig = plot_flank_conversion_heatmap(flank, sample=None, bare=True)
+    svg = _figure_to_svg(fig, 'ovwflankheat-', tight=True)
+    plt.close(fig)
+    return svg
+
+
 def _overview_html(
     derip,
     cds_tracks,
@@ -1905,7 +1956,7 @@ def _overview_html(
     if flank is not None:
         from derip2.stats.flank_spectra import compare_flank_spectra_pooled
 
-        flank_svg = _overview_flank_svg(flank)
+        flank_heat_svg = _overview_flank_heatmap_svg(flank)
         pooled_cmp = compare_flank_spectra_pooled(flank)
         pooled = flank.pooled()
         flank_data_table = _flank_data_table_html(
@@ -1913,21 +1964,35 @@ def _overview_html(
             pooled['prod_fwd'] + pooled['prod_rev'],
             flank.channels_substrate,
         )
+        # The 16-row bihistogram is only legible for the 1 bp flank; omit it for
+        # wider flanks where the heatmap carries the signal.
+        overview_bihist_html = ''
+        if flank.flank_length == 1:
+            flank_svg = _overview_flank_svg(flank)
+            overview_bihist_html = (
+                '<p class="desc">Pooled across all sequences, as a combined-strand '
+                'bihistogram (surviving <b>substrate</b> CpA/TpG left, realised '
+                '<b>product</b> TpA right; CA-state motif on the left axis, '
+                'equivalent TA-state motif on the right; reverse-strand motifs '
+                'folded onto the CpA/TpA strand). The per-sequence pages '
+                'additionally split this into forward and reverse panels. A motif '
+                'is marked <span style="color:#e34948">*</span> when its '
+                'substrate-vs-product enrichment is significant (adjusted '
+                'standardised residual, |z|&nbsp;&ge;&nbsp;1.96) &mdash; evidence '
+                'that local context influences which substrates escape RIP. At this '
+                'pooled scale the site counts are large enough that almost every '
+                'context is flagged, so read the effect sizes in the table rather '
+                'than the marks.</p>'
+                f'<div class="spectrum-scroll">{flank_svg}</div>'
+            )
         flank_section = (
             '<h3>Flanking-context spectra of RIP-like sites</h3>'
-            '<p class="desc">Pooled across all sequences, as a combined-strand '
-            'bihistogram (surviving <b>substrate</b> CpA/TpG left, realised '
-            '<b>product</b> TpA right; CA-state motif on the left axis, equivalent '
-            'TA-state motif on the right; reverse-strand motifs folded onto the '
-            'CpA/TpA strand). The per-sequence pages additionally split this into '
-            'forward and reverse panels. A motif is marked '
-            '<span style="color:#e34948">*</span> when its substrate-vs-product '
-            'enrichment is significant (adjusted standardised residual, '
-            '|z|&nbsp;&ge;&nbsp;1.96) &mdash; evidence that local context '
-            'influences which substrates escape RIP. At this pooled scale the site '
-            'counts are large enough that almost every context is flagged, so read '
-            'the effect sizes in the table rather than the marks.</p>'
-            f'<div class="spectrum-scroll">{flank_svg}</div>'
+            f'{overview_bihist_html}'
+            '<p class="desc">The same pooled data as an interaction heatmap: '
+            'the percentage of each flank motif converted from substrate (CpA) to '
+            'product (TpA), by the base(s) immediately 5&prime; (rows) and '
+            '3&prime; (columns) of the RIP target CpA.</p>'
+            f'<div class="spectrum-scroll">{flank_heat_svg}</div>'
             f'{_flank_skipped_note(flank)}'
             f'{flank_data_table}'
             f'{_flank_comparison_table_html(pooled_cmp)}'
@@ -2037,6 +2102,7 @@ def write_per_sequence_report(
     gff=None,
     genetic_code=1,
     spectra_ref_index=None,
+    flank_length=1,
 ):
     """
     Write a single-file, arrow-key-navigable per-sequence HTML report.
@@ -2068,6 +2134,10 @@ def write_per_sequence_report(
         default deRIP-corrected consensus. Supports negative indexing. The
         reference sequence's own panel then shows an empty (self-comparison)
         spectrum.
+    flank_length : int, optional
+        Number of flanking bases each side of a RIP-like dinucleotide for the
+        flank-context spectra and conversion heatmap (default 1 → 4×4 grid; 2 →
+        16×16).
 
     Returns
     -------
@@ -2129,7 +2199,7 @@ def write_per_sequence_report(
     # always measured against this sequence's own bases (independent of the
     # spectra reference), so computed once here and reused across every panel.
     logger.info('Computing per-sequence flanking-context spectra of RIP-like sites...')
-    flank = derip.calculate_flank_spectra()
+    flank = derip.calculate_flank_spectra(flank_length=flank_length)
 
     # FASTA payloads for the overview downloads + click-to-view popups. The deRIP
     # sequence is always available; CDS records are added when a GFF is supplied.

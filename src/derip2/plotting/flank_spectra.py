@@ -45,7 +45,11 @@ from derip2.plotting.strandbias import (
     SURFACE,
     TITLE_SIZE,
 )
-from derip2.spectra.flank_channels import FLANK16_LABELS_CA, FLANK16_LABELS_TA
+from derip2.spectra.flank_channels import (
+    FLANK16_LABELS_CA,
+    FLANK16_LABELS_TA,
+    flank_grid_dim,
+)
 from derip2.stats.flank_spectra import differential_channels
 
 logger = logging.getLogger(__name__)
@@ -62,11 +66,36 @@ _STRAND_TITLES = {
 # validated deRIP2 C>T red, so it reads as "changed" and stays colourblind-safe).
 SIG_COLOR = '#e34948'
 
-# Short caption distinguishing this context model in figure headings.
+# Short caption distinguishing this context model in figure headings. The folded
+# core is the deaminating pyrimidine (C substrate / T product = Y in IUPAC) followed
+# by a fixed A, so the motif is N[YA]N.
 _FLANK_CAPTION = (
-    r'flank context of RIP-like sites (5$^\prime$-N[XY]N-3$^\prime$; '
+    r'flank context of RIP-like sites (5$^\prime$-N[YA]N-3$^\prime$; '
     r'substrate $\leftarrow$ CA-state | TA-state $\rightarrow$ product)'
 )
+
+
+def _require_single_bp_flank(result) -> None:
+    """
+    Guard: the 16-row bihistogram only supports the 1 bp (16-channel) flank.
+
+    Parameters
+    ----------
+    result : derip2.stats.flank_spectra.FlankSpectraResult
+        The computed spectra.
+
+    Raises
+    ------
+    ValueError
+        If ``result.flank_length != 1`` (use
+        :func:`plot_flank_conversion_heatmap` for wider flanks).
+    """
+    if getattr(result, 'flank_length', 1) != 1:
+        raise ValueError(
+            'the flank bihistogram supports only a 1 bp flank (16 channels); '
+            f'got flank_length={result.flank_length}. Use '
+            'plot_flank_conversion_heatmap for wider flanks.'
+        )
 
 
 def _abs_formatter(value, _pos):
@@ -397,6 +426,7 @@ def plot_flank_bihistograms(
     IndexError
         If ``sample`` is out of range for the available samples.
     """
+    _require_single_bp_flank(result)
     n_samples = len(result.sample_names)
     if not -n_samples <= sample < n_samples:
         raise IndexError(f'sample {sample} out of range for {n_samples} sample(s)')
@@ -469,6 +499,7 @@ def plot_flank_bihistograms_pooled(
     matplotlib.figure.Figure
         The rendered figure.
     """
+    _require_single_bp_flank(result)
     vectors = _strand_vectors(result, None)
     fig = _draw_bihistogram_figure(
         vectors,
@@ -481,5 +512,240 @@ def plot_flank_bihistograms_pooled(
         alpha=alpha,
         bare=bare,
     )
+    _save(fig, outfile, dpi)
+    return fig
+
+
+# Colormap for the conversion heatmap: a perceptually-uniform sequential map over
+# 0-100 % conversion (colourblind-safe; dark = protected, bright = converted).
+_HEATMAP_CMAP = 'viridis'
+
+
+def _combined_state_vectors(result, sample: Optional[int]):
+    """
+    Return the combined-strand substrate and product count vectors.
+
+    Parameters
+    ----------
+    result : derip2.stats.flank_spectra.FlankSpectraResult
+        The computed spectra.
+    sample : int or None
+        Alignment row to select; ``None`` pools across every sequence.
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        ``(substrate, product)`` combined-strand ``(n_channels,)`` count vectors.
+    """
+    if sample is None:
+        pooled = result.pooled()
+        substrate = pooled['sub_fwd'] + pooled['sub_rev']
+        product = pooled['prod_fwd'] + pooled['prod_rev']
+    else:
+        substrate = result.matrix('substrate', 'combined')[:, sample]
+        product = result.matrix('product', 'combined')[:, sample]
+    return substrate, product
+
+
+def _flank_axis_labels(result):
+    """
+    Derive the per-side flank strings (upstream rows, downstream cols) from a result.
+
+    Parameters
+    ----------
+    result : derip2.stats.flank_spectra.FlankSpectraResult
+        The computed spectra; its ``channels_substrate`` labels are
+        ``[up][CA][down]`` in ``up``-outer / ``down``-inner order.
+
+    Returns
+    -------
+    tuple of list of str
+        ``(up_labels, down_labels)`` each of length ``4 ** flank_length``.
+    """
+    w = result.flank_length
+    grid = flank_grid_dim(w)
+    subs = result.channels_substrate
+    up_labels = [subs[i * grid][:w] for i in range(grid)]
+    down_labels = [subs[j][w + 2 :] for j in range(grid)]
+    return up_labels, down_labels
+
+
+def plot_flank_conversion_heatmap(
+    result,
+    sample: Optional[int] = None,
+    outfile: Optional[str] = None,
+    *,
+    flank_sort: str = 'proximal',
+    title: Optional[str] = None,
+    dpi: int = 300,
+    bare: bool = False,
+):
+    """
+    Draw a heatmap of RIP conversion as a function of the up/down flank bases.
+
+    For a RIP target CpA (the fixed centre dinucleotide) each cell shows the
+    **product share** — ``100 * product / (substrate + product)`` — i.e. the
+    percentage of that flank motif converted from the substrate (``CpA``) to the
+    product (``TpA``) state, as a joint function of the ``flank_length`` bases
+    immediately 5' (rows) and 3' (columns) of the target. The grid is
+    ``4 ** flank_length`` on a side (4x4 for a 1 bp flank, 16x16 for 2 bp). Cell
+    counts are annotated only for the 4x4 grid; wider grids rely on colour and the
+    dinucleotide axis labels alone.
+
+    Parameters
+    ----------
+    result : derip2.stats.flank_spectra.FlankSpectraResult
+        The computed spectra (any flank width).
+    sample : int or None, optional
+        Alignment row to draw; ``None`` (default) pools across every sequence.
+    outfile : str or None, optional
+        Output path; when ``None`` the figure is returned unsaved.
+    flank_sort : {'proximal', 'alphabetical'}, optional
+        How the upstream (row) flank motifs are ordered (default ``'proximal'``).
+        The downstream (column) axis is always ordered by the base nearest the
+        centre (its natural label order). ``'proximal'`` orders the upstream axis
+        the same way — by the flank base nearest the centre first, then the next
+        base out — so both axes read from the core outward and, for a 2 bp flank,
+        motifs sharing a nearest 5' base are grouped together. ``'alphabetical'``
+        instead sorts both axes by the plain motif string (the upstream axis then
+        sorts by its distal base first). For a 1 bp flank the two modes are
+        identical.
+    title : str or None, optional
+        Figure heading (omitted when ``bare``).
+    dpi : int, optional
+        Raster resolution (default: 300).
+    bare : bool, optional
+        Omit the default title for embedding under an external heading.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The rendered heatmap.
+
+    Raises
+    ------
+    IndexError
+        If ``sample`` is out of range for the available samples.
+    ValueError
+        If ``flank_sort`` is not ``'proximal'`` or ``'alphabetical'``.
+    """
+    if flank_sort not in ('proximal', 'alphabetical'):
+        raise ValueError(
+            f"flank_sort must be 'proximal' or 'alphabetical', got {flank_sort!r}"
+        )
+    n_samples = len(result.sample_names)
+    if sample is not None and not -n_samples <= sample < n_samples:
+        raise IndexError(f'sample {sample} out of range for {n_samples} sample(s)')
+    resolved = None if sample is None else sample % n_samples
+
+    substrate, product = _combined_state_vectors(result, resolved)
+    grid = flank_grid_dim(result.flank_length)
+    total = substrate + product
+    with np.errstate(invalid='ignore', divide='ignore'):
+        pct = np.where(total > 0, 100.0 * product / total, np.nan)
+    pct_grid = pct.reshape(grid, grid)  # rows = upstream flank, cols = downstream
+    n_grid = total.reshape(grid, grid)
+    up_labels, down_labels = _flank_axis_labels(result)
+
+    # Order the upstream (row) axis. The label is written outermost-base-first, so
+    # its natural order sorts by the distal base; 'proximal' re-sorts by the base
+    # nearest the centre first (reverse the label string) so both axes read from
+    # the core outward. A no-op for a 1 bp flank.
+    if flank_sort == 'proximal':
+        order = sorted(range(grid), key=lambda i: up_labels[i][::-1])
+        pct_grid = pct_grid[order]
+        n_grid = n_grid[order]
+        up_labels = [up_labels[i] for i in order]
+
+    # Size the figure to the grid: 4x4 compact, 16x16 breathes, and larger grids
+    # (>=3 bp flank) scale up so the per-side flank labels stay legible.
+    if grid <= 4:
+        side = 3.4
+    elif grid <= 16:
+        side = 7.2
+    else:
+        side = grid * 0.16
+    fig, ax = plt.subplots(figsize=(side + 1.1, side), facecolor=SURFACE)
+    ax.set_facecolor(SURFACE)
+    im = ax.imshow(pct_grid, cmap=_HEATMAP_CMAP, vmin=0, vmax=100, aspect='equal')
+
+    if grid <= 4:
+        tick_size = CONTEXT_TICK_SIZE
+    elif grid <= 16:
+        tick_size = CONTEXT_TICK_SIZE - 1.5
+    else:
+        tick_size = 3.5
+    ax.set_xticks(range(grid), down_labels, fontsize=tick_size, family='monospace')
+    ax.set_yticks(range(grid), up_labels, fontsize=tick_size, family='monospace')
+    ax.set_xlabel(
+        '3′ (downstream) flank',
+        fontsize=AXIS_LABEL_SIZE,
+        color=INK_PRIMARY,
+        family=FONT_STACK,
+    )
+    ax.set_ylabel(
+        '5′ (upstream) flank',
+        fontsize=AXIS_LABEL_SIZE,
+        color=INK_PRIMARY,
+        family=FONT_STACK,
+    )
+    if grid > 4:
+        ax.tick_params(axis='x', rotation=90)
+
+    # Per-cell annotation only for the compact 4x4 (1 bp flank) grid.
+    if grid <= 4:
+        cmap = plt.get_cmap(_HEATMAP_CMAP)
+        for i in range(grid):
+            for j in range(grid):
+                val = pct_grid[i, j]
+                if np.isnan(val):
+                    continue
+                r, g, b, _ = cmap(val / 100.0)
+                lum = 0.299 * r + 0.587 * g + 0.114 * b
+                tc = 'white' if lum < 0.55 else 'black'
+                ax.text(
+                    j,
+                    i - 0.12,
+                    f'{val:.0f}%',
+                    ha='center',
+                    va='center',
+                    color=tc,
+                    fontsize=ANNOTATION_SIZE,
+                    fontweight='bold',
+                    family=FONT_STACK,
+                )
+                ax.text(
+                    j,
+                    i + 0.22,
+                    f'n={int(n_grid[i, j]):,}',
+                    ha='center',
+                    va='center',
+                    color=tc,
+                    fontsize=ANNOTATION_SIZE - 1.5,
+                    family=FONT_STACK,
+                )
+
+    # Thin surface-coloured gridlines between cells.
+    ax.set_xticks(np.arange(-0.5, grid, 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, grid, 1), minor=True)
+    ax.grid(which='minor', color=SURFACE, linewidth=0.8)
+    ax.tick_params(which='minor', length=0)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label(
+        '% converted to product (TpA share)',
+        fontsize=LEGEND_SIZE,
+        color=INK_SECONDARY,
+        family=FONT_STACK,
+    )
+    cbar.ax.tick_params(labelsize=LEGEND_SIZE - 0.5, width=0.6)
+
+    if not bare:
+        heading = title or 'RIP conversion by flank context'
+        ax.set_title(heading, fontsize=TITLE_SIZE, color=INK_PRIMARY, family=FONT_STACK)
+
+    fig.tight_layout()
     _save(fig, outfile, dpi)
     return fig
