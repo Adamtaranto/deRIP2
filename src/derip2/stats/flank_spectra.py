@@ -41,11 +41,16 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from derip2.spectra.flank_channels import (
+    CENTER_PRODUCT,
+    CENTER_SUBSTRATE,
     COMP_CODE,
     FLANK16_LABELS_CA,
     FLANK16_LABELS_TA,
     FLANK16_PAIR_LABELS,
-    IDX16_TABLE,
+    flank_channel_index,
+    flank_channel_labels,
+    flank_pair_labels,
+    n_flank_channels,
 )
 from derip2.stats.mutation_spectra import _CODE_LUT
 from derip2.stats.spectra_compare import compare_spectra
@@ -68,20 +73,21 @@ COMPARISON_KEYS: Tuple[str, ...] = (
 @dataclass(frozen=True)
 class FlankSpectraResult:
     """
-    Per-sequence 16-channel flanking-context spectra of RIP-like sites.
+    Per-sequence flanking-context spectra of RIP-like sites.
 
-    Four count matrices, each ``(16, n_rows)`` with one column per alignment row
-    (the row *is* the sample index). Every motif is folded so its centre is
-    ``CA`` (substrate) or ``TA`` (product) and its channel is indexed by the two
-    resolved flanks ``up*4 + down`` (see :mod:`derip2.spectra.flank_channels`).
+    Four count matrices, each ``(n_channels, n_rows)`` with one column per
+    alignment row (the row *is* the sample index) and ``n_channels ==
+    4 ** (2 * flank_length)`` (16 for the default 1 bp flank). Every motif is folded
+    so its centre is ``CA`` (substrate) or ``TA`` (product) and its channel is
+    indexed by the resolved flanks (see :mod:`derip2.spectra.flank_channels`).
 
     Attributes
     ----------
     sub_fwd, sub_rev : numpy.ndarray
-        ``(16, n_rows)`` float counts of forward (``CpA``) and reverse (``TpG``)
-        substrate sites, counted anywhere in each sequence.
+        ``(n_channels, n_rows)`` float counts of forward (``CpA``) and reverse
+        (``TpG``) substrate sites, counted anywhere in each sequence.
     prod_fwd, prod_rev : numpy.ndarray
-        ``(16, n_rows)`` float counts of forward and reverse RIP product
+        ``(n_channels, n_rows)`` float counts of forward and reverse RIP product
         (``TpA``) sites in RIP-informative columns.
     sample_names : list of str
         Column labels, one per alignment row.
@@ -89,9 +95,11 @@ class FlankSpectraResult:
         Per-state count of sites dropped because an up or down flank could not be
         resolved to an ``ACGT`` base (terminal columns, or a non-ACGT neighbour).
         Keyed by :data:`STATE_KEYS`.
+    flank_length : int
+        Number of flanking bases resolved on each side of the centre (default 1).
     channels_substrate, channels_product : list of str
-        The 16 four-base motif labels for the substrate (``CA``) and product
-        (``TA``) states, aligned to the matrix rows.
+        The motif labels for the substrate (``CA``) and product (``TA``) states,
+        aligned to the matrix rows.
     """
 
     sub_fwd: np.ndarray
@@ -100,6 +108,7 @@ class FlankSpectraResult:
     prod_rev: np.ndarray
     sample_names: List[str]
     n_skipped_flank: Dict[str, int]
+    flank_length: int = 1
     channels_substrate: List[str] = field(
         default_factory=lambda: list(FLANK16_LABELS_CA)
     )
@@ -228,133 +237,171 @@ def _codes_at(arr: np.ndarray, rows: np.ndarray, cols: np.ndarray) -> np.ndarray
     return codes
 
 
-def _gather_left_anchored(
-    mask: np.ndarray,
+def _walk_codes(
     arr: np.ndarray,
-    next_idx: np.ndarray,
-    prev_idx: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
-    """
-    Gather flank codes for a mask anchored on the *left* centre base.
-
-    Used for the forward-strand masks ``ca`` (``C`` at the cell, ``A`` at the next
-    non-gap column) and ``ta``. The 4 bp motif is ``[up][C][A][down]`` on the
-    forward strand, so the flanks need no folding.
-
-    Parameters
-    ----------
-    mask : numpy.ndarray
-        ``(n_rows, n_cols)`` boolean cell mask; ``True`` at the left centre base.
-    arr : numpy.ndarray
-        ``(n_rows, n_cols)`` ``'S1'`` alignment byte array.
-    next_idx, prev_idx : numpy.ndarray
-        ``(n_rows, n_cols)`` nearest non-gap neighbour indices (``-1`` if none).
-
-    Returns
-    -------
-    tuple
-        ``(rows, up_code, down_code, n_skipped)`` for sites whose up and down
-        flanks both resolve to an ``ACGT`` base; ``n_skipped`` counts the rest.
-    """
-    rows, cols = np.where(mask)
-    up_idx = prev_idx[rows, cols]
-    mid_idx = next_idx[rows, cols]  # the A of the centre dinucleotide
-    down_idx = next_idx[rows, mid_idx]  # one base past the centre
-    # A missing centre partner (mid_idx == -1) would make down_idx meaningless;
-    # guard it so the chained lookup never wraps.
-    down_idx = np.where(mid_idx >= 0, down_idx, -1)
-
-    up_code = _codes_at(arr, rows, up_idx)
-    down_code = _codes_at(arr, rows, down_idx)
-    valid = (up_code >= 0) & (down_code >= 0)
-    n_skipped = int((~valid).sum())
-    return rows[valid], up_code[valid], down_code[valid], n_skipped
-
-
-def _gather_right_anchored(
-    mask: np.ndarray,
-    arr: np.ndarray,
-    next_idx: np.ndarray,
-    prev_idx: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
-    """
-    Gather folded flank codes for a mask anchored on the *right* centre base.
-
-    Used for the reverse-strand masks ``tg`` (``G`` at the cell, ``T`` at the
-    previous non-gap column) and ``ta2``. The physical forward-strand motif is
-    ``[up][T][X][down]``; reverse-complementing it to the ``CA``/``TA``-equivalent
-    swaps the flanks and complements them, so the folded upstream base is the
-    complement of the physical *downstream* base and vice versa.
-
-    Parameters
-    ----------
-    mask : numpy.ndarray
-        ``(n_rows, n_cols)`` boolean cell mask; ``True`` at the right centre base.
-    arr : numpy.ndarray
-        ``(n_rows, n_cols)`` ``'S1'`` alignment byte array.
-    next_idx, prev_idx : numpy.ndarray
-        ``(n_rows, n_cols)`` nearest non-gap neighbour indices (``-1`` if none).
-
-    Returns
-    -------
-    tuple
-        ``(rows, up_code, down_code, n_skipped)`` where ``up_code``/``down_code``
-        are already folded onto the ``CA``/``TA`` strand.
-    """
-    rows, cols = np.where(mask)
-    mid_idx = prev_idx[rows, cols]  # the T (left centre base)
-    up_idx = prev_idx[rows, mid_idx]  # physical upstream flank, left of the T
-    down_idx = next_idx[rows, cols]  # physical downstream flank, right of anchor
-    # Guard the chained upstream lookup against a missing left centre base.
-    up_idx = np.where(mid_idx >= 0, up_idx, -1)
-
-    phys_up = _codes_at(arr, rows, up_idx)
-    phys_down = _codes_at(arr, rows, down_idx)
-    valid = (phys_up >= 0) & (phys_down >= 0)
-    n_skipped = int((~valid).sum())
-    # Fold (reverse-complement): swap sides and complement each flank.
-    up_code = COMP_CODE[phys_down[valid]]
-    down_code = COMP_CODE[phys_up[valid]]
-    return rows[valid], up_code, down_code, n_skipped
-
-
-def _assemble16(
-    rows: np.ndarray, up_code: np.ndarray, down_code: np.ndarray, n_rows: int
+    rows: np.ndarray,
+    start_cols: np.ndarray,
+    step: np.ndarray,
+    width: int,
 ) -> np.ndarray:
     """
-    Scatter resolved flank pairs into a ``(16, n_rows)`` count matrix.
+    Walk ``width`` non-gap neighbours from a starting column and read their codes.
+
+    Starting at ``start_cols`` (the flank base nearest the centre) the walk follows
+    ``step`` (``next_idx`` for a downstream walk, ``prev_idx`` for an upstream one)
+    outward, one non-gap base per step. A ``-1`` at any point (an alignment edge or
+    missing partner) propagates, so every subsequent base for that site is also
+    ``-1`` — the site is later dropped as an unresolved flank.
+
+    Parameters
+    ----------
+    arr : numpy.ndarray
+        ``(n_rows, n_cols)`` ``'S1'`` alignment byte array.
+    rows : numpy.ndarray
+        ``(n_sites,)`` alignment row of each site.
+    start_cols : numpy.ndarray
+        ``(n_sites,)`` column of the first (nearest) flank base; ``-1`` if none.
+    step : numpy.ndarray
+        ``(n_rows, n_cols)`` neighbour table to iterate outward.
+    width : int
+        Number of flank bases to read.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``(n_sites, width)`` base codes in nearest-first order; ``-1`` where a base
+        could not be resolved.
+    """
+    codes = np.full((rows.shape[0], width), -1, dtype=np.int64)
+    cur = start_cols.copy()
+    for j in range(width):
+        codes[:, j] = _codes_at(arr, rows, cur)
+        if j + 1 < width:
+            # Advance to the next non-gap base outward, guarding -1 so we never
+            # index with a negative column (which would wrap).
+            safe = np.where(cur >= 0, cur, 0)
+            cur = np.where(cur >= 0, step[rows, safe], -1)
+    return codes
+
+
+def _gather(
+    mask: np.ndarray,
+    arr: np.ndarray,
+    next_idx: np.ndarray,
+    prev_idx: np.ndarray,
+    width: int,
+    reverse: bool,
+) -> Tuple[np.ndarray, np.ndarray, int]:
+    """
+    Gather folded flank channel indices for a dinucleotide cell mask.
+
+    Forward (``reverse=False``) masks are anchored on the *left* centre base (the
+    ``C`` of ``CpA`` / ``T`` of ``TpA``); the ``width`` upstream bases are read left
+    of it and the ``width`` downstream bases beyond the centre partner, needing no
+    fold. Reverse (``reverse=True``) masks are anchored on the *right* centre base
+    (the ``G`` of ``TpG`` / ``A`` of the reverse ``TpA``); the physical motif is
+    reverse-complemented onto the ``CA``/``TA`` strand, which maps the folded
+    upstream flank to the complement of the physical downstream flank and the folded
+    downstream flank to the complement of the physical upstream flank (an
+    index-aligned swap+complement in nearest-first order — the multi-base order
+    reversal is absorbed by the channel encoder, which reverses the upstream side).
+
+    Parameters
+    ----------
+    mask : numpy.ndarray
+        ``(n_rows, n_cols)`` boolean cell mask; ``True`` at the anchor centre base.
+    arr : numpy.ndarray
+        ``(n_rows, n_cols)`` ``'S1'`` alignment byte array.
+    next_idx, prev_idx : numpy.ndarray
+        ``(n_rows, n_cols)`` nearest non-gap neighbour indices (``-1`` if none).
+    width : int
+        Flank width (bases each side).
+    reverse : bool
+        Whether the mask is a reverse-strand mask requiring the fold.
+
+    Returns
+    -------
+    tuple
+        ``(rows, channel, n_skipped)`` for sites whose full up and down flanks all
+        resolve to ``ACGT`` bases; ``n_skipped`` counts the dropped remainder.
+    """
+    rows, cols = np.where(mask)
+    if reverse:
+        mid_idx = prev_idx[rows, cols]  # the T (left centre base)
+        up_start = np.where(
+            mid_idx >= 0, prev_idx[rows, np.where(mid_idx >= 0, mid_idx, 0)], -1
+        )
+        down_start = next_idx[rows, cols]  # physical downstream flank of the anchor
+        phys_up = _walk_codes(arr, rows, up_start, prev_idx, width)
+        phys_down = _walk_codes(arr, rows, down_start, next_idx, width)
+        valid = (phys_up >= 0).all(axis=1) & (phys_down >= 0).all(axis=1)
+        # Fold: folded upstream = comp(physical downstream); folded downstream =
+        # comp(physical upstream), both index-aligned in nearest-first order.
+        up_nf = COMP_CODE[phys_down[valid]]
+        down_nf = COMP_CODE[phys_up[valid]]
+    else:
+        up_start = prev_idx[rows, cols]  # nearest upstream flank of the centre
+        mid_idx = next_idx[rows, cols]  # the A of the centre dinucleotide
+        down_start = np.where(
+            mid_idx >= 0, next_idx[rows, np.where(mid_idx >= 0, mid_idx, 0)], -1
+        )
+        up_nf = _walk_codes(arr, rows, up_start, prev_idx, width)
+        down_nf = _walk_codes(arr, rows, down_start, next_idx, width)
+        valid = (up_nf >= 0).all(axis=1) & (down_nf >= 0).all(axis=1)
+        up_nf = up_nf[valid]
+        down_nf = down_nf[valid]
+    n_skipped = int((~valid).sum())
+    channel = flank_channel_index(up_nf, down_nf, width)
+    return rows[valid], channel, n_skipped
+
+
+def _assemble(
+    rows: np.ndarray, channel: np.ndarray, n_channels: int, n_rows: int
+) -> np.ndarray:
+    """
+    Scatter resolved flank channels into a ``(n_channels, n_rows)`` count matrix.
 
     Parameters
     ----------
     rows : numpy.ndarray
         Alignment row (sample index) of every counted site.
-    up_code, down_code : numpy.ndarray
-        Folded upstream and downstream flank base codes (0..3) of every site.
+    channel : numpy.ndarray
+        Folded channel index of every counted site.
+    n_channels : int
+        Number of flank channels (``4 ** (2 * width)``).
     n_rows : int
         Number of alignment rows (matrix columns).
 
     Returns
     -------
     numpy.ndarray
-        ``(16, n_rows)`` float count matrix.
+        ``(n_channels, n_rows)`` float count matrix.
     """
-    out = np.zeros((16, n_rows), dtype=np.float64)
+    out = np.zeros((n_channels, n_rows), dtype=np.float64)
     if rows.size:
-        channel = IDX16_TABLE[up_code, down_code]
         np.add.at(out, (channel, rows), 1.0)
     return out
 
 
 def compute_flank_spectra(
-    column_classes, sample_names: Optional[List[str]] = None
+    column_classes,
+    sample_names: Optional[List[str]] = None,
+    flank_length: int = 1,
 ) -> FlankSpectraResult:
     """
-    Compute per-sequence 16-channel flanking-context spectra of RIP-like sites.
+    Compute per-sequence flanking-context spectra of RIP-like sites.
 
     Substrate sites (``cls.ca`` / ``cls.tg``) are counted anywhere in each
     sequence; product sites (``cls.prod_fwd`` / ``cls.prod_rev``) only in
-    RIP-informative columns. Each site's 4 bp motif is resolved over the nearest
-    non-gap neighbours and folded onto the ``CA``/``TA``-equivalent channel. The
+    RIP-informative columns. Gating is strictly **per cell**: a site contributes a
+    flank only when its own core dinucleotide satisfies one of those masks, so a
+    "noise" cell in a RIP-like column — a base that is neither the surviving
+    substrate nor the realised product (e.g. a ``G`` or an unrelated SNP) — is
+    ``False`` in every mask and never contributes a flank.
+
+    Each site's ``flank_length`` upstream and downstream bases are resolved over the
+    nearest non-gap neighbours and folded onto the ``CA``/``TA``-equivalent channel,
+    giving ``4 ** (2 * flank_length)`` channels (16 for the default 1 bp flank). The
     computation is fully vectorised over the whole alignment; the alignment row is
     the sample index, so no per-row Python loop is needed.
 
@@ -366,22 +413,31 @@ def compute_flank_spectra(
     sample_names : list of str, optional
         Per-row labels (length ``n_rows``). Defaults to the row ordinals as
         strings.
+    flank_length : int, optional
+        Number of flanking bases resolved on each side of the centre dinucleotide
+        (default 1). Must be >= 1.
 
     Returns
     -------
     FlankSpectraResult
-        The four ``(16, n_rows)`` count matrices and per-state skipped counts.
+        The four ``(4 ** (2 * flank_length), n_rows)`` count matrices, the flank
+        length and per-state skipped counts.
 
     Raises
     ------
     ValueError
-        If ``sample_names`` is given and its length is not ``n_rows``.
+        If ``sample_names`` is given and its length is not ``n_rows``, or if
+        ``flank_length < 1``.
     """
+    if flank_length < 1:
+        raise ValueError(f'flank_length must be >= 1, got {flank_length}')
+
     cls = column_classes
     arr = cls.arr
     next_idx = cls.next_idx
     prev_idx = cls.prev_idx
     n_rows = arr.shape[0]
+    n_channels = n_flank_channels(flank_length)
 
     if sample_names is None:
         sample_names = [str(i) for i in range(n_rows)]
@@ -394,15 +450,17 @@ def compute_flank_spectra(
     skipped: Dict[str, int] = {}
     matrices: Dict[str, np.ndarray] = {}
 
-    # Left-anchored forward masks: no fold. Right-anchored reverse masks: revcomp.
-    for key, mask, gather in (
-        ('sub_fwd', cls.ca, _gather_left_anchored),
-        ('sub_rev', cls.tg, _gather_right_anchored),
-        ('prod_fwd', cls.prod_fwd, _gather_left_anchored),
-        ('prod_rev', cls.prod_rev, _gather_right_anchored),
+    # Forward masks: left-anchored, no fold. Reverse masks: right-anchored, revcomp.
+    for key, mask, reverse in (
+        ('sub_fwd', cls.ca, False),
+        ('sub_rev', cls.tg, True),
+        ('prod_fwd', cls.prod_fwd, False),
+        ('prod_rev', cls.prod_rev, True),
     ):
-        rows, up_code, down_code, n_skipped = gather(mask, arr, next_idx, prev_idx)
-        matrices[key] = _assemble16(rows, up_code, down_code, n_rows)
+        rows, channel, n_skipped = _gather(
+            mask, arr, next_idx, prev_idx, flank_length, reverse
+        )
+        matrices[key] = _assemble(rows, channel, n_channels, n_rows)
         skipped[key] = n_skipped
 
     logger.info(
@@ -423,8 +481,9 @@ def compute_flank_spectra(
         prod_rev=matrices['prod_rev'],
         sample_names=list(sample_names),
         n_skipped_flank=skipped,
-        channels_substrate=list(FLANK16_LABELS_CA),
-        channels_product=list(FLANK16_LABELS_TA),
+        flank_length=flank_length,
+        channels_substrate=flank_channel_labels(CENTER_SUBSTRATE, flank_length),
+        channels_product=flank_channel_labels(CENTER_PRODUCT, flank_length),
     )
 
 
@@ -473,6 +532,7 @@ def compare_flank_spectra(
         result.prod_rev[:, row_index],
         min_sites=min_sites,
         top=top,
+        pair_labels=flank_pair_labels(result.flank_length),
     )
 
 
@@ -511,6 +571,7 @@ def compare_flank_spectra_pooled(
         pooled['prod_rev'],
         min_sites=min_sites,
         top=top,
+        pair_labels=flank_pair_labels(result.flank_length),
     )
 
 
@@ -522,6 +583,7 @@ def _run_comparisons(
     *,
     min_sites: int,
     top: int,
+    pair_labels: Optional[List[str]] = None,
 ) -> Dict[str, Dict]:
     """
     Run the five substrate/product/strand comparisons for a set of count vectors.
@@ -536,6 +598,10 @@ def _run_comparisons(
         Minimum site count on both sides for the ``chi2_reliable`` flag.
     top : int
         Number of most-differentiating flank channels to report.
+    pair_labels : list of str, optional
+        Centre-agnostic flank-pair labels for the channels being compared. Defaults
+        to the width-1 :data:`FLANK16_PAIR_LABELS`; callers pass the width-matched
+        labels from :func:`derip2.spectra.flank_channels.flank_pair_labels`.
 
     Returns
     -------
@@ -543,6 +609,9 @@ def _run_comparisons(
         Keyed by :data:`COMPARISON_KEYS`; each an augmented ``compare_spectra``
         result.
     """
+    if pair_labels is None:
+        pair_labels = FLANK16_PAIR_LABELS
+
     pairs = {
         'sub_vs_prod_combined': (sub_f + sub_r, prod_f + prod_r),
         'sub_vs_prod_fwd': (sub_f, prod_f),
@@ -553,7 +622,7 @@ def _run_comparisons(
 
     out: Dict[str, Dict] = {}
     for name, (a, b) in pairs.items():
-        comp = compare_spectra(a, b, channels=FLANK16_PAIR_LABELS, top=top)
+        comp = compare_spectra(a, b, channels=pair_labels, top=top)
         n_a = float(a.sum())
         n_b = float(b.sum())
         comp['n_a'] = n_a

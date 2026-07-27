@@ -246,3 +246,95 @@ def test_percentage_via_derip_method(mintest_path):
     d.calculate_rip()
     fig = d.plot_flank_spectra(percentage=True)
     assert fig.axes[0].get_xlabel() == '% of state'
+
+
+# ---------------------------------------------------------------------------
+# Conversion heatmap
+# ---------------------------------------------------------------------------
+
+
+def _compute_w(seqs, flank_length):
+    """Compute flank spectra at a given flank width for a hand-built alignment."""
+    align = MultipleSeqAlignment(
+        [SeqRecord(Seq(s), id=f'seq{i}') for i, s in enumerate(seqs)]
+    )
+    cls = classify_alignment(align, progress=False)
+    return compute_flank_spectra(
+        cls,
+        sample_names=[f'seq{i}' for i in range(len(seqs))],
+        flank_length=flank_length,
+    )
+
+
+def test_conversion_heatmap_1bp_has_image_and_colorbar():
+    """The 1 bp conversion heatmap draws a 4x4 image plus a colorbar axes."""
+    from derip2.plotting.flank_spectra import plot_flank_conversion_heatmap
+
+    result = make_result(['GCAT', 'GTAT', 'ATGC', 'ATAC'])
+    fig = plot_flank_conversion_heatmap(result, sample=None)
+    # One image (the heatmap) on the main axes; a second axes for the colorbar.
+    assert len(fig.axes) == 2
+    main = fig.axes[0]
+    assert len(main.images) == 1
+    assert main.images[0].get_array().shape == (4, 4)
+
+
+def test_conversion_heatmap_2bp_is_16x16():
+    """A 2 bp flank produces a 16x16 conversion heatmap."""
+    from derip2.plotting.flank_spectra import plot_flank_conversion_heatmap
+
+    result = _compute_w(['ACCAGT', 'ACCAGT'], flank_length=2)
+    fig = plot_flank_conversion_heatmap(result, sample=None)
+    assert fig.axes[0].images[0].get_array().shape == (16, 16)
+
+
+def test_bihistogram_rejects_wide_flank():
+    """The 16-row bihistogram refuses a >1 bp flank result with a clear error."""
+    result = _compute_w(['ACCAGT', 'ACCAGT'], flank_length=2)
+    with pytest.raises(ValueError, match='1 bp flank'):
+        plot_flank_bihistograms_pooled(result)
+    with pytest.raises(ValueError, match='1 bp flank'):
+        plot_flank_bihistograms(result, sample=0)
+
+
+def test_heatmap_flank_sort_modes():
+    """Proximal (default) orders the 5' axis by the base nearest the centre.
+
+    For a 2 bp flank the upstream row labels are written outermost-base-first;
+    'proximal' re-sorts them so the base nearest the centre is the primary key
+    (reverse of the label), while 'alphabetical' keeps the plain label order.
+    """
+    from derip2.plotting.flank_spectra import plot_flank_conversion_heatmap
+
+    result = _compute_w(['ACCAGT', 'ACCAGT'], flank_length=2)
+
+    fig_alpha = plot_flank_conversion_heatmap(
+        result, sample=None, flank_sort='alphabetical'
+    )
+    rows_alpha = [t.get_text() for t in fig_alpha.axes[0].get_yticklabels()]
+    # Plain alphabetical of the 2 bp motif strings.
+    assert rows_alpha == sorted(rows_alpha)
+
+    fig_prox = plot_flank_conversion_heatmap(result, sample=None, flank_sort='proximal')
+    rows_prox = [t.get_text() for t in fig_prox.axes[0].get_yticklabels()]
+    # Sorted by the nearest-centre (last) base first, then the next base out.
+    assert rows_prox == sorted(rows_prox, key=lambda s: s[::-1])
+    # The nearest-5' base is now the primary grouping: first four rows all end 'A'.
+    assert [r[-1] for r in rows_prox[:4]] == ['A', 'A', 'A', 'A']
+
+    with pytest.raises(ValueError, match='flank_sort'):
+        plot_flank_conversion_heatmap(result, sample=None, flank_sort='nonsense')
+
+
+def test_heatmap_1bp_sort_modes_identical():
+    """For a 1 bp flank the two sort modes give the same row order (A,C,G,T)."""
+    from derip2.plotting.flank_spectra import plot_flank_conversion_heatmap
+
+    result = make_result(['GCAT', 'GTAT', 'ATGC', 'ATAC'])
+    prox = plot_flank_conversion_heatmap(result, sample=None, flank_sort='proximal')
+    alpha = plot_flank_conversion_heatmap(
+        result, sample=None, flank_sort='alphabetical'
+    )
+    rows_prox = [t.get_text() for t in prox.axes[0].get_yticklabels()]
+    rows_alpha = [t.get_text() for t in alpha.axes[0].get_yticklabels()]
+    assert rows_prox == rows_alpha == ['A', 'C', 'G', 'T']

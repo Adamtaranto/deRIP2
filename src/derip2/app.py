@@ -255,6 +255,17 @@ logger = logging.getLogger(__name__)
         '(self-comparison) spectrum. Unset compares against the deRIP consensus.'
     ),
 )
+@click.option(
+    '--flank-length',
+    type=int,
+    default=1,
+    show_default=True,
+    help=(
+        'Number of flanking bases on each side of a RIP-like dinucleotide for the '
+        'per-sequence report flank-context spectra and conversion heatmap. 1 gives '
+        'a 4x4 heatmap, 2 gives 16x16.'
+    ),
+)
 # Gene annotation options
 @click.option(
     '--gff',
@@ -318,6 +329,7 @@ def main(
     per_seq_report,
     max_report_seqs,
     spectra_ref_index,
+    flank_length,
     gff,
     genetic_code,
     annotation_colors,
@@ -415,6 +427,10 @@ def main(
         Alignment row index (0-based; negatives allowed) of a sequence to use as
         the reference for the per-sequence report mutation spectra, instead of the
         deRIP-corrected consensus. Default: None.
+    flank_length : int
+        Number of flanking bases each side of a RIP-like dinucleotide for the
+        per-sequence report flank-context spectra and conversion heatmap
+        (1 → 4×4, 2 → 16×16). Default: 1.
     gff : str or None
         Path to a GFF3 gene model. Enables the annotation track, gene-effect
         panels, and the SNP-effect summary. Default: None.
@@ -683,6 +699,7 @@ def main(
             gff=gff,
             genetic_code=genetic_code,
             spectra_ref_index=spectra_ref_index,
+            flank_length=flank_length,
         )
         # Companion tidy TSVs for the flank-context spectra of RIP-like sites:
         # the 16-channel counts and the per-sequence substrate-vs-product tests.

@@ -362,3 +362,109 @@ def test_chi2_reliable_flag_respects_min_sites():
     assert reliable['sub_vs_prod_combined']['chi2_reliable'] is True
     assert reliable['sub_vs_prod_combined']['n_a'] == 25.0
     assert unreliable['sub_vs_prod_combined']['chi2_reliable'] is False
+
+
+# ---------------------------------------------------------------------------
+# Noise-row exclusion (per-cell gating; no behaviour change, documented)
+# ---------------------------------------------------------------------------
+
+
+def test_noise_core_in_rip_column_contributes_no_flank():
+    """A row whose core is neither substrate C nor product T contributes nothing.
+
+    In a forward RIP column (surviving 'GCAT' substrate + 'GTAT' product) a third
+    row 'GGAT' carries a G at the centre column: neither a CpA substrate nor a TpA
+    product. Gating is strictly per-cell, so that noise row must add zero to every
+    matrix and leave the substrate/product counts identical to the two-row case.
+    """
+    baseline = compute(['GCAT', 'GTAT'])
+    with_noise = compute(['GCAT', 'GTAT', 'GGAT'])
+    # The noise row (index 2) is empty in every state matrix.
+    for state in ('sub_fwd', 'sub_rev', 'prod_fwd', 'prod_rev'):
+        assert getattr(with_noise, state)[:, 2].sum() == 0.0
+    # The genuine substrate/product rows are unchanged by the noise row's presence.
+    np.testing.assert_array_equal(with_noise.sub_fwd[:, :2], baseline.sub_fwd)
+    np.testing.assert_array_equal(with_noise.prod_fwd[:, :2], baseline.prod_fwd)
+    assert with_noise.sub_fwd.sum() == 1.0
+    assert with_noise.prod_fwd.sum() == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Configurable flank width
+# ---------------------------------------------------------------------------
+
+
+def compute_w(seqs, flank_length, **kwargs):
+    """Classify a hand-built alignment and compute flank spectra at a width."""
+    cls = classify_alignment(make_alignment(seqs), progress=False, **kwargs)
+    return compute_flank_spectra(
+        cls,
+        sample_names=[f'seq{i}' for i in range(len(seqs))],
+        flank_length=flank_length,
+    )
+
+
+def test_width2_channel_count_and_labels():
+    """A 2 bp flank gives 256 channels with well-formed 6 bp motif labels."""
+    result = compute_w(['ACCAGT', 'ACCAGT'], flank_length=2)
+    assert result.flank_length == 2
+    assert result.sub_fwd.shape[0] == 256
+    assert len(result.channels_substrate) == 256
+    assert result.channels_substrate[0] == 'AACAAA'
+    assert result.channels_substrate[-1] == 'TTCATT'
+    # Centre is fixed at CA for every substrate label.
+    assert all(lbl[2:4] == 'CA' for lbl in result.channels_substrate)
+
+
+def test_width2_reverse_motif_folds_to_forward_channel():
+    """A reverse 2 bp motif folds onto the same channel as its forward revcomp.
+
+    Forward 'ACCAGT' (up flank 'AC', centre CA, down flank 'GT') and the physical
+    reverse motif 'ACTGGT' (its reverse complement, a reverse TpG substrate) must
+    land on the same substrate channel — the multi-base swap+complement+reversal
+    fold generalised from the 1 bp case.
+    """
+    fwd = compute_w(['ACCAGT', 'ACCAGT'], flank_length=2)
+    rev = compute_w(['ACTGGT', 'ACTGGT'], flank_length=2)
+    fwd_channel = int(fwd.sub_fwd[:, 0].argmax())
+    rev_channel = int(rev.sub_rev[:, 0].argmax())
+    assert fwd.sub_fwd.sum() == 2.0
+    assert rev.sub_rev.sum() == 2.0
+    assert fwd_channel == rev_channel
+    # And that shared channel is the 'ACCAGT' motif.
+    assert fwd.channels_substrate[fwd_channel] == 'ACCAGT'
+
+
+def test_width2_edge_flank_skipped():
+    """A CpA without two full upstream bases is dropped and tallied at width 2."""
+    # 'CCAGT': C at col0 has no room for two upstream bases -> skipped.
+    result = compute_w(['CCAGT', 'CCAGT'], flank_length=2)
+    assert result.sub_fwd.sum() == 0.0
+    assert result.n_skipped_flank['sub_fwd'] == 2
+
+
+def test_invalid_flank_length_raises():
+    """A flank length below 1 is rejected."""
+    import pytest
+
+    with pytest.raises(ValueError):
+        compute_w(['GCAT', 'GCAT'], flank_length=0)
+
+
+def test_width3_channel_count_and_reverse_fold():
+    """A 3 bp flank gives 4096 channels and reverse motifs still fold correctly.
+
+    Forward 'ACGCATGT' has up flank 'ACG' (outermost-first), centre CA, down flank
+    'TGT'; its physical reverse complement 'ACATGCGT' presents the same motif as a
+    reverse TpG substrate and must fold to the identical substrate channel.
+    """
+    fwd = compute_w(['ACGCATGT', 'ACGCATGT'], flank_length=3)
+    assert fwd.sub_fwd.shape[0] == 4096
+    assert len(fwd.channels_substrate) == 4096
+    fwd_channel = int(fwd.sub_fwd[:, 0].argmax())
+    assert fwd.channels_substrate[fwd_channel] == 'ACGCATGT'
+
+    rev = compute_w(['ACATGCGT', 'ACATGCGT'], flank_length=3)
+    assert fwd.sub_fwd.sum() == 2.0
+    assert rev.sub_rev.sum() == 2.0
+    assert int(rev.sub_rev[:, 0].argmax()) == fwd_channel
