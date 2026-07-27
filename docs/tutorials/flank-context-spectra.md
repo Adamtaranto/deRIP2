@@ -119,6 +119,58 @@ plot_flank_bihistograms_pooled(
 plot_flank_bihistograms(result, sample=0, outfile="seq0_flank.png")
 ```
 
+### Flank-interaction conversion heatmap
+
+The bihistogram treats the two flanks together as one 16-way channel. To see how the
+5′ and 3′ bases *interact*, plot the **product share** — `product / (substrate +
+product)`, the fraction of each target `CpA` converted to `TpA` — as a 2-D heatmap
+with the 5′ (upstream) base on the rows and the 3′ (downstream) base on the columns.
+`DeRIP.plot_flank_conversion_heatmap()` recomputes the spectra at the requested
+`flank_length` and draws the grid; at 1 bp (4×4) each cell is annotated with its
+percentage and site count `n`, and colour-only for wider flanks.
+
+```python
+for w in (1, 2, 3):
+    d.plot_flank_conversion_heatmap(
+        output_file=f"sahana_flank_heatmap_{w}bp.png",
+        flank_length=w,
+        title=f"Sahana: RIP conversion by {w} bp flank context",
+    )
+```
+
+At **1 bp** the interaction is stark: a 3′ cytosine is protective almost regardless
+of the 5′ base (the `C` column is the coolest — `GCAC` only 13 % converted), while
+every other 3′ base exceeds ~60 %.
+
+![1 bp flank conversion heatmap](../img/sahana_flank_heatmap_1bp.png)
+
+Widening the flank to **2 bp** (16×16, 5′/3′ dinucleotides) and **3 bp** (64×64, 5′/3′
+trinucleotides) resolves the context further. The nearest-base bands persist — the
+signal is carried by the two bases immediately flanking the target — but the counts
+per motif thin quickly (only about half of the 4,096 three-flank motifs occur in the
+family, so many 3 bp cells are blank). Read a low- or high-conversion cell together
+with its `n`: extreme rates on a handful of sites are not reliable.
+
+![2 bp flank conversion heatmap](../img/sahana_flank_heatmap_2bp.png)
+
+![3 bp flank conversion heatmap](../img/sahana_flank_heatmap_3bp.png)
+
+For finer control (single sequence, flank ordering, no title) call the plotting
+function directly on a pre-computed result:
+
+```python
+from derip2.plotting.flank_spectra import plot_flank_conversion_heatmap
+
+result2 = d.calculate_flank_spectra(flank_length=2)
+plot_flank_conversion_heatmap(
+    result2, sample=None, flank_sort="proximal", outfile="heatmap_2bp.png"
+)
+```
+
+To pool this analysis across **many independent alignments** — different families or
+species — with sample-size-weighted rates and confidence intervals, see
+[Combined spectra across many alignments](combined-spectra.md).
+
 ## Ranking motifs by RIP conversion
 
 The biologically interesting quantity is the **product share** of each flank

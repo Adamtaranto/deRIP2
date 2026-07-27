@@ -763,6 +763,10 @@ def test_report_flank_conversion_heatmap_present(mintest_derip, tmp_path):
     # bihistogram 's0flank-' / 'ovwflank-' prefixes).
     assert 's0flankheat-' in html
     assert 'ovwflankheat-' in html
+    # The overview additionally carries a fixed 2 bp interaction heatmap (its own
+    # id prefix) beside the primary 1 bp heatmap, with its own caption.
+    assert 'ovwflankheat2-' in html
+    assert '16&times;16' in html
     # Its explanatory caption is present.
     assert 'interaction heatmap' in html
     # The 1 bp bihistogram is still shown alongside the heatmap.
@@ -782,6 +786,9 @@ def test_report_wide_flank_omits_bihistogram(mintest_derip, tmp_path):
     assert 'ovwflankheat-' in html
     assert 's0flank-' not in html
     assert 'ovwflank-' not in html
+    # The primary heatmap is already 2 bp, so no separate 2 bp overview heatmap is
+    # added (it would duplicate the map above).
+    assert 'ovwflankheat2-' not in html
     # Embedded-SVG ids stay globally unique.
     ids = re.findall(r'id="([^"]+)"', html)
     assert len(ids) == len(set(ids))

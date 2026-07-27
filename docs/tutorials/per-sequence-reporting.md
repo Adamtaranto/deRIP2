@@ -130,6 +130,15 @@ the bihistogram reduced to just the combined-strand panel (the per-sequence page
 keep the forward and reverse panels). With very large pooled counts almost every
 context is flagged, so read the effect sizes rather than the marks.
 
+The overview also renders the pooled conversion as **flank-interaction heatmaps** —
+the percentage of each flank motif converted from substrate (CpA) to product (TpA),
+laid out by the base(s) 5′ (rows) and 3′ (columns) of the target. Both a **1 bp**
+(4×4) map and a finer **2 bp** (16×16) map are shown, so you can see whether a
+single-base preference (e.g. a protective 3′ cytosine) is carried by the immediately
+flanking base or extends further out. See the
+[Flank-context Spectra (API)](flank-context-spectra.md#flank-interaction-conversion-heatmap)
+tutorial for the same heatmaps from Python at 1/2/3 bp.
+
 To drive this analysis from Python — extracting the spectra, ranking motifs by
 conversion, and comparing two spectra sets — see the
 [Flank-context Spectra (API)](flank-context-spectra.md) tutorial.

@@ -1851,7 +1851,7 @@ def _overview_flank_svg(flank):
     return svg
 
 
-def _overview_flank_heatmap_svg(flank):
+def _overview_flank_heatmap_svg(flank, id_prefix='ovwflankheat-'):
     """
     Render the pooled flank-context RIP-conversion heatmap for the overview page.
 
@@ -1859,18 +1859,23 @@ def _overview_flank_heatmap_svg(flank):
     ----------
     flank : derip2.stats.flank_spectra.FlankSpectraResult
         The computed flank spectra (pooled across all sequences here).
+    id_prefix : str, optional
+        Namespace prefix for the SVG's internal ids (default ``'ovwflankheat-'``).
+        The overview draws two heatmaps (the primary-width map and a fixed 2 bp
+        map), so each must use a distinct prefix to avoid id collisions when both
+        SVGs are inlined into the same document.
 
     Returns
     -------
     str
-        The inline ``<svg>`` fragment (id-prefixed ``ovwflankheat-``).
+        The inline ``<svg>`` fragment, id-prefixed with ``id_prefix``.
     """
     import matplotlib.pyplot as plt
 
     from derip2.plotting.flank_spectra import plot_flank_conversion_heatmap
 
     fig = plot_flank_conversion_heatmap(flank, sample=None, bare=True)
-    svg = _figure_to_svg(fig, 'ovwflankheat-', tight=True)
+    svg = _figure_to_svg(fig, id_prefix, tight=True)
     plt.close(fig)
     return svg
 
@@ -1957,6 +1962,34 @@ def _overview_html(
         from derip2.stats.flank_spectra import compare_flank_spectra_pooled
 
         flank_heat_svg = _overview_flank_heatmap_svg(flank)
+
+        # Always surface the finer 2 bp interaction map on the overview, in
+        # addition to the primary-width heatmap above. Computed via the standalone
+        # function so the DeRIP object's cached (primary-width) flank result, reused
+        # by every per-sequence page, is left untouched. Skipped when the primary
+        # width is already 2 bp (the heatmap above is then the same map).
+        flank2_heat_html = ''
+        if flank.flank_length != 2:
+            from derip2.stats.flank_spectra import compute_flank_spectra
+
+            ids = [record.id for record in derip.alignment]
+            flank2 = compute_flank_spectra(
+                derip.column_classes, sample_names=ids, flank_length=2
+            )
+            flank2_heat_svg = _overview_flank_heatmap_svg(
+                flank2, id_prefix='ovwflankheat2-'
+            )
+            flank2_heat_html = (
+                '<p class="desc">The same conversion resolved to the <b>2 bp</b> '
+                'flank context (16&times;16 grid: the two bases 5&prime; of the '
+                'target on the rows, the two bases 3&prime; on the columns, each '
+                'ordered nearest-base first). This shows whether the single-base '
+                'preference above is carried by the base immediately flanking the '
+                'RIP target or extends to the second base out; blank cells are '
+                'motifs absent from the alignment.</p>'
+                f'<div class="spectrum-scroll">{flank2_heat_svg}</div>'
+            )
+
         pooled_cmp = compare_flank_spectra_pooled(flank)
         pooled = flank.pooled()
         flank_data_table = _flank_data_table_html(
@@ -1993,6 +2026,7 @@ def _overview_html(
             'product (TpA), by the base(s) immediately 5&prime; (rows) and '
             '3&prime; (columns) of the RIP target CpA.</p>'
             f'<div class="spectrum-scroll">{flank_heat_svg}</div>'
+            f'{flank2_heat_html}'
             f'{_flank_skipped_note(flank)}'
             f'{flank_data_table}'
             f'{_flank_comparison_table_html(pooled_cmp)}'

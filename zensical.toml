@@ -21,6 +21,7 @@ nav = [
   { "RIP Masking & Phylogeny" = "tutorials/rip-masking-phylogeny.md" },
   { "Mutation Spectra" = "tutorials/mutation-spectra.md" },
   { "Flank-context Spectra (API)" = "tutorials/flank-context-spectra.md" },
+  { "Combined Spectra (API)" = "tutorials/combined-spectra.md" },
   { "Per-sequence Reporting" = "tutorials/per-sequence-reporting.md" },
   { "API Docs" = "api-docs/deRIP_API.md" },
   { "CLI Docs" = "cli-docs/deRIP_cmd_line.md" },
