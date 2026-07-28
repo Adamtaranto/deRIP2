@@ -129,6 +129,37 @@ with the 5′ (upstream) base on the rows and the 3′ (downstream) base on the 
 `flank_length` and draws the grid; at 1 bp (4×4) each cell is annotated with its
 percentage and site count `n`, and colour-only for wider flanks.
 
+Colour defaults to `viridis`: **dark purple** where the motif has kept its
+substrate, through teal and green, to **bright yellow** where it has been fully
+converted.
+Note this is a *magnitude* scale — unlike the bihistograms, where blue and orange
+name the substrate and product states, hue here only tracks how far the conversion
+has gone. Motifs seen zero times are drawn in a neutral **grey**, so a blank cell is
+never mistaken for a low conversion rate (on the 3 bp grid roughly half the cells are
+blank).
+
+Pass `cmap` to restyle the scale. It accepts any registered matplotlib colormap name
+(append `_r` to reverse it), a `Colormap` object, or a list of colours to interpolate
+between, low value first:
+
+```python
+d.plot_flank_conversion_heatmap(output_file="heat_magma.png", cmap="magma_r")
+d.plot_flank_conversion_heatmap(output_file="heat_custom.png",
+                                cmap=["#ffffff", "#2a78d6", "#0b2b52"])
+```
+
+!!! note "Colourblind safety and greyscale"
+    `viridis` is designed to be colourblind-safe, and it holds up under simulation:
+    no two values 20 percentage points or more apart collapse together for
+    deuteranope, protanope or tritanope viewers (worst simulated sRGB distance
+    ~0.17).
+
+    Being perceptually uniform, its lightness also falls *monotonically* across the
+    whole ramp, so equal steps in percentage are equal steps in apparent colour and
+    the cells stay correctly ordered in a **greyscale** reproduction.
+    `cmap="cividis"` (~0.22) and `cmap="magma_r"` (~0.21) share both properties with
+    a slightly wider colourblind margin.
+
 ```python
 for w in (1, 2, 3):
     d.plot_flank_conversion_heatmap(
@@ -139,7 +170,7 @@ for w in (1, 2, 3):
 ```
 
 At **1 bp** the interaction is stark: a 3′ cytosine is protective almost regardless
-of the 5′ base (the `C` column is the coolest — `GCAC` only 13 % converted), while
+of the 5′ base (the `C` column stays darkest — `GCAC` only 13 % converted), while
 every other 3′ base exceeds ~60 %.
 
 ![1 bp flank conversion heatmap](../img/sahana_flank_heatmap_1bp.png)

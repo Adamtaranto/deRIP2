@@ -29,7 +29,13 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 import numpy as np
 
-from derip2.plotting.persequence import PRODUCT_COLOR, SUBSTRATE_COLOR
+from derip2.plotting.persequence import (
+    CONVERSION_CMAP,
+    PRODUCT_COLOR,
+    SUBSTRATE_COLOR,
+    resolve_cmap,
+    text_color_on,
+)
 from derip2.plotting.spectra import (
     CONTEXT_TICK_SIZE,
     _save,
@@ -39,6 +45,7 @@ from derip2.plotting.strandbias import (
     ANNOTATION_SIZE,
     AXIS_LABEL_SIZE,
     FONT_STACK,
+    INK_MUTED,
     INK_PRIMARY,
     INK_SECONDARY,
     LEGEND_SIZE,
@@ -516,9 +523,12 @@ def plot_flank_bihistograms_pooled(
     return fig
 
 
-# Colormap for the conversion heatmap: a perceptually-uniform sequential map over
-# 0-100 % conversion (colourblind-safe; dark = protected, bright = converted).
-_HEATMAP_CMAP = 'viridis'
+# Default colormap for the conversion heatmap over 0-100 % conversion: viridis,
+# so dark purple = substrate intact and bright yellow = fully converted.
+# Defined in :mod:`derip2.plotting.persequence`; aliased here as the historical
+# name so external callers (the experiment figure scripts) have a single place to
+# import from. Per-call overrides go through the ``cmap`` argument instead.
+_HEATMAP_CMAP = CONVERSION_CMAP
 
 
 def _combined_state_vectors(result, sample: Optional[int]):
@@ -576,6 +586,7 @@ def plot_flank_conversion_heatmap(
     outfile: Optional[str] = None,
     *,
     flank_sort: str = 'proximal',
+    cmap=None,
     title: Optional[str] = None,
     dpi: int = 300,
     bare: bool = False,
@@ -591,6 +602,13 @@ def plot_flank_conversion_heatmap(
     ``4 ** flank_length`` on a side (4x4 for a 1 bp flank, 16x16 for 2 bp). Cell
     counts are annotated only for the 4x4 grid; wider grids rely on colour and the
     dinucleotide axis labels alone.
+
+    Colour defaults to ``viridis``: dark purple where the motif has kept its
+    substrate, through teal and green, to bright yellow where it has been fully
+    converted. This encodes magnitude only — unlike the bihistograms, hue here
+    does not name the substrate or product state. Cells for motifs seen zero
+    times are drawn in a neutral grey, so a blank is never mistaken for a low
+    conversion rate. Pass ``cmap`` to use a different palette.
 
     Parameters
     ----------
@@ -610,6 +628,15 @@ def plot_flank_conversion_heatmap(
         instead sorts both axes by the plain motif string (the upstream axis then
         sorts by its distal base first). For a 1 bp flank the two modes are
         identical.
+    cmap : str or matplotlib.colors.Colormap or sequence, optional
+        Palette for the 0-100 % scale. Accepts a registered matplotlib colormap
+        name (append ``_r`` to reverse it, e.g. ``'magma_r'``, ``'RdYlBu_r'``), a
+        :class:`~matplotlib.colors.Colormap`, or a list of two or more colours to
+        interpolate between, low value first. Defaults to the package ramp.
+
+        The default ``viridis`` is both colourblind-safe and monotone in
+        lightness, so it also reads in greyscale. See
+        :func:`derip2.plotting.persequence.resolve_cmap`.
     title : str or None, optional
         Figure heading (omitted when ``bare``).
     dpi : int, optional
@@ -627,12 +654,16 @@ def plot_flank_conversion_heatmap(
     IndexError
         If ``sample`` is out of range for the available samples.
     ValueError
-        If ``flank_sort`` is not ``'proximal'`` or ``'alphabetical'``.
+        If ``flank_sort`` is not ``'proximal'`` or ``'alphabetical'``, or if
+        ``cmap`` cannot be resolved to a colormap.
     """
     if flank_sort not in ('proximal', 'alphabetical'):
         raise ValueError(
             f"flank_sort must be 'proximal' or 'alphabetical', got {flank_sort!r}"
         )
+    # Resolve before any plotting, so a bad palette fails immediately rather than
+    # part-way through building the figure.
+    colormap = resolve_cmap(cmap)
     n_samples = len(result.sample_names)
     if sample is not None and not -n_samples <= sample < n_samples:
         raise IndexError(f'sample {sample} out of range for {n_samples} sample(s)')
@@ -667,7 +698,7 @@ def plot_flank_conversion_heatmap(
         side = grid * 0.16
     fig, ax = plt.subplots(figsize=(side + 1.1, side), facecolor=SURFACE)
     ax.set_facecolor(SURFACE)
-    im = ax.imshow(pct_grid, cmap=_HEATMAP_CMAP, vmin=0, vmax=100, aspect='equal')
+    im = ax.imshow(pct_grid, cmap=colormap, vmin=0, vmax=100, aspect='equal')
 
     if grid <= 4:
         tick_size = CONTEXT_TICK_SIZE
@@ -694,15 +725,15 @@ def plot_flank_conversion_heatmap(
 
     # Per-cell annotation only for the compact 4x4 (1 bp flank) grid.
     if grid <= 4:
-        cmap = plt.get_cmap(_HEATMAP_CMAP)
         for i in range(grid):
             for j in range(grid):
                 val = pct_grid[i, j]
                 if np.isnan(val):
                     continue
-                r, g, b, _ = cmap(val / 100.0)
-                lum = 0.299 * r + 0.587 * g + 0.114 * b
-                tc = 'white' if lum < 0.55 else 'black'
+                # Contrast the annotation against the cell it sits on: the ramp
+                # spans very light (0 %) to dark (100 %), so neither ink works
+                # everywhere.
+                tc = text_color_on(colormap(val / 100.0))
                 ax.text(
                     j,
                     i - 0.12,
@@ -725,10 +756,12 @@ def plot_flank_conversion_heatmap(
                     family=FONT_STACK,
                 )
 
-    # Thin surface-coloured gridlines between cells.
+    # Thin gridlines between cells. The ramp spans near-white to near-black, so
+    # neither a light nor a dark rule is visible everywhere; a mid grey at low
+    # opacity is the one ink that reads against both ends.
     ax.set_xticks(np.arange(-0.5, grid, 1), minor=True)
     ax.set_yticks(np.arange(-0.5, grid, 1), minor=True)
-    ax.grid(which='minor', color=SURFACE, linewidth=0.8)
+    ax.grid(which='minor', color=INK_MUTED, linewidth=0.6, alpha=0.55)
     ax.tick_params(which='minor', length=0)
     for spine in ax.spines.values():
         spine.set_visible(False)

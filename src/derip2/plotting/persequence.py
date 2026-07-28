@@ -26,6 +26,7 @@ from typing import Optional
 import matplotlib
 
 matplotlib.use('Agg')  # non-interactive backend for headless report generation
+from matplotlib.colors import Colormap, LinearSegmentedColormap, to_rgba
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -69,6 +70,132 @@ NONRIP_COLOR = '#a05fb4'  # violet: deamination outside RIP dinucleotide context
 # Opacity of subject bases that match the deRIP'd reference; mismatches are 1.0.
 MATCH_ALPHA = 0.3
 
+# Default ramp for "% converted to RIP product" surfaces (the flank-context
+# conversion heatmap): matplotlib's viridis in its standard orientation, running
+# dark purple where the motif has kept its substrate, through teal and green, to
+# bright yellow where it has been fully converted. Fully-converted motifs are
+# therefore the brightest cells on the grid.
+#
+# This is a magnitude scale, not a state scale: unlike the bihistograms, hue here
+# does not name substrate or product, it just tracks how far the conversion has
+# gone.
+#
+# Being sequential rather than diverging, it has both properties the earlier
+# defaults could only manage one at a time: viridis is perceptually uniform, so
+# CIE L* climbs monotonically from 15 to 91 and the cells stay ordered in
+# greyscale, *and* it is colourblind-safe -- under simulation the worst pair of
+# values at least 20 percentage points apart still differs by an sRGB distance
+# of ~0.17.
+CONVERSION_CMAP_NAME = 'viridis'
+
+# Colour for no-data cells (a flank motif seen zero times), so they read as
+# absent rather than as a legitimate 0 %. A neutral grey, deliberately not the
+# figure surface: a ramp with a pale end (viridis ends at #fde725, and the
+# YlOrBr and magma_r defaults tried before it *began* at near-white) leaves a
+# surface-coloured blank indistinguishable from a real cell at that end -- and on
+# the 3 bp grid roughly half the cells are blank. Grey sits off this ramp by
+# ~0.60 in sRGB at its closest.
+#
+# If the default is ever changed to a ramp that itself passes through a light
+# grey (matplotlib's coolwarm, say, whose midpoint is #dddcdc), this needs
+# revisiting; ``test_no_data_colour_is_distinct_from_the_whole_ramp`` will fail
+# if it is not.
+NO_DATA_COLOR = '#cfcfcf'
+
+CONVERSION_CMAP = plt.get_cmap(CONVERSION_CMAP_NAME).with_extremes(bad=NO_DATA_COLOR)
+
+# Relative-luminance crossover for choosing black vs white text drawn *on* the
+# ramp. Below this, white text has the better WCAG contrast ratio; above it,
+# black does. Derived from the standard contrast formula, where white and black
+# tie at (1.05 / (Y + 0.05)) == ((Y + 0.05) / 0.05).
+TEXT_ON_COLOR_LUMINANCE = 0.179
+
+
+def resolve_cmap(cmap=None):
+    """
+    Coerce a user-supplied colormap specification to a matplotlib colormap.
+
+    Lets callers restyle the conversion heatmap without importing matplotlib:
+    a name selects any registered colormap (append ``_r`` to reverse it), a list
+    of colours builds a custom ramp, and a colormap object is taken as given. In
+    every case the "no data" colour is set to :data:`NO_DATA_COLOR`, so empty
+    cells stay consistent with the rest of the report whatever palette is in
+    use.
+
+    Parameters
+    ----------
+    cmap : str or matplotlib.colors.Colormap or sequence, optional
+        One of:
+
+        - ``None`` (default) -- the package default,
+          :data:`CONVERSION_CMAP`.
+        - a registered matplotlib colormap name, e.g. ``'coolwarm'``,
+          ``'magma_r'``, ``'viridis'``.
+        - a :class:`~matplotlib.colors.Colormap` instance.
+        - a sequence of two or more matplotlib colours (hex strings, named
+          colours or RGB(A) tuples), interpolated into a continuous ramp in the
+          order given, low value first.
+
+    Returns
+    -------
+    matplotlib.colors.Colormap
+        The resolved colormap, with its "bad" (no-data) colour set.
+
+    Raises
+    ------
+    ValueError
+        If ``cmap`` names a colormap matplotlib does not know, is a sequence of
+        fewer than two colours, or contains a value that is not a valid colour.
+    TypeError
+        If ``cmap`` is not one of the accepted types.
+
+    Examples
+    --------
+    >>> resolve_cmap('magma_r').name
+    'magma_r'
+    >>> resolve_cmap(['#ffffff', '#2a78d6']).name
+    'derip2_custom'
+    """
+    if cmap is None:
+        return CONVERSION_CMAP
+    if isinstance(cmap, Colormap):
+        return cmap.with_extremes(bad=NO_DATA_COLOR)
+    if isinstance(cmap, str):
+        try:
+            resolved = plt.get_cmap(cmap)
+        except (ValueError, KeyError) as exc:
+            raise ValueError(
+                f'Unknown matplotlib colormap {cmap!r}. Pass a registered name '
+                "(append '_r' to reverse it), a Colormap, or a list of colours."
+            ) from exc
+        return resolved.with_extremes(bad=NO_DATA_COLOR)
+    # Anything else is treated as a sequence of colours to interpolate between.
+    try:
+        colours = list(cmap)
+    except TypeError as exc:
+        raise TypeError(
+            f'cmap must be a colormap name, a Colormap or a sequence of colours, '
+            f'not {type(cmap).__name__}'
+        ) from exc
+    if len(colours) < 2:
+        raise ValueError(
+            f'A custom colour list needs at least two colours, got {len(colours)}'
+        )
+    # Validate each colour up front. Letting from_list fail instead surfaces a
+    # matplotlib internal ("too many values to unpack") that says nothing about
+    # which entry was wrong.
+    for position, colour in enumerate(colours):
+        try:
+            to_rgba(colour)
+        except ValueError as exc:
+            raise ValueError(
+                f'Invalid colour at position {position} of the custom cmap list: '
+                f'{colour!r}'
+            ) from exc
+    return LinearSegmentedColormap.from_list('derip2_custom', colours).with_extremes(
+        bad=NO_DATA_COLOR
+    )
+
 
 def _hex_to_rgb(color: str):
     """
@@ -86,6 +213,33 @@ def _hex_to_rgb(color: str):
     """
     color = color.lstrip('#')
     return tuple(int(color[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+
+def text_color_on(rgb):
+    """
+    Pick black or white text for maximum contrast against a background colour.
+
+    Uses the WCAG relative luminance (a linearised, weighted sum of the channels)
+    rather than the gamma-encoded approximation, so the choice matches what the
+    contrast standard would score.
+
+    Parameters
+    ----------
+    rgb : sequence of float
+        Background colour as ``(r, g, b)`` (or ``(r, g, b, a)``; alpha is ignored),
+        each channel in ``[0, 1]``.
+
+    Returns
+    -------
+    str
+        ``'white'`` on dark backgrounds, ``'black'`` on light ones.
+    """
+    channels = np.asarray(rgb, dtype=float)[:3]
+    linear = np.where(
+        channels <= 0.04045, channels / 12.92, ((channels + 0.055) / 1.055) ** 2.4
+    )
+    luminance = float(linear @ np.array([0.2126, 0.7152, 0.0722]))
+    return 'white' if luminance < TEXT_ON_COLOR_LUMINANCE else 'black'
 
 
 def _gene_exon_path(x0, x1, y0, y1, strand, rx, ry, arrow_len):

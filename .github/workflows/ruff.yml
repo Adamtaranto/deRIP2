@@ -17,14 +17,14 @@ jobs:
         with:
           src: "./src ./tests"
           args: "format"
+      # Import sorting is handled by ruff's I001 rule (configured under
+      # [tool.ruff.lint.isort] in pyproject.toml), so there is no separate isort
+      # step. Keeping one here would reintroduce the split that let imports pass
+      # pre-commit locally and still be rewritten on push.
       - uses: astral-sh/ruff-action@v3
         with:
           src: "./src ./tests"
           args: "check --fix"
-      - uses: isort/isort-action@v1
-        with:
-          configuration: "--settings-path=./pyproject.toml"
-          paths: "./src ./tests"
       - uses: stefanzweifel/git-auto-commit-action@v7
         id: auto-commit-action
         with:
