@@ -8,7 +8,7 @@ count, the navigation script, and — critically — that no two figures share a
 element ID (matplotlib reuses glyph IDs, which would corrupt inline SVG).
 """
 
-from html import unescape
+from html import escape, unescape
 import logging
 import re
 
@@ -757,6 +757,34 @@ def test_overview_stats_table(mintest_derip, tmp_path):
     assert '&ndash;' in consensus  # not-applicable RIP/RSI cells
     cri, _pi, _si = mintest_derip.calculate_cri(mintest_derip.get_consensus_string())
     assert f'{cri:.3f}' in consensus
+
+
+def test_stat_sections_are_in_the_intended_order(mintest_derip):
+    """Stat groups run RIP events, CRI, Composition, then Strand bias.
+
+    Headline counts first, the composite index next, then composition, with the
+    wide strand-bias breakdown last. Asserted against the rendered header rather
+    than only the constant, so a change to how the table is built cannot quietly
+    reorder the columns a reader sees.
+    """
+    from derip2.persequence_report import _STAT_SECTIONS, _overview_stats_table_html
+
+    expected = [
+        'RIP events',
+        'Composite RIP Index (CRI)',
+        'Composition',
+        'Strand bias (RSI)',
+    ]
+    assert [title for title, _desc, _cols in _STAT_SECTIONS] == expected
+
+    # The group header cells appear in the same order in the emitted table.
+    table = _overview_stats_table_html(mintest_derip.summarize_stats(), mintest_derip)
+    rendered = re.findall(r'<th class="grp" colspan="\d+">([^<]+)</th>', table)
+    assert rendered == [escape(title) for title in expected]
+
+    # Group spans still match their column counts, so the two header rows line up.
+    spans = [int(n) for n in re.findall(r'<th class="grp" colspan="(\d+)">', table)]
+    assert spans == [len(cols) for _t, _d, cols in _STAT_SECTIONS]
 
 
 def test_overview_stats_table_green_flags(mintest_derip):

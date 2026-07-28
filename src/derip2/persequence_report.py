@@ -45,6 +45,13 @@ logger = logging.getLogger(__name__)
 
 # Grouped, transposed statistics layout: (section title, description, [(column,
 # row label), ...]). Each group becomes a small card with a stat/value table.
+#
+# The order here drives both views: the per-sequence stat cards
+# (:func:`_stats_sections_html`) and the overview summary table
+# (:func:`_overview_stats_table_html`). It runs from the headline counts to the
+# most specialised measure -- event counts, then the composite index, then
+# composition, and finally the strand-bias breakdown, which is the widest group
+# and the one a reader is least likely to want first.
 _STAT_SECTIONS = (
     (
         'RIP events',
@@ -57,6 +64,22 @@ _STAT_SECTIONS = (
             ('RIP_rev', 'Reverse RIP events'),
             ('non_RIP', 'Non-RIP deaminations'),
         ),
+    ),
+    (
+        'Composite RIP Index (CRI)',
+        'The classical CRI and its components: the product index (PI, TpA/ApT) '
+        'minus the substrate index (SI, (CpA+TpG)/(ApC+GpT)). A positive CRI is '
+        'the hallmark of RIP.',
+        (
+            ('CRI', 'CRI'),
+            ('PI', 'Product index (PI)'),
+            ('SI', 'Substrate index (SI)'),
+        ),
+    ),
+    (
+        'Composition',
+        'Base composition of this sequence.',
+        (('GC', 'GC content'),),
     ),
     (
         'Strand bias (RSI)',
@@ -75,22 +98,6 @@ _STAT_SECTIONS = (
             ('rev_substrate', 'Reverse substrate'),
             ('n_ambiguous', 'Ambiguous TpA'),
         ),
-    ),
-    (
-        'Composite RIP Index (CRI)',
-        'The classical CRI and its components: the product index (PI, TpA/ApT) '
-        'minus the substrate index (SI, (CpA+TpG)/(ApC+GpT)). A positive CRI is '
-        'the hallmark of RIP.',
-        (
-            ('CRI', 'CRI'),
-            ('PI', 'Product index (PI)'),
-            ('SI', 'Substrate index (SI)'),
-        ),
-    ),
-    (
-        'Composition',
-        'Base composition of this sequence.',
-        (('GC', 'GC content'),),
     ),
 )
 
