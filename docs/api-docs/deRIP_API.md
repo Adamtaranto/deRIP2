@@ -20,6 +20,11 @@
         - write_flank_spectra_matrix
         - write_flank_spectra_comparisons
         - plot_flank_spectra
+        - plot_flank_conversion_heatmap
+        - calculate_max_rip
+        - get_max_rip_string
+        - get_max_rip_positions
+        - write_max_rip
         - write_alignment
         - write_consensus
         - write_stats
@@ -77,6 +82,8 @@
         - sequence_row_strip
         - rip_completion_bar
         - gc_content_bar
+        - resolve_cmap
+        - text_color_on
 
 ::: derip2.persequence_report
     options:
@@ -154,6 +161,17 @@
       members:
         - plot_flank_bihistograms
         - plot_flank_bihistograms_pooled
+        - plot_flank_conversion_heatmap
+
+# Maximum RIP sequences
+
+::: derip2.maxrip
+    options:
+      members:
+        - MaxRIPResult
+        - compute_max_rip
+        - write_max_rip_fasta
+        - max_rip_multifasta
 
 # Phylogenetic spectra (ancestral state reconstruction)
 
