@@ -135,7 +135,11 @@ the percentage of each flank motif converted from substrate (CpA) to product (Tp
 laid out by the base(s) 5′ (rows) and 3′ (columns) of the target. Both a **1 bp**
 (4×4) map and a finer **2 bp** (16×16) map are shown, so you can see whether a
 single-base preference (e.g. a protective 3′ cytosine) is carried by the immediately
-flanking base or extends further out. See the
+flanking base or extends further out. Cells run **dark purple** where the motif
+still holds its substrate, through teal and green, to **bright yellow** where it has
+been fully converted (`viridis`), with motifs seen zero times in grey; this is a
+magnitude scale, so unlike the bihistograms the hue does not name the substrate or
+product state. See the
 [Flank-context Spectra (API)](flank-context-spectra.md#flank-interaction-conversion-heatmap)
 tutorial for the same heatmaps from Python at 1/2/3 bp.
 
@@ -173,8 +177,73 @@ derip2 -i tests/data/sahana.fasta.gz \
   -d results
 ```
 
-The report then keeps the `N` sequences with the strongest strand bias (largest
-`|RSI|`) and notes that it was truncated.
+The report then keeps the **first `N` sequences in alignment order** and notes that
+it was truncated. To report a different subset, reorder the alignment first — e.g.
+add `--sort-by-rsi` to get the `N` most strand-biased sequences:
+
+```bash
+derip2 -i tests/data/sahana.fasta.gz \
+  --per-seq-report \
+  --sort-by-rsi \
+  --max-report-seqs 20 \
+  -d results
+```
+
+## Sequence popups and downloads
+
+The overview page carries a toolbar of download links and view buttons, and the
+deRIP'd consensus row in the alignment figure is itself clickable. Both open a
+popup showing the sequence as FASTA, with a **Copy** button.
+
+Clicking **View deRIP FASTA** (or the consensus row) shows the corrected
+sequence with every **RIP-restored position in bold green** — the same positions
+the CLI prints in green when it logs the final corrected sequence.
+
+**View maximum RIP sequences** opens the counterfactual complement: instead of
+undoing RIP, run it forward to exhaustion. Three variants are offered as tabs,
+in increasing order of aggressiveness, with **converted positions in bold red**:
+
+| Tab | Rule |
+| --- | --- |
+| *Observed sites only* | Convert substrate sites only in alignment columns where RIP was observed in at least one input sequence. The conservative reading: nothing is mutated at a site the family gives no evidence for. |
+| *All substrate sites* | Convert every RIP substrate site the deRIP'd sequence still carries (`CpA`→`TpA`, `TpG`→`TpA`), regardless of alignment evidence. |
+| *All sites + non-RIP* | As above, plus deamination at columns where the alignment shows C→T change *outside* RIP dinucleotide context. |
+
+Substrate context is read from the deRIP'd consensus itself, not from any single
+input row: the consensus is assembled from conserved columns, RIP corrections
+and a reference fill, so it can carry a `CpA` that exists in no input sequence.
+Since these variants are statements about the reconstructed ancestor, that site
+counts.
+
+!!! note "The third variant can cascade"
+    Its extra sites are context-free, so a `C` converted to `T` immediately 5′
+    of a `G` creates a `TpG` that was not a substrate beforehand. Conversion
+    therefore repeats until nothing changes, so the sequence really is maximal.
+
+A `⭳ Maximum RIP sequences (FASTA)` link downloads all three as a multi-FASTA.
+Copied and downloaded text is always plain and unformatted — the bold colouring
+is display-only.
+
+The same sequences are available from Python:
+
+```python
+from derip2.derip import DeRIP
+
+d = DeRIP("tests/data/mintest.fa")
+d.calculate_rip()
+
+for variant in ("observed", "all", "all_plus_nonrip"):
+    result = d.calculate_max_rip(variant)
+    print(variant, result.n_converted, result.seq)
+
+# Just the sequence, or the positions that changed
+d.get_max_rip_string("all")
+d.get_max_rip_positions("all")            # offsets into the ungapped sequence
+d.get_max_rip_positions("all", gapped=True)  # alignment column indices
+
+# All three as a multi-FASTA
+d.write_max_rip("maxRIP.fasta")
+```
 
 ## Gene annotation and RIP effect reporting
 
