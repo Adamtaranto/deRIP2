@@ -8,6 +8,7 @@ count, the navigation script, and — critically — that no two figures share a
 element ID (matplotlib reuses glyph IDs, which would corrupt inline SVG).
 """
 
+from html import escape, unescape
 import logging
 import re
 
@@ -270,6 +271,65 @@ def test_report_truncation(mintest_derip, tmp_path):
     # Two sequence panels plus the overview page.
     assert html.count('class="seq-panel"') == 3
     assert 'note' in html
+
+
+def test_truncation_keeps_the_first_sequences_in_alignment_order():
+    """``max_seqs`` keeps a prefix of the alignment, not a ranked subset.
+
+    A prefix is predictable: the reader can tell which sequences they are
+    getting without cross-referencing a statistic, and raising the cap only adds
+    panels rather than swapping them.
+    """
+    import pandas as pd
+
+    from derip2.persequence_report import _select_rows
+
+    # RSI deliberately puts the most strand-biased sequences last, so a ranked
+    # selection would return a different set.
+    df = pd.DataFrame({'RSI': [0.0, 0.1, 0.2, 0.9, -0.8]})
+
+    indices, truncated = _select_rows(df, 3)
+    assert indices == [0, 1, 2]
+    assert truncated is True
+
+    # Raising the cap extends the same prefix rather than replacing it.
+    wider, _ = _select_rows(df, 4)
+    assert wider[: len(indices)] == indices
+
+
+def test_no_truncation_when_the_cap_is_not_binding():
+    """Every row is rendered when max_seqs is None or at least the row count."""
+    import pandas as pd
+
+    from derip2.persequence_report import _select_rows
+
+    df = pd.DataFrame({'RSI': [0.0, 0.1, 0.2]})
+    for cap in (None, 3, 10):
+        indices, truncated = _select_rows(df, cap)
+        assert indices == [0, 1, 2]
+        assert truncated is False
+
+
+def test_truncation_always_keeps_at_least_one_sequence():
+    """A zero or negative cap still yields one panel rather than an empty deck."""
+    import pandas as pd
+
+    from derip2.persequence_report import _select_rows
+
+    df = pd.DataFrame({'RSI': [0.0, 0.1, 0.2]})
+    for cap in (0, -5):
+        indices, truncated = _select_rows(df, cap)
+        assert indices == [0]
+        assert truncated is True
+
+
+def test_truncation_note_names_the_prefix(mintest_derip, tmp_path):
+    """The note tells the reader they are seeing the first N sequences."""
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out), max_seqs=2)
+    html = out.read_text()
+    n_total = len(mintest_derip.alignment)
+    assert f'Showing the first 2 sequences of {n_total} total' in html
 
 
 def test_report_section_headings_and_scroll(mintest_derip, tmp_path):
@@ -538,15 +598,113 @@ def test_overview_fasta_downloads_and_popup(mintest_derip, gff_path, tmp_path):
     for cds_id in ('cds1', 'cds2', 'cds3a'):
         assert f'data-fasta="{cds_id}"' in html
 
-    # Embedded JSON payload: CDS entries carry nucleotide + translation + table;
-    # the deRIP entry has no translation.
+    # Embedded JSON payload: every entry is a list of tabs. A CDS with a
+    # translation gets two (nucleotide + translation, the latter naming the
+    # genetic code); the deRIP entry has only its nucleotide tab.
     m = re.search(r'id="psr-fasta-data">(.*?)</script>', html, re.S)
     assert m
     data = json.loads(m.group(1).replace('<\\/', '</'))
-    assert data['__derip__']['aa'] is None
-    assert data['cds1']['nt'].startswith('>cds1\n')
-    assert data['cds1']['aa'].startswith('>cds1\n')
-    assert data['cds1']['table'] == 1
+    assert [tab['key'] for tab in data['__derip__']['tabs']] == ['nt']
+    cds1_tabs = {tab['key']: tab for tab in data['cds1']['tabs']}
+    assert set(cds1_tabs) == {'nt', 'aa'}
+    assert cds1_tabs['nt']['text'].startswith('>cds1\n')
+    assert cds1_tabs['aa']['text'].startswith('>cds1\n')
+    assert 'genetic code table 1' in cds1_tabs['aa']['note']
+
+
+def test_derip_popup_highlights_corrected_positions(mintest_derip, tmp_path):
+    """The deRIP popup marks corrected bases but keeps the copyable text plain.
+
+    The highlighted rendering must be the *same characters* as the plain record,
+    since the copy button and the download link both read unformatted text; only
+    the ``html`` field carries markup.
+    """
+    import json
+
+    from derip2.persequence_report import _corrected_consensus_offsets
+
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html_text = out.read_text()
+
+    m = re.search(r'id="psr-fasta-data">(.*?)</script>', html_text, re.S)
+    data = json.loads(m.group(1).replace('<\\/', '</'))
+    tab = data['__derip__']['tabs'][0]
+
+    n_corrected = len(mintest_derip.corrected_positions)
+    assert n_corrected > 0, 'fixture should have RIP corrections to highlight'
+    assert 'class="psr-mark"' in tab['html']
+    assert f'{n_corrected:,} positions restored by deRIP' in tab['note']
+
+    # Stripping the markup must reproduce the plain record byte for byte — this
+    # is what the browser's textContent (and hence the copy button) yields.
+    stripped = unescape(re.sub(r'<[^>]+>', '', tab['html']))
+    assert stripped == tab['text']
+    assert '<span' not in tab['text']
+
+    # The marked offsets are exactly the corrected columns, rebased past gaps.
+    # Walk the markup, tracking whether each residue sits inside a mark span.
+    body = tab['html'].split('\n', 1)[1]
+    marked, offset, inside = set(), 0, False
+    for chunk in re.split(r'(<[^>]+>)', body):
+        if chunk.startswith('<'):
+            inside = not chunk.startswith('</')
+            continue
+        for char in unescape(chunk):
+            if char == '\n':
+                continue
+            if inside:
+                marked.add(offset)
+            offset += 1
+    assert marked == _corrected_consensus_offsets(mintest_derip)
+
+
+def test_maximum_rip_popup_and_download(mintest_derip, tmp_path):
+    """The overview offers the three maximum-RIP variants, viewable and plain.
+
+    One tab per variant with its converted sites in bold red, plus a multi-FASTA
+    download. As with the deRIP popup, only the ``html`` field carries markup.
+    """
+    import base64
+    import json
+
+    from derip2.maxrip import MAX_RIP_VARIANTS
+
+    out = tmp_path / 'per_seq.html'
+    mintest_derip.write_per_sequence_report(str(out))
+    html_text = out.read_text()
+
+    derip_id = mintest_derip.consensus.id
+    assert 'data-fasta="__maxrip__">View maximum RIP sequences</button>' in html_text
+    assert f'download="{derip_id}_maxRIP.fasta"' in html_text
+
+    m = re.search(r'id="psr-fasta-data">(.*?)</script>', html_text, re.S)
+    data = json.loads(m.group(1).replace('<\\/', '</'))
+    tabs = data['__maxrip__']['tabs']
+    assert [tab['key'] for tab in tabs] == list(MAX_RIP_VARIANTS)
+
+    for tab, variant in zip(tabs, MAX_RIP_VARIANTS):
+        expected = mintest_derip.get_max_rip_string(variant)
+        assert tab['text'].splitlines()[1:] == [
+            expected[i : i + 60] for i in range(0, len(expected), 60)
+        ]
+        assert '<span' not in tab['text']
+        assert 'class="psr-mark-rip"' in tab['html']
+        assert unescape(re.sub(r'<[^>]+>', '', tab['html'])) == tab['text']
+
+    # The download link decodes to a plain multi-FASTA of all three variants.
+    link = re.search(
+        rf'download="{derip_id}_maxRIP\.fasta" '
+        r'href="data:text/plain;charset=utf-8;base64,([^"]+)"',
+        html_text,
+    )
+    assert link
+    fasta = base64.b64decode(link.group(1)).decode()
+    assert fasta.count('>') == len(MAX_RIP_VARIANTS)
+    assert '<span' not in fasta
+    for variant in MAX_RIP_VARIANTS:
+        assert f'>{derip_id}_{variant} ' in fasta
+        assert mintest_derip.get_max_rip_string(variant) in fasta
 
 
 def test_overview_download_without_gff(mintest_derip, tmp_path):
@@ -599,6 +757,34 @@ def test_overview_stats_table(mintest_derip, tmp_path):
     assert '&ndash;' in consensus  # not-applicable RIP/RSI cells
     cri, _pi, _si = mintest_derip.calculate_cri(mintest_derip.get_consensus_string())
     assert f'{cri:.3f}' in consensus
+
+
+def test_stat_sections_are_in_the_intended_order(mintest_derip):
+    """Stat groups run RIP events, CRI, Composition, then Strand bias.
+
+    Headline counts first, the composite index next, then composition, with the
+    wide strand-bias breakdown last. Asserted against the rendered header rather
+    than only the constant, so a change to how the table is built cannot quietly
+    reorder the columns a reader sees.
+    """
+    from derip2.persequence_report import _STAT_SECTIONS, _overview_stats_table_html
+
+    expected = [
+        'RIP events',
+        'Composite RIP Index (CRI)',
+        'Composition',
+        'Strand bias (RSI)',
+    ]
+    assert [title for title, _desc, _cols in _STAT_SECTIONS] == expected
+
+    # The group header cells appear in the same order in the emitted table.
+    table = _overview_stats_table_html(mintest_derip.summarize_stats(), mintest_derip)
+    rendered = re.findall(r'<th class="grp" colspan="\d+">([^<]+)</th>', table)
+    assert rendered == [escape(title) for title in expected]
+
+    # Group spans still match their column counts, so the two header rows line up.
+    spans = [int(n) for n in re.findall(r'<th class="grp" colspan="(\d+)">', table)]
+    assert spans == [len(cols) for _t, _d, cols in _STAT_SECTIONS]
 
 
 def test_overview_stats_table_green_flags(mintest_derip):

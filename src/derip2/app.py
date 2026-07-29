@@ -239,8 +239,9 @@ logger = logging.getLogger(__name__)
     show_default=True,
     help=(
         'Cap the number of sequence panels in the per-sequence report. When the '
-        'alignment has more sequences, the strongest strand-bias sequences are '
-        'kept. Unset renders every sequence.'
+        'alignment has more sequences, the first N in alignment order are kept; '
+        'combine with --sort-by-rsi to report the most strand-biased instead. '
+        'Unset renders every sequence.'
     ),
 )
 @click.option(
@@ -421,8 +422,9 @@ def main(
     per_seq_report : bool
         If True, write an interactive per-sequence HTML report. Default: False.
     max_report_seqs : int or None
-        Cap the number of sequence panels in the per-sequence report. If None,
-        every sequence is rendered. Default: None.
+        Cap the number of sequence panels in the per-sequence report, keeping
+        the first N sequences in alignment order. If None, every sequence is
+        rendered. Default: None.
     spectra_ref_index : int or None
         Alignment row index (0-based; negatives allowed) of a sequence to use as
         the reference for the per-sequence report mutation spectra, instead of the

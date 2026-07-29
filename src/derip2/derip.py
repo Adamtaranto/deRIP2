@@ -130,6 +130,7 @@ class DeRIP:
         self.rsi_result = None
         self.spectra_result = None
         self.flank_spectra_result = None
+        self.max_rip_results = {}
 
         # Load the alignment
         self._load_alignment(alignment_input)
@@ -367,6 +368,7 @@ class DeRIP:
         self.rsi_result = None
         self.spectra_result = None
         self.flank_spectra_result = None
+        self.max_rip_results = {}
 
     def _require_rip(self, action: str) -> None:
         """
@@ -1322,6 +1324,141 @@ class DeRIP:
         )
         return self.flank_spectra_result
 
+    def calculate_max_rip(self, variant: str = 'all'):
+        """
+        Build a maximally RIP-mutated variant of the deRIP'd consensus.
+
+        The counterfactual complement of :meth:`calculate_rip`: instead of
+        restoring the bases RIP removed, it mutates every RIP target the
+        corrected sequence still carries. Results are cached per variant on
+        :attr:`max_rip_results`.
+
+        Parameters
+        ----------
+        variant : {'all', 'observed', 'all_plus_nonrip'}, optional
+            Which sites to convert (default ``'all'``, every substrate site in
+            the consensus). See :mod:`derip2.maxrip` for the full definitions.
+
+        Returns
+        -------
+        derip2.maxrip.MaxRIPResult
+            The mutated sequence and the positions that were changed.
+
+        Raises
+        ------
+        ValueError
+            If :meth:`calculate_rip` has not been called first, or ``variant``
+            is not one of :data:`derip2.maxrip.MAX_RIP_VARIANTS`.
+
+        See Also
+        --------
+        derip2.maxrip.compute_max_rip : The calculation.
+        """
+        from derip2.maxrip import compute_max_rip
+
+        self._require_rip('calculating the maximum-RIP sequence')
+        if variant not in self.max_rip_results:
+            self.max_rip_results[variant] = compute_max_rip(
+                self.gapped_consensus, self.column_classes, variant=variant
+            )
+        return self.max_rip_results[variant]
+
+    def get_max_rip_string(self, variant: str = 'all', gapped: bool = False) -> str:
+        """
+        Return a maximum-RIP sequence as a string, computing it if needed.
+
+        Parameters
+        ----------
+        variant : {'all', 'observed', 'all_plus_nonrip'}, optional
+            Which sites to convert (default ``'all'``).
+        gapped : bool, optional
+            Return the column-aligned sequence rather than the ungapped one
+            (default ``False``).
+
+        Returns
+        -------
+        str
+            The maximally RIP-mutated sequence.
+
+        Raises
+        ------
+        ValueError
+            If :meth:`calculate_rip` has not been called first, or ``variant``
+            is unknown.
+        """
+        result = self.calculate_max_rip(variant)
+        return result.gapped_seq if gapped else result.seq
+
+    def get_max_rip_positions(
+        self, variant: str = 'all', gapped: bool = False
+    ) -> List[int]:
+        """
+        Return the positions converted by a maximum-RIP variant.
+
+        Parameters
+        ----------
+        variant : {'all', 'observed', 'all_plus_nonrip'}, optional
+            Which sites to convert (default ``'all'``).
+        gapped : bool, optional
+            Return alignment column indices rather than offsets into the
+            ungapped sequence (default ``False``).
+
+        Returns
+        -------
+        list of int
+            Ascending zero-based positions of the converted sites.
+
+        Raises
+        ------
+        ValueError
+            If :meth:`calculate_rip` has not been called first, or ``variant``
+            is unknown.
+        """
+        result = self.calculate_max_rip(variant)
+        indices = result.converted_cols if gapped else result.converted_positions
+        return indices.tolist()
+
+    def write_max_rip(
+        self,
+        output_file: str,
+        variants=None,
+        seq_id: str = 'maxRIPseq',
+        gapped: bool = False,
+    ) -> str:
+        """
+        Write maximum-RIP sequences to a FASTA file, computing them if needed.
+
+        Parameters
+        ----------
+        output_file : str
+            Destination path.
+        variants : iterable of str, optional
+            Which variants to write, in order; defaults to every variant in
+            :data:`derip2.maxrip.MAX_RIP_VARIANTS`.
+        seq_id : str, optional
+            Base record id; each record is suffixed with its variant name
+            (default ``'maxRIPseq'``).
+        gapped : bool, optional
+            Write column-aligned sequences rather than ungapped ones
+            (default ``False``).
+
+        Returns
+        -------
+        str
+            ``output_file``, for chaining.
+
+        Raises
+        ------
+        ValueError
+            If :meth:`calculate_rip` has not been called first, or a requested
+            variant is unknown.
+        """
+        from derip2.maxrip import MAX_RIP_VARIANTS, write_max_rip_fasta
+
+        chosen = MAX_RIP_VARIANTS if variants is None else tuple(variants)
+        results = [self.calculate_max_rip(variant) for variant in chosen]
+        return write_max_rip_fasta(results, output_file, seq_id=seq_id, gapped=gapped)
+
     def write_flank_spectra_matrix(self, output_file: str) -> str:
         """
         Write the flank-context spectra as a tidy TSV, computing them if needed.
@@ -1433,7 +1570,11 @@ class DeRIP:
         **kwargs
             Forwarded to
             :func:`derip2.plotting.flank_spectra.plot_flank_conversion_heatmap`
-            (e.g. ``title``, ``bare``).
+            (e.g. ``title``, ``bare``, ``flank_sort``). Notably ``cmap`` restyles
+            the colour scale: pass a matplotlib colormap name such as
+            ``'magma_r'`` or ``'viridis'``, a
+            :class:`~matplotlib.colors.Colormap`, or a list of colours to
+            interpolate between.
 
         Returns
         -------
@@ -1518,8 +1659,10 @@ class DeRIP:
             Ambiguity policy for the per-sequence RSI statistics
             (default: ``'split'``).
         max_seqs : int, optional
-            Cap the number of sequence panels; the strongest strand-bias
-            sequences are kept. ``None`` (default) renders every sequence.
+            Cap the number of sequence panels, keeping the first ``max_seqs``
+            rows in alignment order. Sort or filter the alignment first (e.g.
+            :meth:`sort_by_rsi`) to change which sequences that is. ``None``
+            (default) renders every sequence.
         **kwargs
             Forwarded to :func:`derip2.persequence_report.write_per_sequence_report`.
 

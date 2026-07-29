@@ -24,6 +24,11 @@ import logging
 
 from tqdm import tqdm
 
+from derip2.maxrip import (
+    MAX_RIP_DESCRIPTIONS,
+    MAX_RIP_VARIANTS,
+    max_rip_multifasta,
+)
 from derip2.plotting.persequence import (
     NONRIP_COLOR,
     PRODUCT_COLOR,
@@ -40,6 +45,13 @@ logger = logging.getLogger(__name__)
 
 # Grouped, transposed statistics layout: (section title, description, [(column,
 # row label), ...]). Each group becomes a small card with a stat/value table.
+#
+# The order here drives both views: the per-sequence stat cards
+# (:func:`_stats_sections_html`) and the overview summary table
+# (:func:`_overview_stats_table_html`). It runs from the headline counts to the
+# most specialised measure -- event counts, then the composite index, then
+# composition, and finally the strand-bias breakdown, which is the widest group
+# and the one a reader is least likely to want first.
 _STAT_SECTIONS = (
     (
         'RIP events',
@@ -52,6 +64,22 @@ _STAT_SECTIONS = (
             ('RIP_rev', 'Reverse RIP events'),
             ('non_RIP', 'Non-RIP deaminations'),
         ),
+    ),
+    (
+        'Composite RIP Index (CRI)',
+        'The classical CRI and its components: the product index (PI, TpA/ApT) '
+        'minus the substrate index (SI, (CpA+TpG)/(ApC+GpT)). A positive CRI is '
+        'the hallmark of RIP.',
+        (
+            ('CRI', 'CRI'),
+            ('PI', 'Product index (PI)'),
+            ('SI', 'Substrate index (SI)'),
+        ),
+    ),
+    (
+        'Composition',
+        'Base composition of this sequence.',
+        (('GC', 'GC content'),),
     ),
     (
         'Strand bias (RSI)',
@@ -70,22 +98,6 @@ _STAT_SECTIONS = (
             ('rev_substrate', 'Reverse substrate'),
             ('n_ambiguous', 'Ambiguous TpA'),
         ),
-    ),
-    (
-        'Composite RIP Index (CRI)',
-        'The classical CRI and its components: the product index (PI, TpA/ApT) '
-        'minus the substrate index (SI, (CpA+TpG)/(ApC+GpT)). A positive CRI is '
-        'the hallmark of RIP.',
-        (
-            ('CRI', 'CRI'),
-            ('PI', 'Product index (PI)'),
-            ('SI', 'Substrate index (SI)'),
-        ),
-    ),
-    (
-        'Composition',
-        'Base composition of this sequence.',
-        (('GC', 'GC content'),),
     ),
 )
 
@@ -160,6 +172,188 @@ def _fasta_record(name, seq, width=60):
     lines = [seq[i : i + width] for i in range(0, len(seq), width)] or ['']
     body = '\n'.join(lines)
     return f'>{name}\n{body}\n'
+
+
+def _marked_fasta_html(name, seq, marks, css_class, width=60):
+    """
+    Render a FASTA record as HTML with selected residues wrapped for emphasis.
+
+    The layout is identical to :func:`_fasta_record` — same header, same line
+    wrapping — so the popup's plain-text and highlighted views stay
+    character-for-character aligned, and the browser's ``textContent`` of the
+    rendered HTML is exactly the plain record (which is what the copy button
+    reads). Contiguous runs of marked residues collapse into a single ``<span>``
+    to keep the markup small on heavily corrected sequences.
+
+    Parameters
+    ----------
+    name : str
+        The record identifier (the header after ``>``).
+    seq : str
+        The sequence; wrapped to ``width`` characters per line.
+    marks : set of int or collections.abc.Container
+        Zero-based offsets into ``seq`` to wrap.
+    css_class : str
+        Class applied to each emphasis ``<span>``.
+    width : int, optional
+        Line-wrap width (default: 60), matching :func:`_fasta_record`.
+
+    Returns
+    -------
+    str
+        HTML for the record, ending in a newline.
+    """
+    out = [f'&gt;{escape(name)}\n']
+    open_span = False
+    for i, base in enumerate(seq):
+        # A newline every ``width`` residues, outside any open span so the markup
+        # stays well-formed across line breaks.
+        if i and i % width == 0:
+            if open_span:
+                out.append('</span>')
+                open_span = False
+            out.append('\n')
+        marked = i in marks
+        if marked and not open_span:
+            out.append(f'<span class="{css_class}">')
+            open_span = True
+        elif open_span and not marked:
+            out.append('</span>')
+            open_span = False
+        out.append(escape(base))
+    if open_span:
+        out.append('</span>')
+    out.append('\n')
+    return ''.join(out)
+
+
+def _corrected_consensus_offsets(derip):
+    """
+    Map deRIP-corrected alignment columns onto offsets in the ungapped consensus.
+
+    ``DeRIP.corrected_positions`` is keyed by *gapped* alignment column, but the
+    popup shows the ungapped consensus, so the indices have to be rebased by
+    dropping the gap columns that precede each correction.
+
+    Parameters
+    ----------
+    derip : derip2.derip.DeRIP
+        A DeRIP instance on which ``calculate_rip`` has been run.
+
+    Returns
+    -------
+    set of int
+        Zero-based offsets into ``derip.get_consensus_string()``.
+
+    Raises
+    ------
+    ValueError
+        If a corrected column is a gap in the consensus, which would mean the
+        correction record and the consensus had fallen out of step.
+    """
+    corrected_cols = set(derip.corrected_positions)
+    offsets = set()
+    ungapped = 0
+    for col, base in enumerate(str(derip.gapped_consensus.seq)):
+        if base == '-':
+            if col in corrected_cols:
+                raise ValueError(
+                    f'deRIP-corrected column {col} is a gap in the consensus'
+                )
+            continue
+        if col in corrected_cols:
+            offsets.add(ungapped)
+        ungapped += 1
+    return offsets
+
+
+#: Tab labels for the maximum-RIP popup, in the order they are shown. Ordered
+#: least to most aggressive so the tabs read as an escalating series.
+_MAX_RIP_LABELS = {
+    'observed': 'Observed sites only',
+    'all': 'All substrate sites',
+    'all_plus_nonrip': 'All sites + non-RIP',
+}
+
+
+def _max_rip_payload(derip):
+    """
+    Build the popup payload for the maximum-RIP counterfactual sequences.
+
+    One tab per variant, each with its converted sites marked in bold red and a
+    footer note explaining that variant's rule and how many sites it changed.
+
+    Parameters
+    ----------
+    derip : derip2.derip.DeRIP
+        A DeRIP instance on which ``calculate_rip`` has been run.
+
+    Returns
+    -------
+    dict
+        A payload with ``name`` and ``tabs``, keyed into the popup as
+        ``'__maxrip__'``.
+    """
+    tabs = []
+    for variant in MAX_RIP_VARIANTS:
+        result = derip.calculate_max_rip(variant)
+        tabs.append(
+            _fasta_tab(
+                variant,
+                _MAX_RIP_LABELS[variant],
+                f'{derip.consensus.id}_{variant}',
+                result.seq,
+                marks=set(result.converted_positions.tolist()),
+                css_class='psr-mark-rip',
+                note=(
+                    f'{MAX_RIP_DESCRIPTIONS[variant]} '
+                    f'{result.n_converted:,} site'
+                    f'{"" if result.n_converted == 1 else "s"} converted '
+                    f'({result.n_forward:,} forward, {result.n_reverse:,} reverse), '
+                    'shown in bold red. Copied and downloaded text is plain and '
+                    'unformatted.'
+                ),
+            )
+        )
+    return {'name': f'{derip.consensus.id} — maximum RIP', 'tabs': tabs}
+
+
+def _fasta_tab(key, label, name, seq, marks=None, css_class=None, note=None):
+    """
+    Build one tab of a FASTA popup payload.
+
+    Parameters
+    ----------
+    key : str
+        Stable identifier for the tab, used as the JS tab id.
+    label : str
+        Text shown on the tab button.
+    name : str
+        Record identifier for the FASTA header.
+    seq : str
+        The sequence to show.
+    marks : set of int, optional
+        Offsets into ``seq`` to highlight; when given (and non-empty) an ``html``
+        rendering is attached alongside the plain text.
+    css_class : str, optional
+        Emphasis class for the marked residues; required when ``marks`` is given.
+    note : str, optional
+        One-line explanation shown in the popup footer while this tab is active.
+
+    Returns
+    -------
+    dict
+        A tab record with ``key``, ``label``, ``text``, ``html`` and ``note``.
+        ``text`` is always the plain FASTA record — it is what the copy button
+        and the download links use, so it never carries markup.
+    """
+    return {
+        'key': key,
+        'label': label,
+        'text': _fasta_record(name, seq),
+        'html': (_marked_fasta_html(name, seq, marks, css_class) if marks else None),
+        'note': note,
+    }
 
 
 def _data_uri(text):
@@ -507,7 +701,8 @@ _PSR_STYLE = """
   padding: 0 .2rem;
 }
 .psr-modal-x:hover { color: var(--ink); }
-.psr-tabs { display: flex; gap: .3rem; padding: .6rem 1rem 0; }
+.psr-tabs { display: flex; flex-wrap: wrap; gap: .3rem; padding: .6rem 1rem 0; }
+.psr-tabs[hidden] { display: none; }
 .psr-tab {
   font: inherit; font-size: 13px; padding: .3rem .8rem; cursor: pointer;
   background: var(--surface); color: var(--ink-2);
@@ -522,12 +717,19 @@ _PSR_STYLE = """
   font-size: 12.5px; line-height: 1.45; white-space: pre; word-break: normal;
   background: #fcfcfb; color: #111;
 }
+/* Emphasis inside the FASTA view. The <pre> pins its own light background, so
+   these two inks are fixed rather than theme-derived. Green marks bases the
+   deRIP correction restored; red marks bases a maximum-RIP variant converted.
+   Both are spans over otherwise-plain text, so the element's textContent — what
+   the copy button reads — is still the unformatted record. */
+.psr-mark { color: #0a7a3d; font-weight: 700; }
+.psr-mark-rip { color: #b4292a; font-weight: 700; }
 .psr-modal-foot {
   display: flex; align-items: center; gap: .8rem;
   padding: .6rem 1rem; border-top: 1px solid var(--rule);
 }
-.psr-transl-note { color: var(--muted); font-size: 12.5px; margin: 0; }
-.psr-transl-note[hidden] { display: none; }
+.psr-note { color: var(--muted); font-size: 12.5px; margin: 0; }
+.psr-note[hidden] { display: none; }
 .psr-copy {
   font: inherit; font-size: 13px; padding: .3rem .9rem; cursor: pointer;
   background: var(--page); color: var(--ink); border: 1px solid var(--rule);
@@ -591,7 +793,10 @@ _PSR_STYLE = """
 
 # The click-to-view FASTA modal, injected once per report. Populated and shown by
 # the popup handler in ``_PSR_SCRIPT``; ``data-close`` marks the backdrop and the
-# × button so a single handler can dismiss it.
+# × button so a single handler can dismiss it. The tab strip is deliberately empty:
+# each payload declares its own tabs (one for a plain deRIP sequence, two for a CDS
+# with a translation, three for the maximum-RIP variants) and the JS builds the
+# buttons to match, hiding the strip entirely for single-tab payloads.
 _MODAL_HTML = (
     '<div class="psr-modal" id="psr-modal" hidden>'
     '<div class="psr-modal-backdrop" data-close></div>'
@@ -602,14 +807,11 @@ _MODAL_HTML = (
     '<button class="psr-modal-x" type="button" data-close aria-label="Close">'
     '&times;</button>'
     '</div>'
-    '<div class="psr-tabs" id="psr-tabs">'
-    '<button class="psr-tab is-active" type="button" data-tab="nt">Nucleotide</button>'
-    '<button class="psr-tab" type="button" data-tab="aa">Translation</button>'
-    '</div>'
+    '<div class="psr-tabs" id="psr-tabs" hidden></div>'
     '<pre class="psr-fasta" id="psr-fasta"></pre>'
     '<div class="psr-modal-foot">'
     '<button class="psr-copy" id="psr-copy" type="button">Copy</button>'
-    '<p class="psr-transl-note" id="psr-transl-note" hidden></p>'
+    '<p class="psr-note" id="psr-note" hidden></p>'
     '</div>'
     '</div></div>'
 )
@@ -778,12 +980,11 @@ _PSR_SCRIPT = """
   var modal = document.getElementById('psr-modal');
   var modalTitle = document.getElementById('psr-modal-title');
   var fastaPre = document.getElementById('psr-fasta');
-  var translNote = document.getElementById('psr-transl-note');
+  var tabStrip = document.getElementById('psr-tabs');
+  var modalNote = document.getElementById('psr-note');
   var copyBtn = document.getElementById('psr-copy');
-  var modalTabs = modal
-    ? Array.prototype.slice.call(modal.querySelectorAll('.psr-tab')) : [];
   var fastaCurrent = null;   // the active payload
-  var activeTab = 'nt';
+  var activeTab = 0;         // index into fastaCurrent.tabs
 
   function fallbackCopy(text) {
     var ta = document.createElement('textarea');
@@ -793,35 +994,47 @@ _PSR_SCRIPT = """
     document.body.removeChild(ta);
   }
 
+  // Rebuild the tab strip for the payload being shown. A single-tab payload (a
+  // bare nucleotide record) hides the strip rather than showing one lone button.
+  function buildTabs() {
+    tabStrip.textContent = '';
+    var tabs = fastaCurrent.tabs;
+    if (tabs.length < 2) { tabStrip.setAttribute('hidden', ''); return; }
+    tabStrip.removeAttribute('hidden');
+    tabs.forEach(function (tab, i) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'psr-tab' + (i === activeTab ? ' is-active' : '');
+      btn.textContent = tab.label;
+      btn.addEventListener('click', function () {
+        activeTab = i; buildTabs(); renderFastaTab();
+      });
+      tabStrip.appendChild(btn);
+    });
+  }
+
   function renderFastaTab() {
     if (!fastaCurrent) return;
-    var aaTab = modalTabs.filter(function (t) {
-      return t.getAttribute('data-tab') === 'aa';
-    })[0];
-    var hasAa = !!fastaCurrent.aa;
-    if (aaTab) {
-      if (hasAa) { aaTab.removeAttribute('hidden'); }
-      else { aaTab.setAttribute('hidden', ''); }
-    }
-    if (activeTab === 'aa' && !hasAa) { activeTab = 'nt'; }
-    modalTabs.forEach(function (t) {
-      t.classList.toggle('is-active', t.getAttribute('data-tab') === activeTab);
-    });
-    fastaPre.textContent = activeTab === 'aa' ? fastaCurrent.aa : fastaCurrent.nt;
-    if (activeTab === 'aa' && fastaCurrent.table != null) {
-      translNote.textContent =
-        'Translation — NCBI genetic code table ' + fastaCurrent.table + '.';
-      translNote.removeAttribute('hidden');
+    var tab = fastaCurrent.tabs[activeTab];
+    // A tab carrying pre-rendered HTML draws its highlighted form; the plain
+    // text is the same characters, so the element's textContent (what Copy
+    // reads) is the unformatted record either way.
+    if (tab.html) { fastaPre.innerHTML = tab.html; }
+    else { fastaPre.textContent = tab.text; }
+    if (tab.note) {
+      modalNote.textContent = tab.note;
+      modalNote.removeAttribute('hidden');
     } else {
-      translNote.setAttribute('hidden', '');
+      modalNote.setAttribute('hidden', '');
     }
   }
 
   function openFastaModal(key) {
     if (!modal || !fastaData[key]) return;
     fastaCurrent = fastaData[key];
-    activeTab = 'nt';
+    activeTab = 0;
     modalTitle.textContent = fastaCurrent.name;
+    buildTabs();
     renderFastaTab();
     modal.removeAttribute('hidden');
   }
@@ -831,11 +1044,6 @@ _PSR_SCRIPT = """
   }
 
   if (modal) {
-    modalTabs.forEach(function (t) {
-      t.addEventListener('click', function () {
-        activeTab = t.getAttribute('data-tab'); renderFastaTab();
-      });
-    });
     modal.addEventListener('click', function (e) {
       if (e.target.closest('[data-close]')) { closeFastaModal(); }
     });
@@ -1003,9 +1211,15 @@ def _select_rows(df, max_seqs):
     """
     Choose which sequence rows to render, and whether the report is truncated.
 
-    When ``max_seqs`` caps the report below the alignment size, the sequences
-    with the strongest strand bias (largest ``|RSI|``) are kept, so the most
-    informative panels survive the cap.
+    When ``max_seqs`` caps the report below the alignment size, the **first**
+    ``max_seqs`` rows of the alignment are kept. A prefix is predictable: the
+    reader can tell which sequences they are getting without cross-referencing a
+    statistic, and re-running with a larger cap only adds panels rather than
+    swapping them. (An earlier version kept the strongest strand-bias sequences
+    instead, which read as an arbitrary subset.) To report a particular subset,
+    reorder or filter the alignment first — for example with
+    :meth:`derip2.derip.DeRIP.sort_by_rsi` to put the most strand-biased
+    sequences at the top.
 
     Parameters
     ----------
@@ -1013,7 +1227,8 @@ def _select_rows(df, max_seqs):
         Output of :meth:`derip2.derip.DeRIP.summarize_stats`, one row per
         sequence in alignment order.
     max_seqs : int or None
-        Maximum number of sequences to render. ``None`` renders all.
+        Maximum number of sequences to render. ``None`` renders all. Values
+        below 1 are treated as 1, so the report always has a sequence panel.
 
     Returns
     -------
@@ -1025,12 +1240,7 @@ def _select_rows(df, max_seqs):
     n = len(df)
     if max_seqs is None or n <= max_seqs:
         return list(range(n)), False
-
-    # Rank by |RSI|; NaN RSI (undefined strand) sorts last. Keep the top
-    # ``max_seqs`` but present them back in alignment order.
-    ranked = df['RSI'].abs().fillna(-1.0).sort_values(ascending=False)
-    kept = sorted(ranked.index[:max_seqs].tolist())
-    return kept, True
+    return list(range(max(1, max_seqs))), True
 
 
 _EFFECT_COLUMNS = (
@@ -1944,6 +2154,11 @@ def _overview_html(
             '<button class="psr-btn" type="button" data-fasta="__derip__">'
             'View deRIP FASTA</button>'
         )
+    if fasta_data and '__maxrip__' in fasta_data:
+        tools.append(
+            '<button class="psr-btn" type="button" data-fasta="__maxrip__">'
+            'View maximum RIP sequences</button>'
+        )
     toolbar = f'<div class="psr-toolbar">{"".join(tools)}</div>' if tools else ''
 
     spectrum_section = (
@@ -1985,7 +2200,7 @@ def _overview_html(
                 'target on the rows, the two bases 3&prime; on the columns, each '
                 'ordered nearest-base first). This shows whether the single-base '
                 'preference above is carried by the base immediately flanking the '
-                'RIP target or extends to the second base out; blank cells are '
+                'RIP target or extends to the second base out; white cells are '
                 'motifs absent from the alignment.</p>'
                 f'<div class="spectrum-scroll">{flank2_heat_svg}</div>'
             )
@@ -2154,9 +2369,10 @@ def write_per_sequence_report(
         (default: ``'split'``).
     max_seqs : int, optional
         Cap the number of sequence panels. When the alignment has more sequences
-        than this, the strongest strand-bias sequences (largest ``|RSI|``) are
-        kept and a truncation note is shown. ``None`` (default) renders every
-        sequence.
+        than this, the first ``max_seqs`` rows in alignment order are kept and a
+        truncation note is shown; sort or filter the alignment first (e.g.
+        :meth:`derip2.derip.DeRIP.sort_by_rsi`) to change which sequences those
+        are. ``None`` (default) renders every sequence.
     gff : str, optional
         Path to a GFF3 gene model. When given, each annotated sequence's panel
         gains a gene-effect table and the deRIP-restored protein.
@@ -2236,21 +2452,43 @@ def write_per_sequence_report(
     flank = derip.calculate_flank_spectra(flank_length=flank_length)
 
     # FASTA payloads for the overview downloads + click-to-view popups. The deRIP
-    # sequence is always available; CDS records are added when a GFF is supplied.
-    # Keyed for the popup JS: '__derip__' for the corrected consensus, then one
-    # entry per CDS id. Each value carries the record name, its nucleotide FASTA,
-    # its translation FASTA (CDS only) and the genetic-code table used.
+    # sequence and the maximum-RIP variants are always available; CDS records are
+    # added when a GFF is supplied. Keyed for the popup JS: '__derip__' for the
+    # corrected consensus, '__maxrip__' for the counterfactuals, then one entry
+    # per CDS id. Each value is a record name plus a list of tabs.
     derip_name = derip.consensus.id
     derip_seq = derip.get_consensus_string()
     derip_fasta = _fasta_record(derip_name, derip_seq)
+    corrected_offsets = _corrected_consensus_offsets(derip)
+    n_corrected = len(corrected_offsets)
     fasta_data = {
         '__derip__': {
             'name': derip_name,
-            'nt': derip_fasta,
-            'aa': None,
-            'table': None,
-        }
+            'tabs': [
+                _fasta_tab(
+                    'nt',
+                    'Nucleotide',
+                    derip_name,
+                    derip_seq,
+                    marks=corrected_offsets,
+                    css_class='psr-mark',
+                    note=(
+                        f'{n_corrected:,} position'
+                        f'{"" if n_corrected == 1 else "s"} restored by deRIP, '
+                        'shown in bold green. Copied and downloaded text is plain '
+                        'and unformatted.'
+                        if n_corrected
+                        else 'No positions were corrected in this alignment.'
+                    ),
+                )
+            ],
+        },
+        '__maxrip__': _max_rip_payload(derip),
     }
+    max_rip_fasta = max_rip_multifasta(
+        [derip.calculate_max_rip(variant) for variant in MAX_RIP_VARIANTS],
+        seq_id=derip_name,
+    )
     cds_multifasta = None
 
     # Optional gene-effect data. Parsed once and shared across panels.
@@ -2334,18 +2572,31 @@ def write_per_sequence_report(
             cds_id = cds_display_id(gene)
             nt, _kept = _read_coding_bases(consensus_row, cols, gene.strand)
             aa = deripd_aa.get(gene.gene_id, '')
-            fasta_data[cds_id] = {
-                'name': cds_id,
-                'nt': _fasta_record(cds_id, nt),
-                'aa': _fasta_record(cds_id, aa) if aa else None,
-                'table': genetic_code,
-            }
+            tabs = [_fasta_tab('nt', 'Nucleotide', cds_id, nt)]
+            if aa:
+                tabs.append(
+                    _fasta_tab(
+                        'aa',
+                        'Translation',
+                        cds_id,
+                        aa,
+                        note=(f'Translation — NCBI genetic code table {genetic_code}.'),
+                    )
+                )
+            fasta_data[cds_id] = {'name': cds_id, 'tabs': tabs}
             cds_records.append(_fasta_record(cds_id, nt))
         cds_multifasta = ''.join(cds_records) if cds_records else None
 
     # Overview download buttons: the deRIP sequence, and (with a GFF) every CDS
     # nucleotide sequence as mapped onto the deRIP consensus.
-    downloads = [('⭳ deRIP sequence (FASTA)', f'{derip_name}.fasta', derip_fasta)]
+    downloads = [
+        ('⭳ deRIP sequence (FASTA)', f'{derip_name}.fasta', derip_fasta),
+        (
+            '⭳ Maximum RIP sequences (FASTA)',
+            f'{derip_name}_maxRIP.fasta',
+            max_rip_fasta,
+        ),
+    ]
     if cds_multifasta:
         downloads.append(('⭳ CDS features (FASTA)', 'deRIP_cds.fasta', cds_multifasta))
 
@@ -2418,9 +2669,10 @@ def write_per_sequence_report(
     truncation_note = ''
     if truncated:
         truncation_note = (
-            f'<p class="note">Showing the {n_shown} sequences with the strongest '
-            f'strand bias of {n_total} total (capped by <code>max_seqs</code>). '
-            f'Raise <code>--max-report-seqs</code> to include more.</p>'
+            f'<p class="note">Showing the first {n_shown} sequences of '
+            f'{n_total} total (capped by <code>max_seqs</code>). Raise '
+            f'<code>--max-report-seqs</code> to include more, or sort the '
+            f'alignment first to change which sequences appear.</p>'
         )
 
     nav = (

@@ -163,6 +163,21 @@ def test_bench_compute_flank_spectra(benchmark, sahana_alignment_small):
     benchmark(lambda: compute_flank_spectra(cls))
 
 
+def test_bench_compute_max_rip(benchmark, sahana_alignment_small):
+    """Benchmark the maximum-RIP conversion, on the cascading variant.
+
+    ``all_plus_nonrip`` is the worst case: it is the only variant that can need
+    more than one pass to reach its fixed point.
+    """
+    from derip2.maxrip import compute_max_rip
+
+    derip = DeRIP(sahana_alignment_small)
+    derip.calculate_rip()
+    consensus = str(derip.gapped_consensus.seq)
+    cls = derip.column_classes
+    benchmark(lambda: compute_max_rip(consensus, cls, variant='all_plus_nonrip'))
+
+
 def test_bench_compute_spectra_downstream(benchmark, sahana_alignment_small):
     """Benchmark the tree-free downstream-triplet assembly against a reference."""
     from derip2.stats.mutation_spectra import compute_spectra

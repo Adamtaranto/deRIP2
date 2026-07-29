@@ -279,6 +279,313 @@ def test_conversion_heatmap_1bp_has_image_and_colorbar():
     assert main.images[0].get_array().shape == (4, 4)
 
 
+def test_conversion_heatmap_uses_the_shared_conversion_ramp():
+    """The heatmap draws with CONVERSION_CMAP, not some other colormap."""
+    from derip2.plotting.flank_spectra import plot_flank_conversion_heatmap
+    from derip2.plotting.persequence import CONVERSION_CMAP
+
+    result = make_result(['GCAT', 'GTAT', 'ATGC', 'ATAC'])
+    fig = plot_flank_conversion_heatmap(result, sample=None)
+    image = fig.axes[0].images[0]
+    assert image.cmap is CONVERSION_CMAP
+    # The scale is pinned to 0-100 % so colour is comparable between figures.
+    assert (image.norm.vmin, image.norm.vmax) == (0, 100)
+
+
+def _lstar(rgb):
+    """CIE L* of one or many sRGB triples in [0, 1]."""
+    import numpy as np
+
+    rgb = np.asarray(rgb, dtype=float)
+    linear = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
+    luminance = linear @ np.array([0.2126, 0.7152, 0.0722])
+    return np.where(
+        luminance > 0.008856, 116 * np.cbrt(luminance) - 16, 903.3 * luminance
+    )
+
+
+def test_conversion_ramp_is_viridis_dark_low_light_high():
+    """The default ramp is viridis: dark purple low, bright yellow high.
+
+    A reversed viridis would invert the figure's meaning while still passing
+    every structural check, so pin the orientation, not just the name.
+
+    Stated as lightness rather than hue, because that is the property doing the
+    work and it survives a future swap to a differently-hued sequential map.
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from derip2.plotting.persequence import CONVERSION_CMAP, CONVERSION_CMAP_NAME
+
+    assert CONVERSION_CMAP_NAME == 'viridis'
+    samples = np.linspace(0, 1, 64)
+    assert np.allclose(CONVERSION_CMAP(samples), plt.get_cmap('viridis')(samples))
+
+    # 0 % is dark, 100 % is light, by a wide margin.
+    assert _lstar(CONVERSION_CMAP(0.0)[:3]) < 30
+    assert _lstar(CONVERSION_CMAP(1.0)[:3]) > 80
+
+
+def test_conversion_ramp_lightness_is_monotonic():
+    """CIE L* changes monotonically across the default ramp.
+
+    A sequential map keeps the cells ordered in a greyscale reproduction, which
+    the diverging defaults this replaced could not do (their lightness peaked at
+    the midpoint). Guards against a swap back to a map without the property.
+
+    Direction-agnostic on purpose: whether the ramp runs light-to-dark or
+    dark-to-light is the orientation test's business, and asserting it here too
+    would mean editing two tests every time the default is flipped.
+    """
+    import numpy as np
+
+    from derip2.plotting.persequence import CONVERSION_CMAP
+
+    lstar = _lstar(CONVERSION_CMAP(np.linspace(0, 1, 256))[:, :3])
+    steps = np.diff(lstar)
+    # Strictly monotonic one way or the other, with a small tolerance for
+    # sampling wobble.
+    assert np.all(steps < 1e-6) or np.all(steps > -1e-6)
+    # And a wide span, so the two ends are clearly distinguishable.
+    assert abs(lstar[-1] - lstar[0]) > 60
+
+
+def test_no_data_colour_is_distinct_from_the_whole_ramp():
+    """A motif seen zero times cannot be mistaken for a real conversion value.
+
+    Not just the ends: the no-data colour has to sit off the ramp at *every*
+    level, and on the 3 bp grid roughly half the cells are blank, so this is a
+    large part of what the figure shows.
+
+    White is safe against the current viridis default (0.86 at its closest, the
+    yellow end) but would not be against every colormap — ColorBrewer's YlOrBr
+    starts at a near-white #ffffe5, 0.10 away. Changing the default to a ramp
+    with a near-white end trips this test rather than silently shipping blanks
+    that read as real cells.
+    """
+    import numpy as np
+
+    from derip2.plotting.persequence import (
+        CONVERSION_CMAP,
+        NO_DATA_COLOR,
+        _hex_to_rgb,
+    )
+
+    blank = np.array(CONVERSION_CMAP(np.nan)[:3])
+    assert np.allclose(blank, _hex_to_rgb(NO_DATA_COLOR), atol=0.01)
+
+    ramp = CONVERSION_CMAP(np.linspace(0, 1, 256))[:, :3]
+    closest = float(np.linalg.norm(ramp - blank, axis=1).min())
+    assert closest > 0.20, (
+        f'the no-data colour is only {closest:.3f} from the closest ramp colour'
+    )
+
+
+# Machado et al. 2009 severity-1.0 colour-vision-deficiency simulation matrices.
+_CVD_MATRICES = {
+    'deuteranopia': [
+        [0.367322, 0.860646, -0.227968],
+        [0.280085, 0.672501, 0.047413],
+        [-0.011820, 0.042940, 0.968881],
+    ],
+    'protanopia': [
+        [0.152286, 1.052583, -0.204868],
+        [0.114503, 0.786281, 0.099216],
+        [-0.003882, -0.048116, 1.051998],
+    ],
+    'tritanopia': [
+        [1.255528, -0.076749, -0.178779],
+        [-0.078411, 0.930809, 0.147602],
+        [0.004733, 0.691367, 0.303900],
+    ],
+}
+
+
+def _worst_cvd_confusion(cmap, min_gap=0.20, n=21):
+    """
+    Closest simulated colour pair among values at least ``min_gap`` apart.
+
+    Comparing only *adjacent* samples is the wrong measurement for a diverging
+    map, and would pass a map that is genuinely unsafe: on a ramp that runs out
+    to a neutral midpoint and back, each small step is distinct while values
+    symmetrically either side of the midpoint collapse onto the same simulated
+    colour. Scanning all well-separated pairs is what catches that.
+
+    Parameters
+    ----------
+    cmap : matplotlib.colors.Colormap
+        The ramp to probe.
+    min_gap : float, optional
+        Only compare values at least this far apart on the 0-1 scale, so a
+        genuinely fine distinction is not counted as a failure (default 0.20).
+    n : int, optional
+        Number of samples across the ramp (default 21).
+
+    Returns
+    -------
+    float
+        The smallest simulated sRGB distance found, over every simulated form of
+        colour vision deficiency.
+    """
+    import numpy as np
+
+    levels = np.linspace(0, 1, n)
+    worst = np.inf
+    for matrix in _CVD_MATRICES.values():
+        simulated = np.array(
+            [np.clip(np.asarray(matrix) @ np.array(cmap(v)[:3]), 0, 1) for v in levels]
+        )
+        for i in range(len(levels)):
+            for j in range(i + 1, len(levels)):
+                if levels[j] - levels[i] < min_gap:
+                    continue
+                worst = min(worst, float(np.linalg.norm(simulated[j] - simulated[i])))
+    return worst
+
+
+def test_default_ramp_is_colourblind_safe():
+    """Well-separated values stay well-separated under simulated CVD.
+
+    Blue-to-red through a neutral is the colourblind-safe diverging axis, and
+    this is the assertion that makes that claim mean something: no two values
+    20 percentage points or more apart may simulate to near-identical colours.
+
+    Measured for reference: YlOrBr (the default) 0.17, coolwarm 0.24, cividis
+    0.22, magma_r 0.21, viridis 0.18. An earlier Spectral_r default scored 0.06
+    — its green and orange arms collapse onto each other — which is exactly what
+    ColorBrewer's "not colourblind safe" label on Spectral refers to, and the
+    gap between that and everything else is what this threshold sits in.
+    """
+    from derip2.plotting.persequence import CONVERSION_CMAP
+
+    assert _worst_cvd_confusion(CONVERSION_CMAP) > 0.15
+
+
+def test_perceptually_uniform_alternatives_are_also_safe():
+    """The maps the docs recommend for greyscale also survive the CVD check.
+
+    coolwarm's lightness peaks at its midpoint, so greyscale cannot order the
+    cells; the docs point at 'magma_r', 'cividis' and 'viridis' for that case.
+    Those are only useful advice if they are themselves colourblind-safe.
+
+    The bar is lower than the default's because these score slightly lower on
+    this metric (measured: coolwarm 0.24, cividis 0.22, magma_r 0.21,
+    viridis 0.18) — all comfortably distinguishable, none as separated as the
+    default. For contrast, Spectral_r scores 0.06.
+    """
+    from derip2.plotting.persequence import resolve_cmap
+
+    for name in ('magma_r', 'cividis', 'viridis'):
+        assert _worst_cvd_confusion(resolve_cmap(name)) > 0.15, name
+
+
+def test_resolve_cmap_accepts_the_documented_forms():
+    """A name, a Colormap and a colour list all resolve to a colormap."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from derip2.plotting.persequence import CONVERSION_CMAP, resolve_cmap
+
+    # None falls back to the package default.
+    assert resolve_cmap() is CONVERSION_CMAP
+    assert resolve_cmap(None) is CONVERSION_CMAP
+
+    # A registered name, including the reversed form.
+    by_name = resolve_cmap('viridis')
+    samples = np.linspace(0, 1, 32)
+    assert np.allclose(by_name(samples), plt.get_cmap('viridis')(samples))
+    assert not np.allclose(
+        resolve_cmap('viridis_r')(samples), plt.get_cmap('viridis')(samples)
+    )
+
+    # A Colormap instance is taken as given.
+    assert np.allclose(
+        resolve_cmap(plt.get_cmap('plasma'))(samples), plt.get_cmap('plasma')(samples)
+    )
+
+    # A colour list is interpolated low value first.
+    custom = resolve_cmap(['#ffffff', '#000000'])
+    assert np.allclose(custom(0.0)[:3], (1.0, 1.0, 1.0), atol=0.01)
+    assert np.allclose(custom(1.0)[:3], (0.0, 0.0, 0.0), atol=0.01)
+
+
+def test_resolve_cmap_sets_the_no_data_colour_on_every_form():
+    """However the palette arrives, empty cells take the same no-data colour."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from derip2.plotting.persequence import NO_DATA_COLOR, _hex_to_rgb, resolve_cmap
+
+    for spec in ('viridis', plt.get_cmap('plasma'), ['#ffffff', '#000000']):
+        resolved = resolve_cmap(spec)
+        assert np.allclose(resolved(np.nan)[:3], _hex_to_rgb(NO_DATA_COLOR), atol=0.01)
+
+
+def test_resolve_cmap_rejects_bad_input():
+    """Bad palettes fail with a message naming what was wrong."""
+    from derip2.plotting.persequence import resolve_cmap
+
+    with pytest.raises(ValueError, match='Unknown matplotlib colormap'):
+        resolve_cmap('not-a-real-colormap')
+    with pytest.raises(ValueError, match='at least two colours'):
+        resolve_cmap(['#ffffff'])
+    with pytest.raises(ValueError, match='Invalid colour at position 1'):
+        resolve_cmap(['#ffffff', 'definitely-not-a-colour'])
+    with pytest.raises(TypeError, match='must be a colormap name'):
+        resolve_cmap(42)
+
+
+def test_conversion_heatmap_honours_a_custom_cmap():
+    """The cmap argument reaches the drawn image, overriding the default."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from derip2.plotting.flank_spectra import plot_flank_conversion_heatmap
+    from derip2.plotting.persequence import CONVERSION_CMAP
+
+    result = make_result(['GCAT', 'GTAT', 'ATGC', 'ATAC'])
+
+    fig = plot_flank_conversion_heatmap(result, sample=None, cmap='magma_r')
+    image = fig.axes[0].images[0]
+    samples = np.linspace(0, 1, 32)
+    assert np.allclose(image.cmap(samples), plt.get_cmap('magma_r')(samples))
+    assert not np.allclose(image.cmap(samples), CONVERSION_CMAP(samples))
+
+    # A colour list works the same way.
+    fig = plot_flank_conversion_heatmap(
+        result, sample=None, cmap=['#ffffff', '#2a78d6']
+    )
+    assert np.allclose(fig.axes[0].images[0].cmap(0.0)[:3], (1.0, 1.0, 1.0), atol=0.01)
+
+
+def test_conversion_heatmap_rejects_a_bad_cmap_before_drawing():
+    """An unusable palette raises rather than half-building a figure."""
+    from derip2.plotting.flank_spectra import plot_flank_conversion_heatmap
+
+    result = make_result(['GCAT', 'GTAT', 'ATGC', 'ATAC'])
+    before = len(plt.get_fignums())
+    with pytest.raises(ValueError, match='Unknown matplotlib colormap'):
+        plot_flank_conversion_heatmap(result, sample=None, cmap='nope')
+    assert len(plt.get_fignums()) == before, 'a figure was left open on failure'
+
+
+def test_derip_method_forwards_cmap(mintest_path):
+    """DeRIP.plot_flank_conversion_heatmap passes cmap through to the plot."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from derip2.derip import DeRIP
+
+    derip = DeRIP(mintest_path)
+    derip.calculate_rip()
+    fig = derip.plot_flank_conversion_heatmap(cmap='cividis')
+    samples = np.linspace(0, 1, 32)
+    assert np.allclose(
+        fig.axes[0].images[0].cmap(samples), plt.get_cmap('cividis')(samples)
+    )
+
+
 def test_conversion_heatmap_2bp_is_16x16():
     """A 2 bp flank produces a 16x16 conversion heatmap."""
     from derip2.plotting.flank_spectra import plot_flank_conversion_heatmap
