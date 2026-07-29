@@ -89,18 +89,18 @@ MATCH_ALPHA = 0.3
 CONVERSION_CMAP_NAME = 'viridis'
 
 # Colour for no-data cells (a flank motif seen zero times), so they read as
-# absent rather than as a legitimate 0 %. A neutral grey, deliberately not the
-# figure surface: a ramp with a pale end (viridis ends at #fde725, and the
-# YlOrBr and magma_r defaults tried before it *began* at near-white) leaves a
-# surface-coloured blank indistinguishable from a real cell at that end -- and on
-# the 3 bp grid roughly half the cells are blank. Grey sits off this ramp by
-# ~0.60 in sRGB at its closest.
+# absent rather than as a legitimate 0 %. White reads as a hole in the grid,
+# which is what a motif with no observations is; on the 3 bp map roughly half the
+# 4096 cells are blank, so this is a large part of what the figure shows.
 #
-# If the default is ever changed to a ramp that itself passes through a light
-# grey (matplotlib's coolwarm, say, whose midpoint is #dddcdc), this needs
-# revisiting; ``test_no_data_colour_is_distinct_from_the_whole_ramp`` will fail
-# if it is not.
-NO_DATA_COLOR = '#cfcfcf'
+# White only works because the default ramp is dark at both the low end (#440154)
+# and through the middle, and reaches only #fde725 at its brightest -- 0.86 away
+# in sRGB. It is *not* safe for every colormap: a ramp with a near-white end
+# (ColorBrewer's YlOrBr starts at #ffffe5, 0.10 away) would render blanks
+# indistinguishable from real cells at that end. Changing the default to such a
+# ramp means revisiting this constant;
+# ``test_no_data_colour_is_distinct_from_the_whole_ramp`` fails if it is not.
+NO_DATA_COLOR = '#ffffff'
 
 CONVERSION_CMAP = plt.get_cmap(CONVERSION_CMAP_NAME).with_extremes(bad=NO_DATA_COLOR)
 

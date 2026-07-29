@@ -355,10 +355,14 @@ def test_no_data_colour_is_distinct_from_the_whole_ramp():
     """A motif seen zero times cannot be mistaken for a real conversion value.
 
     Not just the ends: the no-data colour has to sit off the ramp at *every*
-    level. This is why it is a neutral grey rather than the figure surface —
-    YlOrBr starts at a near-white #ffffe5, only ~0.09 from the surface, and on
-    the 3 bp grid roughly half the cells are blank. A future default that itself
-    passes through a light grey (coolwarm's midpoint, say) would trip this.
+    level, and on the 3 bp grid roughly half the cells are blank, so this is a
+    large part of what the figure shows.
+
+    White is safe against the current viridis default (0.86 at its closest, the
+    yellow end) but would not be against every colormap — ColorBrewer's YlOrBr
+    starts at a near-white #ffffe5, 0.10 away. Changing the default to a ramp
+    with a near-white end trips this test rather than silently shipping blanks
+    that read as real cells.
     """
     import numpy as np
 

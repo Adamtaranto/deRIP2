@@ -607,8 +607,8 @@ def plot_flank_conversion_heatmap(
     substrate, through teal and green, to bright yellow where it has been fully
     converted. This encodes magnitude only — unlike the bihistograms, hue here
     does not name the substrate or product state. Cells for motifs seen zero
-    times are drawn in a neutral grey, so a blank is never mistaken for a low
-    conversion rate. Pass ``cmap`` to use a different palette.
+    times are left white, so a blank reads as a hole in the grid rather than a
+    low conversion rate. Pass ``cmap`` to use a different palette.
 
     Parameters
     ----------

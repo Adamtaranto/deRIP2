@@ -137,7 +137,7 @@ laid out by the base(s) 5′ (rows) and 3′ (columns) of the target. Both a **1
 single-base preference (e.g. a protective 3′ cytosine) is carried by the immediately
 flanking base or extends further out. Cells run **dark purple** where the motif
 still holds its substrate, through teal and green, to **bright yellow** where it has
-been fully converted (`viridis`), with motifs seen zero times in grey; this is a
+been fully converted (`viridis`), with motifs seen zero times left white; this is a
 magnitude scale, so unlike the bihistograms the hue does not name the substrate or
 product state. See the
 [Flank-context Spectra (API)](flank-context-spectra.md#flank-interaction-conversion-heatmap)

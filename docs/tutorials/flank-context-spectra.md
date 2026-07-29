@@ -134,8 +134,8 @@ substrate, through teal and green, to **bright yellow** where it has been fully
 converted.
 Note this is a *magnitude* scale — unlike the bihistograms, where blue and orange
 name the substrate and product states, hue here only tracks how far the conversion
-has gone. Motifs seen zero times are drawn in a neutral **grey**, so a blank cell is
-never mistaken for a low conversion rate (on the 3 bp grid roughly half the cells are
+has gone. Motifs seen zero times are left **white**, reading as a hole in the grid
+rather than a low conversion rate (on the 3 bp grid roughly half the cells are
 blank).
 
 Pass `cmap` to restyle the scale. It accepts any registered matplotlib colormap name

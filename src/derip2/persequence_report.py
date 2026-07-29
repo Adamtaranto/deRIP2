@@ -2200,7 +2200,7 @@ def _overview_html(
                 'target on the rows, the two bases 3&prime; on the columns, each '
                 'ordered nearest-base first). This shows whether the single-base '
                 'preference above is carried by the base immediately flanking the '
-                'RIP target or extends to the second base out; grey cells are '
+                'RIP target or extends to the second base out; white cells are '
                 'motifs absent from the alignment.</p>'
                 f'<div class="spectrum-scroll">{flank2_heat_svg}</div>'
             )
