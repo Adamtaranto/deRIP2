@@ -17,7 +17,7 @@ jobs:
         run: echo "Python version is ${{ matrix.python-version }}"
       # Set up Python based on the matrix version
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       # Install dependencies, including test dependencies from pyproject.toml
