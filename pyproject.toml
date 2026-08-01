@@ -82,7 +82,10 @@ test = ["pytest", "pytest-codspeed", "pytest-cov"]
 [tool.pytest.ini_options]
 # Benchmarks are heavy and only meaningful under CodSpeed; exclude them from the
 # normal test run. Run them explicitly with: pytest tests/benchmarks --codspeed
-addopts = "-v --cov=derip2 --cov-branch --cov-report=xml --cov-report=term --ignore=tests/benchmarks"
+# Coverage is not enabled by default: CI measures it on one Python version only,
+# and coverage tracing would skew the CodSpeed benchmark timings. For a local
+# report run: pytest --cov=derip2 --cov-report=term
+addopts = "-v --ignore=tests/benchmarks"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 
