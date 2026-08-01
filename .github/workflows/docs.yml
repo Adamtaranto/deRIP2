@@ -30,7 +30,7 @@ jobs:
       - name: Build site with Zensical
         run: zensical build --clean --strict
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
   deploy:
