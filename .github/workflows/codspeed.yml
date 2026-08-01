@@ -26,5 +26,8 @@ jobs:
         uses: CodSpeedHQ/action@v5
         with:
           token: ${{ secrets.CODSPEED_TOKEN }}
+          # addopts is cleared to drop the default --ignore=tests/benchmarks,
+          # which would otherwise deselect the path passed here. No coverage
+          # flags are involved: coverage is not part of the default addopts.
           run: uv run pytest tests/benchmarks --codspeed -o addopts=""
           mode: simulation
