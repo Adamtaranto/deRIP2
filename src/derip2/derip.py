@@ -5,16 +5,20 @@ This module provides a class-based interface to the deRIP2 tool for correcting
 Repeat-Induced Point (RIP) mutations in fungal DNA alignments.
 """
 
+from io import StringIO
 import logging
+import math
 from os import path
-import sys
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
+import warnings
 
 from Bio.Align import MultipleSeqAlignment
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
+from Bio.SeqUtils import gc_fraction
 import numpy as np
+import pandas as pd
 
 import derip2.aln_ops as ao
 
@@ -157,8 +161,6 @@ class DeRIP:
             If the alignment contains fewer than two sequences, has duplicate IDs,
             or if the input type is not supported.
         """
-        from Bio.Align import MultipleSeqAlignment
-
         # Check if input is a MultipleSeqAlignment object
         if isinstance(alignment_input, MultipleSeqAlignment):
             # Directly use the provided alignment
@@ -1034,10 +1036,6 @@ class DeRIP:
         carry no evidence, so placing them at either extreme would misrepresent
         them.
         """
-        import math
-
-        from Bio.Align import MultipleSeqAlignment
-
         self.get_rsi_values()
 
         def _sort_key(record):
@@ -1047,14 +1045,7 @@ class DeRIP:
                 return (1, 0.0)
             return (0, -rsi if descending else rsi)
 
-        sorted_alignment = MultipleSeqAlignment(sorted(self.alignment, key=_sort_key))
-
-        if inplace:
-            self.alignment = sorted_alignment
-            logger.info('Updated alignment in-place with RSI-sorted sequences')
-            self._invalidate_results()
-
-        return sorted_alignment
+        return self._sort_rows(_sort_key, inplace, 'RSI')
 
     def summarize_stats(self, ambiguous: str = 'split'):
         """
@@ -1080,8 +1071,6 @@ class DeRIP:
         ValueError
             If :meth:`calculate_rip` has not been called first.
         """
-        import pandas as pd
-
         self._require_rip('summarizing stats')
 
         if self.rsi_result is None or self.rsi_result.ambiguous != ambiguous:
@@ -1132,8 +1121,6 @@ class DeRIP:
         str
             The stats table, ready to print.
         """
-        from io import StringIO
-
         df = self.summarize_stats(ambiguous=ambiguous).copy()
         for col in ('GC', 'CRI', 'PI', 'SI', 'RSI', 'p_fwd', 'p_rev'):
             df[col] = df[col].map('{:.3f}'.format)
@@ -1938,6 +1925,175 @@ class DeRIP:
 
         return cri_values
 
+    # -- shared row selection helpers --------------------------------------------
+    def _sort_rows(self, key: Callable, inplace: bool, label: str):
+        """
+        Return the alignment sorted by ``key``; optionally adopt it in place.
+
+        Parameters
+        ----------
+        key : callable
+            Sort key taking a :class:`Bio.SeqRecord.SeqRecord`.
+        inplace : bool
+            Replace the current alignment (and discard results) when True.
+        label : str
+            Metric name used in the in-place log message (e.g. ``'CRI'``).
+
+        Returns
+        -------
+        Bio.Align.MultipleSeqAlignment
+            The sorted alignment.
+        """
+        sorted_alignment = MultipleSeqAlignment(sorted(self.alignment, key=key))
+        if inplace:
+            self.alignment = sorted_alignment
+            logger.info(f'Updated alignment in-place with {label}-sorted sequences')
+            self._invalidate_results()
+        return sorted_alignment
+
+    def _filter_rows(
+        self,
+        annotation: str,
+        threshold: float,
+        inplace: bool,
+        *,
+        label: str,
+        param: str,
+        quantity: str,
+    ):
+        """
+        Keep the records whose ``annotation`` value is at least ``threshold``.
+
+        Parameters
+        ----------
+        annotation : str
+            Record annotation key holding the metric (``'CRI'`` or
+            ``'GC_content'``); every record must already carry it.
+        threshold : float
+            Minimum value to keep a record.
+        inplace : bool
+            Replace the current alignment (and discard results) when True.
+        label : str
+            Short metric name for log/warning text (``'CRI'``, ``'GC'``).
+        param : str
+            Name of the caller's threshold argument, for the error message.
+        quantity : str
+            Human phrase for the metric in the error message
+            (``'CRI value'``, ``'GC content'``).
+
+        Returns
+        -------
+        Bio.Align.MultipleSeqAlignment
+            The filtered alignment.
+
+        Raises
+        ------
+        ValueError
+            If no sequences pass the threshold.
+        """
+        kept = [r for r in self.alignment if r.annotations[annotation] >= threshold]
+
+        if not kept:
+            highest = max(r.annotations[annotation] for r in self.alignment)
+            raise ValueError(
+                f'No sequences remain after filtering with {param}={threshold}. '
+                f'The highest {quantity} in the alignment is {highest:.4f}'
+            )
+
+        n_total = len(self.alignment)
+        if len(kept) < 2:
+            kept_ids = {r.id for r in kept}
+            logger.debug(
+                f'Records that passed filter threshold {threshold}: {len(kept)}; '
+                f'failed: {n_total - len(kept_ids)}'
+            )
+            warnings.warn(
+                f'Only {len(kept)} sequence remains after {label} filtering. '
+                f'DeRIP works best with multiple sequences.',
+                stacklevel=3,
+            )
+        elif len(kept) < n_total:
+            logger.info(
+                f'{label} filtering removed {n_total - len(kept)} sequences '
+                f'({len(kept)}/{n_total} sequences remaining)'
+            )
+
+        filtered_alignment = MultipleSeqAlignment(kept)
+        if inplace:
+            self.alignment = filtered_alignment
+            logger.info(f'Updated alignment in-place with {label}-filtered sequences')
+            self._invalidate_results()
+        return filtered_alignment
+
+    def _keep_n_rows(
+        self,
+        annotation: str,
+        n: int,
+        inplace: bool,
+        *,
+        highest: bool,
+        label: str,
+        quantity: str,
+    ):
+        """
+        Keep the ``n`` records with the lowest (or highest) ``annotation`` value.
+
+        Parameters
+        ----------
+        annotation : str
+            Record annotation key holding the metric; every record must carry it.
+        n : int
+            Number of records to keep. Must be at least 2 and fewer than the
+            alignment size, otherwise the alignment is returned unchanged.
+        inplace : bool
+            Replace the current alignment (and discard results) when True.
+        highest : bool
+            Keep the highest values when True, the lowest when False.
+        label : str
+            Metric name for the in-place log message (``'low-CRI'``,
+            ``'high-GC'``).
+        quantity : str
+            Human phrase for the log messages (``'CRI values'``,
+            ``'GC content'``).
+
+        Returns
+        -------
+        Bio.Align.MultipleSeqAlignment
+            The reduced alignment (or the current one if no filtering applied).
+        """
+        n_total = len(self.alignment)
+        if n >= n_total:
+            logger.info(
+                f'Requested to keep {n} sequences but alignment only has {n_total}. '
+                'No filtering performed.'
+            )
+            return self.alignment
+        if n < 2:
+            logger.warning(
+                f'Cannot keep fewer than 2 sequences (requested {n}). DeRIP works '
+                'best with multiple sequences. No filtering performed.'
+            )
+            return self.alignment
+
+        kept = sorted(
+            self.alignment, key=lambda r: r.annotations[annotation], reverse=highest
+        )[:n]
+        kept_alignment = MultipleSeqAlignment(kept)
+
+        which = 'highest' if highest else 'lowest'
+        other = 'lower' if highest else 'higher'
+        logger.info(
+            f'Kept {n} sequences with {which} {quantity}: '
+            f'{[(r.id, r.annotations[annotation]) for r in kept]}'
+        )
+        logger.info(f'Removed {n_total - n} sequences with {other} {quantity}')
+
+        if inplace:
+            self.alignment = kept_alignment
+            logger.info(f'Updated alignment in-place with {label} filtered sequences')
+            self._invalidate_results()
+        return kept_alignment
+
     def sort_by_cri(self, descending=True, inplace=False):
         """
         Sort the alignment by CRI score.
@@ -1955,30 +2111,12 @@ class DeRIP:
         Bio.Align.MultipleSeqAlignment
             A new alignment with sequences sorted by CRI score.
         """
-        from Bio.Align import MultipleSeqAlignment
-
         # Ensure all sequences have CRI values
         self.get_cri_values()
-
-        # Sort records by CRI score
-        sorted_records = sorted(
-            self.alignment,
-            key=lambda record: record.annotations['CRI'],
-            reverse=descending,
+        sign = -1.0 if descending else 1.0
+        return self._sort_rows(
+            lambda record: sign * record.annotations['CRI'], inplace, 'CRI'
         )
-
-        # Create a new alignment with the sorted records
-        sorted_alignment = MultipleSeqAlignment(sorted_records)
-
-        # Replace current alignment if inplace=True
-        if inplace:
-            self.alignment = sorted_alignment
-            logger.info('Updated alignment in-place with CRI-sorted sequences')
-
-            # Clear calculated results since alignment changed
-            self._invalidate_results()
-
-        return sorted_alignment
 
     def summarize_cri(self):
         """
@@ -1989,10 +2127,6 @@ class DeRIP:
         str
             A formatted string containing the CRI summary table.
         """
-        from io import StringIO
-
-        import pandas as pd
-
         # Ensure all sequences have CRI values
         cri_data = self.get_cri_values()
 
@@ -2038,69 +2172,14 @@ class DeRIP:
         CRI values will be calculated for sequences that don't already have them.
         If inplace=True, this will modify the original alignment in the DeRIP object.
         """
-        import warnings
-
-        from Bio.Align import MultipleSeqAlignment
-
         if self.alignment is None:
             raise ValueError('No alignment loaded')
 
         # Ensure all sequences have CRI values
         self.get_cri_values()
-
-        # Filter sequences based on CRI threshold
-        filtered_records = [
-            record for record in self.alignment if record.annotations['CRI'] >= min_cri
-        ]
-
-        # Check if any sequences remain after filtering
-        if not filtered_records:
-            raise ValueError(
-                f'No sequences remain after filtering with min_cri={min_cri}. '
-                f'The highest CRI value in the alignment is {max([r.annotations["CRI"] for r in self.alignment]):.4f}'
-            )
-
-        # Warn if fewer than 2 sequences remain
-        if len(filtered_records) < 2:
-            passed_records = [(r.id, r.annotations['CRI']) for r in filtered_records]
-            passed_ids = {r.id for r in filtered_records}
-            failed_records = [
-                (r.id, r.annotations['CRI'])
-                for r in self.alignment
-                if r.id not in passed_ids
-            ]
-
-            print(
-                f'DEBUG: Records that passed filter threshold {min_cri}: {len(passed_records)}',
-                file=sys.stderr,
-            )
-            print(
-                f'DEBUG: Records that failed filter threshold {min_cri}: {len(failed_records)}',
-                file=sys.stderr,
-            )
-
-            warnings.warn(
-                f'Only {len(filtered_records)} sequence remains after CRI filtering. DeRIP works best with multiple sequences.',
-                stacklevel=2,
-            )
-        elif len(filtered_records) < len(self.alignment):
-            logger.info(
-                f'CRI filtering removed {len(self.alignment) - len(filtered_records)} sequences '
-                f'({len(filtered_records)}/{len(self.alignment)} sequences remaining)'
-            )
-
-        # Create new alignment with filtered records
-        filtered_alignment = MultipleSeqAlignment(filtered_records)
-
-        # Replace current alignment if inplace=True
-        if inplace:
-            self.alignment = filtered_alignment
-            logger.info('Updated alignment in-place with CRI-filtered sequences')
-
-            # Clear calculated results since alignment changed
-            self._invalidate_results()
-
-        return filtered_alignment
+        return self._filter_rows(
+            'CRI', min_cri, inplace, label='CRI', param='min_cri', quantity='CRI value'
+        )
 
     def keep_low_cri(self, n=2, inplace=False):
         """
@@ -2132,58 +2211,14 @@ class DeRIP:
         If n is less than 2, no filtering occurs to ensure DeRIP has enough sequences to work with.
         """
 
-        from Bio.Align import MultipleSeqAlignment
-
         if self.alignment is None:
             raise ValueError('No alignment loaded')
 
         # Ensure all sequences have CRI values
         self.get_cri_values()
-
-        # Check if n exceeds alignment length
-        if n >= len(self.alignment):
-            logger.info(
-                f'Requested to keep {n} sequences but alignment only has {len(self.alignment)}. No filtering performed.'
-            )
-            return self.alignment
-
-        # Check if n is too small
-        if n < 2:
-            logger.warning(
-                f'Cannot keep fewer than 2 sequences (requested {n}). DeRIP works best with multiple sequences. No filtering performed.'
-            )
-            return self.alignment
-
-        # Sort records by CRI values (ascending order - lowest first)
-        sorted_records = sorted(
-            self.alignment, key=lambda record: record.annotations['CRI']
+        return self._keep_n_rows(
+            'CRI', n, inplace, highest=False, label='low-CRI', quantity='CRI values'
         )
-
-        # Keep only the first n sequences with lowest CRI
-        kept_records = sorted_records[:n]
-
-        # Create new alignment with kept records
-        kept_alignment = MultipleSeqAlignment(kept_records)
-
-        # Log which sequences were kept
-        kept_ids = [record.id for record in kept_records]
-        cri_values = [record.annotations['CRI'] for record in kept_records]
-        logger.info(
-            f'Kept {n} sequences with lowest CRI values: {list(zip(kept_ids, cri_values))}'
-        )
-        logger.info(
-            f'Removed {len(self.alignment) - n} sequences with higher CRI values'
-        )
-
-        # Replace current alignment if inplace=True
-        if inplace:
-            self.alignment = kept_alignment
-            logger.info('Updated alignment in-place with low-CRI filtered sequences')
-
-            # Clear calculated results since alignment changed
-            self._invalidate_results()
-
-        return kept_alignment
 
     def get_gc_content(self):
         """
@@ -2202,9 +2237,6 @@ class DeRIP:
         """
         if self.alignment is None:
             raise ValueError('No alignment loaded')
-
-        # Import the gc_fraction function from Bio.SeqUtils
-        from Bio.SeqUtils import gc_fraction
 
         gc_values = []
 
@@ -2265,10 +2297,6 @@ class DeRIP:
         GC content will be calculated for sequences that don't already have it.
         If inplace=True, this will modify the original alignment in the DeRIP object.
         """
-        import warnings
-
-        from Bio.Align import MultipleSeqAlignment
-
         if self.alignment is None:
             raise ValueError('No alignment loaded')
 
@@ -2278,47 +2306,14 @@ class DeRIP:
         # Validate min_gc is in valid range
         if not 0.0 <= min_gc <= 1.0:
             raise ValueError(f'min_gc must be between 0.0 and 1.0, got {min_gc}')
-
-        # Filter sequences based on GC content threshold
-        filtered_records = [
-            record
-            for record in self.alignment
-            if record.annotations['GC_content'] >= min_gc
-        ]
-
-        # Check if any sequences remain after filtering
-        if not filtered_records:
-            max_gc = max([r.annotations['GC_content'] for r in self.alignment])
-            raise ValueError(
-                f'No sequences remain after filtering with min_gc={min_gc}. '
-                f'The highest GC content in the alignment is {max_gc:.4f}'
-            )
-
-        # Warn if fewer than 2 sequences remain
-        if len(filtered_records) < 2:
-            warnings.warn(
-                f'Only {len(filtered_records)} sequence remains after GC filtering. '
-                f'DeRIP works best with multiple sequences.',
-                stacklevel=2,
-            )
-        elif len(filtered_records) < len(self.alignment):
-            logger.info(
-                f'GC filtering removed {len(self.alignment) - len(filtered_records)} sequences '
-                f'({len(filtered_records)}/{len(self.alignment)} sequences remaining)'
-            )
-
-        # Create new alignment with filtered records
-        filtered_alignment = MultipleSeqAlignment(filtered_records)
-
-        # Replace current alignment if inplace=True
-        if inplace:
-            self.alignment = filtered_alignment
-            logger.info('Updated alignment in-place with GC-filtered sequences')
-
-            # Clear calculated results since alignment changed
-            self._invalidate_results()
-
-        return filtered_alignment
+        return self._filter_rows(
+            'GC_content',
+            min_gc,
+            inplace,
+            label='GC',
+            param='min_gc',
+            quantity='GC content',
+        )
 
     def keep_high_gc(self, n=2, inplace=False):
         """
@@ -2350,57 +2345,16 @@ class DeRIP:
         If n is less than 2, no filtering occurs to ensure DeRIP has enough sequences to work with.
         """
 
-        from Bio.Align import MultipleSeqAlignment
-
         if self.alignment is None:
             raise ValueError('No alignment loaded')
 
         # Ensure all sequences have GC content values
         self.get_gc_content()
-
-        # Check if n exceeds alignment length
-        if n >= len(self.alignment):
-            logger.info(
-                f'Requested to keep {n} sequences but alignment only has {len(self.alignment)}. No filtering performed.'
-            )
-            return self.alignment
-
-        # Check if n is too small
-        if n < 2:
-            logger.warning(
-                f'Cannot keep fewer than 2 sequences (requested {n}). DeRIP works best with multiple sequences. No filtering performed.'
-            )
-            return self.alignment
-
-        # Sort records by GC content values (descending order - highest first)
-        sorted_records = sorted(
-            self.alignment,
-            key=lambda record: record.annotations['GC_content'],
-            reverse=True,
+        return self._keep_n_rows(
+            'GC_content',
+            n,
+            inplace,
+            highest=True,
+            label='high-GC',
+            quantity='GC content',
         )
-
-        # Keep only the first n sequences with highest GC content
-        kept_records = sorted_records[:n]
-
-        # Create new alignment with kept records
-        kept_alignment = MultipleSeqAlignment(kept_records)
-
-        # Log which sequences were kept
-        kept_ids = [record.id for record in kept_records]
-        gc_values = [record.annotations['GC_content'] for record in kept_records]
-        logger.info(
-            f'Kept {n} sequences with highest GC content: {list(zip(kept_ids, gc_values))}'
-        )
-        logger.info(
-            f'Removed {len(self.alignment) - n} sequences with lower GC content'
-        )
-
-        # Replace current alignment if inplace=True
-        if inplace:
-            self.alignment = kept_alignment
-            logger.info('Updated alignment in-place with high-GC filtered sequences')
-
-            # Clear calculated results since alignment changed
-            self._invalidate_results()
-
-        return kept_alignment

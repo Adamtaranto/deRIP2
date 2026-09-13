@@ -57,10 +57,11 @@ base is T (not C), so neither can be read as the other strand's substrate.
 """
 
 from dataclasses import dataclass
-import math
 from typing import TYPE_CHECKING
 
 import numpy as np
+
+from derip2.stats._numeric import two_proportion_test as _two_proportion_test
 
 if TYPE_CHECKING:  # pragma: no cover
     from derip2.aln_ops import ColumnClassification
@@ -185,68 +186,6 @@ class RSIResult:
             }
             for i in range(n)
         ]
-
-
-def _two_proportion_test(x1, n1, x2, n2):
-    """
-    Two-sided two-proportion z-test, vectorised over rows.
-
-    Tests the null hypothesis that the forward and reverse conversion
-    proportions are equal.
-
-    Parameters
-    ----------
-    x1, n1 : numpy.ndarray
-        Forward successes and trials, shape ``(n_rows,)``.
-    x2, n2 : numpy.ndarray
-        Reverse successes and trials, shape ``(n_rows,)``.
-
-    Returns
-    -------
-    tuple of numpy.ndarray
-        ``(z, pvalue)``. Both NaN where either denominator is zero. Where the
-        pooled proportion is 0 or 1 the two proportions are necessarily equal,
-        giving ``z = 0`` and ``pvalue = 1``.
-
-    Notes
-    -----
-    The test assumes integer counts. Under the ``'split'`` and ``'weight'``
-    ambiguity policies the inputs are fractional, so the p-value is an
-    approximation. The ``'both'`` policy keeps counts integral but double-counts
-    ambiguous events, which inflates ``n1`` and ``n2`` and so overstates
-    significance. Treat these p-values as a screening heuristic, not as a
-    calibrated test.
-    """
-    n_rows = x1.size
-    z = np.full(n_rows, np.nan)
-    pvalue = np.full(n_rows, np.nan)
-
-    valid = (n1 > 0) & (n2 > 0)
-    if not valid.any():
-        return z, pvalue
-
-    p1 = np.divide(x1, n1, out=np.zeros(n_rows), where=valid)
-    p2 = np.divide(x2, n2, out=np.zeros(n_rows), where=valid)
-    p_pool = np.divide(x1 + x2, n1 + n2, out=np.zeros(n_rows), where=valid)
-
-    se = np.sqrt(
-        p_pool
-        * (1.0 - p_pool)
-        * (1.0 / np.where(valid, n1, 1) + 1.0 / np.where(valid, n2, 1))
-    )
-
-    # SE == 0 means every trial succeeded or every trial failed on both strands,
-    # so p1 == p2 exactly and there is no evidence of asymmetry.
-    degenerate = valid & (se == 0)
-    testable = valid & (se > 0)
-
-    z[degenerate] = 0.0
-    pvalue[degenerate] = 1.0
-
-    z[testable] = (p1[testable] - p2[testable]) / se[testable]
-    pvalue[testable] = [math.erfc(abs(v) / math.sqrt(2.0)) for v in z[testable]]
-
-    return z, pvalue
 
 
 def compute_rsi(
