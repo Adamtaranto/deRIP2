@@ -245,3 +245,22 @@ def test_downstream_matches_golden():
         golden = json.load(fh)
     result = json.loads(json.dumps(result))
     assert result == golden
+
+
+def test_pooled_matches_unpartitioned(mintest_path):
+    """pooled() equals a partition_by='none' run without rescanning the alignment."""
+    derip = DeRIP(mintest_path)
+    derip.calculate_rip()
+    by_row = derip.calculate_spectra(partition_by='row')
+    pooled = by_row.pooled()
+    whole = derip.calculate_spectra(partition_by='none')
+
+    assert pooled.sample_names == ['all']
+    assert pooled.sbs96.shape == (96, 1)
+    assert np.array_equal(pooled.sbs96, whole.sbs96)
+    assert np.array_equal(pooled.sbs192, whole.sbs192)
+    # Every event now belongs to the single pooled sample; the event stream and
+    # the untouched per-row result are otherwise unchanged.
+    assert np.all(pooled.event_sample == 0)
+    assert pooled.event_rows.size == by_row.event_rows.size
+    assert by_row.sbs96.shape[1] == len(derip.alignment)

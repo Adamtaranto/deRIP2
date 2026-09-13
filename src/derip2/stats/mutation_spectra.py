@@ -21,7 +21,7 @@ derip2.spectra.channels : SBS-96/192 channel ordering and pyrimidine folding.
 derip2.stats.strand_bias : The RSI statistic, the sibling per-alignment measure.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import logging
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -351,6 +351,35 @@ class SpectraResult:
     event_child_names: Optional[List[str]] = None
     event_down1: Optional[np.ndarray] = None
     event_down2: Optional[np.ndarray] = None
+
+    def pooled(self, name: str = 'all') -> 'SpectraResult':
+        """
+        Collapse every sample into one pooled spectrum.
+
+        Sums the channel matrices across samples and relabels every event as
+        belonging to the single pooled sample, so the result is exactly what a
+        ``partition_by='none'`` computation would give without re-scanning the
+        alignment.
+
+        Parameters
+        ----------
+        name : str, optional
+            Label for the pooled sample (default: ``'all'``).
+
+        Returns
+        -------
+        SpectraResult
+            A new result with one sample column.
+        """
+        return replace(
+            self,
+            sbs96=self.sbs96.sum(axis=1, keepdims=True),
+            sbs192=(
+                None if self.sbs192 is None else self.sbs192.sum(axis=1, keepdims=True)
+            ),
+            sample_names=[name],
+            event_sample=np.zeros_like(self.event_sample),
+        )
 
     @property
     def sbs96_channels(self) -> List[str]:

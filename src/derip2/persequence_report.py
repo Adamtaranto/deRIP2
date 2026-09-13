@@ -18,6 +18,7 @@ figure's glyphs.
 """
 
 import base64
+import bisect
 from html import escape
 import json
 import logging
@@ -164,26 +165,34 @@ def _marked_fasta_html(name, seq, marks, css_class, width=60):
         HTML for the record, ending in a newline.
     """
     out = [f'&gt;{escape(name)}\n']
-    open_span = False
-    for i, base in enumerate(seq):
-        # A newline every ``width`` residues, outside any open span so the markup
-        # stays well-formed across line breaks.
-        if i and i % width == 0:
-            if open_span:
-                out.append('</span>')
-                open_span = False
-            out.append('\n')
-        marked = i in marks
-        if marked and not open_span:
-            out.append(f'<span class="{css_class}">')
-            open_span = True
-        elif open_span and not marked:
-            out.append('</span>')
-            open_span = False
-        out.append(escape(base))
-    if open_span:
-        out.append('</span>')
-    out.append('\n')
+    span_open = f'<span class="{css_class}">'
+    # Sorted marks let each line pull its own run boundaries with one bisect
+    # instead of testing every residue for membership.
+    sorted_marks = sorted(set(marks))
+    for start in range(0, len(seq), width):
+        end = min(start + width, len(seq))
+        lo = bisect.bisect_left(sorted_marks, start)
+        hi = bisect.bisect_left(sorted_marks, end)
+        cursor = start
+        run_start = None
+        prev = -2  # sentinel: never adjacent to a real offset
+        for m in sorted_marks[lo:hi]:
+            if run_start is None:
+                run_start = m
+            elif m != prev + 1:
+                out.append(escape(seq[cursor:run_start]))
+                out.append(f'{span_open}{escape(seq[run_start : prev + 1])}</span>')
+                cursor = prev + 1
+                run_start = m
+            prev = m
+        if run_start is not None:
+            out.append(escape(seq[cursor:run_start]))
+            out.append(f'{span_open}{escape(seq[run_start : prev + 1])}</span>')
+            cursor = prev + 1
+        out.append(escape(seq[cursor:end]))
+        out.append('\n')
+    if not seq:
+        out.append('\n')
     return ''.join(out)
 
 
@@ -1061,7 +1070,7 @@ def _overview_stats_table_html(df, derip, row_to_panel=None):
     )
 
 
-def _overview_spectrum_svg(derip, ancestor=None):
+def _overview_spectrum_svg(spectra):
     """
     Render the pooled SBS-96 spectrum (all sequences vs the spectra reference).
 
@@ -1073,11 +1082,9 @@ def _overview_spectrum_svg(derip, ancestor=None):
 
     Parameters
     ----------
-    derip : derip2.derip.DeRIP
-        The analysed DeRIP object.
-    ancestor : str or None, optional
-        Reference sequence (one base per alignment column) to compare every
-        sequence against. ``None`` (default) uses the deRIP-corrected consensus.
+    spectra : derip2.stats.mutation_spectra.SpectraResult
+        The row-partitioned trinucleotide spectra already computed for the
+        per-sequence panels; pooled here rather than re-scanning the alignment.
 
     Returns
     -------
@@ -1089,8 +1096,7 @@ def _overview_spectrum_svg(derip, ancestor=None):
 
     from derip2.plotting.spectra import plot_sbs96
 
-    spectra_all = derip.calculate_spectra(partition_by='none', ancestor=ancestor)
-    fig = plot_sbs96(spectra_all, sample=0, width=11.0, bare=True)
+    fig = plot_sbs96(spectra.pooled(), sample=0, width=11.0, bare=True)
     _fix_spectrum_axes(fig)
     svg = figure_to_svg(fig, 'ovwsbs-', tight=False)
     plt.close(fig)
@@ -1355,7 +1361,7 @@ def _overview_html(
     downloads=(),
     df=None,
     row_to_panel=None,
-    spectra_ref_ancestor=None,
+    spectra=None,
     spectra_ref_label=None,
     flank=None,
 ):
@@ -1379,9 +1385,10 @@ def _overview_html(
     row_to_panel : dict of int to int, optional
         Row-index to panel-position map so the stats table can link each sequence
         name to its per-sequence page (see :func:`_overview_stats_table_html`).
-    spectra_ref_ancestor : str or None, optional
-        Reference sequence for the pooled spectrum (one base per column). ``None``
-        uses the deRIP consensus.
+    spectra : derip2.stats.mutation_spectra.SpectraResult, optional
+        Row-partitioned trinucleotide spectra of every sequence against the
+        spectra reference; pooled for the overview spectrum. ``None`` omits
+        the spectrum section.
     spectra_ref_label : str or None, optional
         The reference sequence's id, used in the spectrum prose. ``None`` = the
         deRIP-corrected consensus.
@@ -1395,7 +1402,7 @@ def _overview_html(
         The overview ``<section class="seq-panel">`` (first page of the deck).
     """
     svg = _overview_svg(derip, cds_tracks, fasta_data)
-    spectrum_svg = _overview_spectrum_svg(derip, spectra_ref_ancestor)
+    spectrum_svg = _overview_spectrum_svg(spectra) if spectra is not None else ''
     n_total = len(derip.alignment)
     n_cols = derip.alignment.get_alignment_length()
 
@@ -1610,6 +1617,10 @@ def write_per_sequence_report(
     genetic_code=1,
     spectra_ref_index=None,
     flank_length=1,
+    genes_by_seqid=None,
+    effects_by_seq=None,
+    deripd_aa=None,
+    annotation_colors=None,
 ):
     """
     Write a single-file, arrow-key-navigable per-sequence HTML report.
@@ -1646,6 +1657,18 @@ def write_per_sequence_report(
         Number of flanking bases each side of a RIP-like dinucleotide for the
         flank-context spectra and conversion heatmap (default 1 → 4×4 grid; 2 →
         16×16).
+    genes_by_seqid : dict of str to list of derip2.annotation.Gene, optional
+        Already-parsed gene models for ``gff``. When given (with
+        ``effects_by_seq`` and ``deripd_aa``) the GFF is not re-read and the
+        effects are not recomputed; the CLI passes what it computed for the
+        SNP-effect summary.
+    effects_by_seq : dict of str to list of derip2.annotation.EffectRecord, optional
+        Precomputed :func:`derip2.annotation.compute_effects_for_alignment`.
+    deripd_aa : dict of str to str, optional
+        Precomputed :func:`derip2.annotation.deripd_translations`.
+    annotation_colors : dict of str to str, optional
+        Feature-type to colour overrides for the CDS track (``--annotation-colors``);
+        defaults to :data:`derip2.annotation.DEFAULT_ANNOTATION_COLORS`.
 
     Returns
     -------
@@ -1749,13 +1772,14 @@ def write_per_sequence_report(
     )
     cds_multifasta = None
 
-    # Optional gene-effect data. Parsed once and shared across panels.
-    genes_by_seqid = {}
-    effects_by_seq = {}
-    deripd_aa = {}
+    # Optional gene-effect data. Parsed once and shared across panels (or
+    # handed in by the caller, which spares a second GFF parse and effect pass).
+    genes_by_seqid = {} if genes_by_seqid is None else genes_by_seqid
+    effects_by_seq = {} if effects_by_seq is None else effects_by_seq
+    deripd_aa = {} if deripd_aa is None else deripd_aa
     cds_gene_cols = []  # (gene, cds_columns) projected onto shared alignment columns
     overview_track = None  # annotation-track spans for the overview --plot figure
-    if gff is not None:
+    if gff is not None or genes_by_seqid:
         import numpy as np
 
         from derip2.annotation import (
@@ -1772,21 +1796,24 @@ def write_per_sequence_report(
             warn_unmatched_seqids,
         )
 
-        logger.info(f'Computing gene effects from {gff}...')
-        genes_by_seqid = parse_gff3(gff)
-        warn_unmatched_seqids(genes_by_seqid, [rec.id for rec in derip.alignment])
-        effects_by_seq = compute_effects_for_alignment(
-            derip, genes_by_seqid, genetic_code=genetic_code
-        )
-        deripd_aa = deripd_translations(
-            derip, genes_by_seqid, genetic_code=genetic_code
-        )
+        if not genes_by_seqid:
+            logger.info(f'Computing gene effects from {gff}...')
+            genes_by_seqid = parse_gff3(gff)
+            warn_unmatched_seqids(genes_by_seqid, [rec.id for rec in derip.alignment])
+        if not effects_by_seq:
+            effects_by_seq = compute_effects_for_alignment(
+                derip, genes_by_seqid, genetic_code=genetic_code
+            )
+        if not deripd_aa:
+            deripd_aa = deripd_translations(
+                derip, genes_by_seqid, genetic_code=genetic_code
+            )
 
         # Project each gene's CDS onto its owning sequence's alignment columns
         # ONCE; the same columns then drive every subject's track (each subject's
         # stop codons are computed per panel).
         id_to_row = {rec.id: i for i, rec in enumerate(derip.alignment)}
-        cds_colour = DEFAULT_ANNOTATION_COLORS['CDS']
+        cds_colour = {**DEFAULT_ANNOTATION_COLORS, **(annotation_colors or {})}['CDS']
         for seqid, genes in genes_by_seqid.items():
             ri = id_to_row.get(seqid)
             if ri is None:
@@ -1883,7 +1910,7 @@ def write_per_sequence_report(
             downloads,
             df,
             row_to_panel,
-            spectra_ref_ancestor,
+            spectra,
             spectra_ref_label,
             flank,
         )

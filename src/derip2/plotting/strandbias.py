@@ -147,10 +147,9 @@ def _column_segments(cls, mode):
     if mode not in MODES:
         raise ValueError(f'mode must be one of {MODES}, got {mode!r}')
 
-    is_C = cls.arr == b'C'
-    is_T = cls.arr == b'T'
-    is_G = cls.arr == b'G'
-    is_A = cls.arr == b'A'
+    # Base masks are cached on the classification, so redrawing (e.g. the three
+    # panels of the HTML report) does not rescan the alignment.
+    is_C, is_T, is_G, is_A = cls.is_C, cls.is_T, cls.is_G, cls.is_A
 
     if mode == 'rip':
         fwd_p, fwd_s = cls.prod_fwd, cls.sub_fwd

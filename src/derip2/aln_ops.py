@@ -10,6 +10,7 @@ consensus sequences, and outputting corrected sequences in various formats.
 from collections import Counter, namedtuple
 from copy import deepcopy
 from dataclasses import dataclass
+from functools import cached_property
 
 # import defaultdict
 from io import StringIO
@@ -156,7 +157,7 @@ def checkUniqueID(align: MultipleSeqAlignment) -> None:
         If any duplicate sequence IDs are found in the alignment.
     """
     # Extract all sequence IDs from the alignment
-    rowIDs = [list(align)[x].id for x in range(align.__len__())]
+    rowIDs = [record.id for record in align]
 
     # Count occurrences of each ID
     IDcounts = Counter(rowIDs)
@@ -1019,8 +1020,57 @@ class ColumnClassification:
     base_counts: np.ndarray
     reaminate: bool
 
+    # -- per-cell base masks ----------------------------------------------------
+    @cached_property
+    def is_A(self) -> np.ndarray:
+        """
+        Per-cell mask of A bases.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean array.
+        """
+        return self.arr == b'A'
+
+    @cached_property
+    def is_C(self) -> np.ndarray:
+        """
+        Per-cell mask of C bases.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean array.
+        """
+        return self.arr == b'C'
+
+    @cached_property
+    def is_G(self) -> np.ndarray:
+        """
+        Per-cell mask of G bases.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean array.
+        """
+        return self.arr == b'G'
+
+    @cached_property
+    def is_T(self) -> np.ndarray:
+        """
+        Per-cell mask of T bases.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean array.
+        """
+        return self.arr == b'T'
+
     # -- per-column base counts -------------------------------------------------
-    @property
+    @cached_property
     def nA(self) -> np.ndarray:
         """
         Per-column count of A bases.
@@ -1032,7 +1082,7 @@ class ColumnClassification:
         """
         return self.base_counts[:, 0]
 
-    @property
+    @cached_property
     def nC(self) -> np.ndarray:
         """
         Per-column count of C bases.
@@ -1044,7 +1094,7 @@ class ColumnClassification:
         """
         return self.base_counts[:, 1]
 
-    @property
+    @cached_property
     def nG(self) -> np.ndarray:
         """
         Per-column count of G bases.
@@ -1056,7 +1106,7 @@ class ColumnClassification:
         """
         return self.base_counts[:, 2]
 
-    @property
+    @cached_property
     def nT(self) -> np.ndarray:
         """
         Per-column count of T bases.
@@ -1068,7 +1118,7 @@ class ColumnClassification:
         """
         return self.base_counts[:, 3]
 
-    @property
+    @cached_property
     def n_gap(self) -> np.ndarray:
         """
         Per-column count of gap characters.
@@ -1080,7 +1130,7 @@ class ColumnClassification:
         """
         return self.base_counts[:, 4]
 
-    @property
+    @cached_property
     def base_count(self) -> np.ndarray:
         """
         Per-column count of unambiguous ACGT bases.
@@ -1093,7 +1143,7 @@ class ColumnClassification:
         return self.base_counts[:, :4].sum(axis=1)
 
     # -- derived cell masks -----------------------------------------------------
-    @property
+    @cached_property
     def sub_fwd(self) -> np.ndarray:
         """
         Forward RIP substrate cells: C in CpA context, in assessable columns.
@@ -1105,7 +1155,7 @@ class ColumnClassification:
         """
         return self.ca & self.ct_ok
 
-    @property
+    @cached_property
     def sub_rev(self) -> np.ndarray:
         """
         Reverse RIP substrate cells: G in TpG context, in assessable columns.
@@ -1117,7 +1167,7 @@ class ColumnClassification:
         """
         return self.tg & self.ga_ok
 
-    @property
+    @cached_property
     def prod_fwd(self) -> np.ndarray:
         """
         Forward RIP product cells: T in TpA context, in forward RIP columns.
@@ -1129,7 +1179,7 @@ class ColumnClassification:
         """
         return self.ta & self.fwd_col
 
-    @property
+    @cached_property
     def prod_rev(self) -> np.ndarray:
         """
         Reverse RIP product cells: A in TpA context, in reverse RIP columns.
@@ -1141,7 +1191,7 @@ class ColumnClassification:
         """
         return self.ta2 & self.rev_col
 
-    @property
+    @cached_property
     def nonrip_fwd(self) -> np.ndarray:
         """
         T cells in a forward candidate column that are not RIP products.
@@ -1153,7 +1203,7 @@ class ColumnClassification:
         """
         return self.fwd_block & (self.arr == b'T') & ~(self.fwd_col & self.ta)
 
-    @property
+    @cached_property
     def nonrip_rev(self) -> np.ndarray:
         """
         A cells in a reverse candidate column that are not RIP products.
@@ -1165,7 +1215,7 @@ class ColumnClassification:
         """
         return self.rev_block & (self.arr == b'A') & ~(self.rev_col & self.ta2)
 
-    @property
+    @cached_property
     def mask_Y(self) -> np.ndarray:
         """
         Mask of cells overwritten with the IUPAC code Y (C/T) in the masked alignment.
@@ -1178,7 +1228,7 @@ class ColumnClassification:
         targets = (self.arr == b'T') if self.reaminate else self.ta
         return self.modC & targets
 
-    @property
+    @cached_property
     def mask_R(self) -> np.ndarray:
         """
         Mask of cells overwritten with the IUPAC code R (A/G) in the masked alignment.
@@ -1192,7 +1242,7 @@ class ColumnClassification:
         return self.modG & targets
 
     # -- per-row tallies --------------------------------------------------------
-    @property
+    @cached_property
     def add_fwd(self) -> np.ndarray:
         """
         Per-row count of forward-strand RIP events.
@@ -1204,7 +1254,7 @@ class ColumnClassification:
         """
         return self.prod_fwd.sum(axis=1)
 
-    @property
+    @cached_property
     def add_rev(self) -> np.ndarray:
         """
         Per-row count of reverse-strand RIP events.
@@ -1216,7 +1266,7 @@ class ColumnClassification:
         """
         return self.prod_rev.sum(axis=1)
 
-    @property
+    @cached_property
     def add_nonrip(self) -> np.ndarray:
         """
         Per-row count of non-RIP deamination events.
@@ -1228,7 +1278,7 @@ class ColumnClassification:
         """
         return self.nonrip_fwd.sum(axis=1) + self.nonrip_rev.sum(axis=1)
 
-    @property
+    @cached_property
     def corrected_positions(self) -> List[int]:
         """
         Column indices whose consensus base was corrected.
@@ -1965,12 +2015,12 @@ def getDERIP(
     """
     logger.debug('Generating deRIPed sequence...')
 
-    # Check that all positions have been filled
-    if None in [x.base for x in tracker.values()]:
+    # Read the bases out in column order (one pass) and check for gaps in the
+    # fill at the same time.
+    bases = [tracker[col].base for col in sorted(tracker)]
+    if any(base is None for base in bases):
         raise ValueError('Not all positions have been filled in the tracker!')
-
-    # Join all bases in the tracker, ordering by column index
-    deRIPstr = ''.join([y.base for y in sorted(tracker.values(), key=lambda x: x[0])])
+    deRIPstr = ''.join(bases)
 
     # Remove gap characters if requested
     if deGAP:

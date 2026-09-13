@@ -672,14 +672,14 @@ def _binom_two_sided(k: int, n: int, p: float = 0.5) -> float:
     if n == 0:
         return 1.0
     if n <= 1000:
-        pmf_k = math.comb(n, k) * p**k * (1 - p) ** (n - k)
-        tol = pmf_k * (1 + 1e-7)
-        total = 0.0
-        for i in range(n + 1):
-            pmf_i = math.comb(n, i) * p**i * (1 - p) ** (n - i)
-            if pmf_i <= tol:
-                total += pmf_i
-        return min(1.0, total)
+        # Walk the pmf with the ratio recurrence pmf(i+1) = pmf(i) * (n-i)/(i+1)
+        # * p/(1-p) instead of evaluating math.comb(n, i) for every i.
+        pmf = [(1 - p) ** n]
+        ratio = p / (1 - p)
+        for i in range(n):
+            pmf.append(pmf[-1] * (n - i) / (i + 1) * ratio)
+        tol = pmf[k] * (1 + 1e-7)
+        return min(1.0, sum(v for v in pmf if v <= tol))
     # Large n: normal approximation with continuity correction.
     mean = n * p
     sd = math.sqrt(n * p * (1 - p))

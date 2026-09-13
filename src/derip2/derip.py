@@ -9,9 +9,11 @@ import logging
 from os import path
 import sys
 import time
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from Bio.Align import MultipleSeqAlignment
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 import numpy as np
 
 import derip2.aln_ops as ao
@@ -113,6 +115,9 @@ class DeRIP:
         self.fill_index = fill_index
         self.fill_max_gc = fill_max_gc
         self.max_gaps = max_gaps
+
+        # Lazily rendered ANSI-coloured views (see the ``colored_*`` properties).
+        self._colored = {}
 
         # Initialize attributes
         self.alignment = None
@@ -312,9 +317,15 @@ class DeRIP:
         # Fill remaining positions from selected reference sequence
         tracker = ao.fillRemainder(self.alignment, ref_id, tracker)
 
-        # Create consensus sequence
-        consensus = ao.getDERIP(tracker, ID=label, deGAP=True)
+        # Create the consensus sequence once (gapped), then derive the degapped
+        # record from it rather than walking the tracker a second time.
         gapped_consensus = ao.getDERIP(tracker, ID=label, deGAP=False)
+        consensus = SeqRecord(
+            Seq(str(gapped_consensus.seq).replace('-', '')),
+            id=gapped_consensus.id,
+            name=gapped_consensus.name,
+            description=gapped_consensus.description,
+        )
 
         # Store results in attributes
         self.masked_alignment = masked_alignment
@@ -323,17 +334,12 @@ class DeRIP:
         self.consensus_tracker = tracker
         self.rip_counts = rip_counts
 
-        # Create colorized consensus
-        self._colorize_corrected_positions()
-
-        # Create colorized alignment
-        self.colored_alignment = self._create_colored_alignment(self.alignment)
-
-        # Create colorized masked alignment
-        self.colored_masked_alignment = self._create_colored_alignment(
-            self.masked_alignment
-        )
-        _lap('fill + colorize', _t)
+        # The ANSI-coloured consensus/alignment views are rendered on first
+        # access (see ``colored_consensus`` and friends): on a large alignment
+        # they dominate this method's runtime yet are only ever printed for
+        # small alignments.
+        self._colored = {}
+        _lap('fill', _t)
         logger.debug(f'calculate_rip: total {time.perf_counter() - _t0:.3f}s')
 
         # Log summary
@@ -441,6 +447,104 @@ class DeRIP:
             f'Identified {len(self.corrected_positions)} columns with RIP corrections'
         )
 
+    def _lazy_colored(self, key: str, render) -> Optional[str]:
+        """
+        Return a cached ANSI-coloured view, rendering it on first access.
+
+        Parameters
+        ----------
+        key : str
+            Cache key (``'consensus'``, ``'alignment'`` or ``'masked'``).
+        render : callable
+            Zero-argument function producing the string when results exist.
+
+        Returns
+        -------
+        str or None
+            The coloured text, or ``None`` before :meth:`calculate_rip` has run.
+        """
+        if self.markupdict is None or self.gapped_consensus is None:
+            return None
+        if self._colored.get(key) is None:
+            self._colored[key] = render()
+        return self._colored[key]
+
+    @property
+    def colored_consensus(self) -> Optional[str]:
+        """
+        Gapped consensus with deRIP-corrected positions in bold green (ANSI).
+
+        Returns
+        -------
+        str or None
+            ``None`` until :meth:`calculate_rip` has been run.
+        """
+        return self._lazy_colored('consensus', self._colorize_corrected_positions)
+
+    @colored_consensus.setter
+    def colored_consensus(self, value: Optional[str]) -> None:
+        """
+        Override (or with ``None``, discard) the cached coloured consensus.
+
+        Parameters
+        ----------
+        value : str or None
+            Replacement text; ``None`` forces a re-render on next access.
+        """
+        self._colored['consensus'] = value
+
+    @property
+    def colored_alignment(self) -> Optional[str]:
+        """
+        Input alignment with RIP sites coloured by category (ANSI).
+
+        Returns
+        -------
+        str or None
+            ``None`` until :meth:`calculate_rip` has been run.
+        """
+        return self._lazy_colored(
+            'alignment', lambda: self._create_colored_alignment(self.alignment)
+        )
+
+    @colored_alignment.setter
+    def colored_alignment(self, value: Optional[str]) -> None:
+        """
+        Override (or with ``None``, discard) the cached coloured alignment.
+
+        Parameters
+        ----------
+        value : str or None
+            Replacement text; ``None`` forces a re-render on next access.
+        """
+        self._colored['alignment'] = value
+
+    @property
+    def colored_masked_alignment(self) -> Optional[str]:
+        """
+        Masked alignment with RIP sites coloured by category (ANSI).
+
+        Returns
+        -------
+        str or None
+            ``None`` until :meth:`calculate_rip` has been run.
+        """
+        return self._lazy_colored(
+            'masked', lambda: self._create_colored_alignment(self.masked_alignment)
+        )
+
+    @colored_masked_alignment.setter
+    def colored_masked_alignment(self, value: Optional[str]) -> None:
+        """
+        Override (or with ``None``, discard) the cached coloured masked alignment.
+
+        Parameters
+        ----------
+        value : str or None
+            Replacement text; ``None`` forces a re-render on next access.
+        """
+        self._colored['masked'] = value
+
     def _colorize_corrected_positions(self) -> str:
         """
         Create a colorized version of the gapped consensus sequence.
@@ -476,13 +580,7 @@ class DeRIP:
                 # Only colorize if position is in range (safety check)
                 seq_chars[pos] = f'{BOLD_GREEN}{seq_chars[pos]}{RESET}'
 
-        # Join back into string
-        colored_seq = ''.join(seq_chars)
-
-        # Store as attribute
-        self.colored_consensus = colored_seq
-
-        return colored_seq
+        return ''.join(seq_chars)
 
     def _create_colored_alignment(self, alignment) -> str:
         """
@@ -538,6 +636,22 @@ class DeRIP:
             'non_rip_deamination': YELLOW,
         }
 
+        # Group every marked position by row once, so each row only visits its
+        # own markup (rather than scanning the whole markupdict per row). Category
+        # order is preserved within a row, so overlapping marks resolve exactly as
+        # before: a later category overwrites an earlier one.
+        by_row: Dict[int, list] = {}
+        for category, positions in self.markupdict.items():
+            # Skip non_rip_deamination highlighting if reaminate is False
+            if category == 'non_rip_deamination' and not self.reaminate:
+                continue
+            target_color = target_color_map[category]
+            offset_color = offset_color_map[category]
+            for pos in positions:
+                by_row.setdefault(pos.rowIdx, []).append(
+                    (pos.colIdx, pos.offset, target_color, offset_color)
+                )
+
         # Create a colored representation of each sequence in the alignment
         lines = []
 
@@ -545,52 +659,32 @@ class DeRIP:
         for row_idx in range(len(alignment)):
             seq = alignment[row_idx].seq
             seq_id = alignment[row_idx].id
+            n = len(seq)
 
             # Create list of characters for this sequence with their default coloring
             colored_chars = list(str(seq))
 
-            # Process each RIP category
-            for category, positions in self.markupdict.items():
-                # Skip non_rip_deamination highlighting if reaminate is False
-                if category == 'non_rip_deamination' and not self.reaminate:
-                    continue
+            for col_idx, offset, target_color, offset_color in by_row.get(row_idx, ()):
+                # Apply bold+color formatting to the target base
+                if 0 <= col_idx < n:
+                    colored_chars[col_idx] = (
+                        f'{target_color}{colored_chars[col_idx]}{RESET}'
+                    )
 
-                target_color = target_color_map[category]
-                offset_color = offset_color_map[category]
+                # Determine range of offset positions to color (but not bold)
+                if offset is not None:
+                    if offset > 0:
+                        # Color bases to the right (excluding target)
+                        start_col = col_idx + 1
+                        end_col = min(col_idx + offset, n - 1)
+                    else:  # offset < 0
+                        # Color bases to the left (excluding target)
+                        start_col = max(0, col_idx + offset)  # offset is negative
+                        end_col = col_idx - 1
 
-                # Process each position in this category
-                for pos in positions:
-                    if (
-                        pos.rowIdx == row_idx
-                    ):  # Only apply if this position is in the current row
-                        col_idx = pos.colIdx
-                        offset = pos.offset
-
-                        # Apply bold+color formatting to the target base
-                        if 0 <= col_idx < len(colored_chars):
-                            colored_chars[col_idx] = (
-                                f'{target_color}{colored_chars[col_idx]}{RESET}'
-                            )
-
-                        # Determine range of offset positions to color (but not bold)
-                        if offset is not None:
-                            if offset > 0:
-                                # Color bases to the right (excluding target)
-                                start_col = col_idx + 1
-                                end_col = min(col_idx + offset, len(seq) - 1)
-                            else:  # offset < 0
-                                # Color bases to the left (excluding target)
-                                start_col = max(
-                                    0, col_idx + offset
-                                )  # offset is negative
-                                end_col = col_idx - 1
-
-                            # Apply color-only formatting to the offset bases
-                            for i in range(start_col, end_col + 1):
-                                if 0 <= i < len(colored_chars):
-                                    colored_chars[i] = (
-                                        f'{offset_color}{colored_chars[i]}{RESET}'
-                                    )
+                    # Apply color-only formatting to the offset bases
+                    for i in range(max(start_col, 0), min(end_col, n - 1) + 1):
+                        colored_chars[i] = f'{offset_color}{colored_chars[i]}{RESET}'
 
             # Join the characters and add sequence ID
             colored_seq = ''.join(colored_chars)
@@ -1702,28 +1796,24 @@ class DeRIP:
         dict
             A dictionary with dinucleotide counts.
         """
-        # Convert to uppercase and remove gaps
-        seq = sequence.upper().replace('-', '')
+        # Convert to uppercase, drop gaps, and compare each base with its
+        # right-hand neighbour vectorised rather than slicing per position.
+        seq = np.frombuffer(sequence.upper().encode('ascii'), dtype='S1')
+        seq = seq[seq != b'-']
+        left, right = seq[:-1], seq[1:]
+        is_a, is_c = left == b'A', left == b'C'
+        is_g, is_t = left == b'G', left == b'T'
+        next_a, next_c = right == b'A', right == b'C'
+        next_g, next_t = right == b'G', right == b'T'
 
-        # Count dinucleotides
-        dinucleotides = {'TpA': 0, 'ApT': 0, 'CpA': 0, 'TpG': 0, 'ApC': 0, 'GpT': 0}
-
-        for i in range(len(seq) - 1):
-            di = seq[i : i + 2]
-            if di == 'TA':
-                dinucleotides['TpA'] += 1
-            elif di == 'AT':
-                dinucleotides['ApT'] += 1
-            elif di == 'CA':
-                dinucleotides['CpA'] += 1
-            elif di == 'TG':
-                dinucleotides['TpG'] += 1
-            elif di == 'AC':
-                dinucleotides['ApC'] += 1
-            elif di == 'GT':
-                dinucleotides['GpT'] += 1
-
-        return dinucleotides
+        return {
+            'TpA': int(np.count_nonzero(is_t & next_a)),
+            'ApT': int(np.count_nonzero(is_a & next_t)),
+            'CpA': int(np.count_nonzero(is_c & next_a)),
+            'TpG': int(np.count_nonzero(is_t & next_g)),
+            'ApC': int(np.count_nonzero(is_a & next_c)),
+            'GpT': int(np.count_nonzero(is_g & next_t)),
+        }
 
     def calculate_cri(self, sequence):
         """
@@ -1973,10 +2063,11 @@ class DeRIP:
         # Warn if fewer than 2 sequences remain
         if len(filtered_records) < 2:
             passed_records = [(r.id, r.annotations['CRI']) for r in filtered_records]
+            passed_ids = {r.id for r in filtered_records}
             failed_records = [
                 (r.id, r.annotations['CRI'])
                 for r in self.alignment
-                if r.id not in [rec.id for rec in filtered_records]
+                if r.id not in passed_ids
             ]
 
             print(

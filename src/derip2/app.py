@@ -572,6 +572,10 @@ def main(
     # Parsed once and reused: an annotation track for --plot, gene effects for
     # the per-sequence report, and the SNP-effect summary written here.
     cds_tracks = None
+    genes_by_seqid = None
+    effects_by_seq = None
+    deripd_aa = None
+    colors = None
     if gff:
         import numpy as np
 
@@ -702,6 +706,12 @@ def main(
             genetic_code=genetic_code,
             spectra_ref_index=spectra_ref_index,
             flank_length=flank_length,
+            # Reuse the gene models and effects computed above rather than
+            # parsing the GFF and predicting effects a second time.
+            genes_by_seqid=genes_by_seqid,
+            effects_by_seq=effects_by_seq,
+            deripd_aa=deripd_aa,
+            annotation_colors=colors,
         )
         # Companion tidy TSVs for the flank-context spectra of RIP-like sites:
         # the 16-channel counts and the per-sequence substrate-vs-product tests.
