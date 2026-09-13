@@ -1,0 +1,42 @@
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #1a1a19; --page: #0d0d0d; --ink: #ffffff;
+    --ink-2: #c3c2b7; --muted: #898781; --rule: #2c2c2a;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 2.5rem 1.5rem; background: var(--page); color: var(--ink);
+  font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1180px; margin: 0 auto; }
+h1 { font-size: 1.6rem; font-weight: 600; margin: 0 0 .3rem; }
+h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 .4rem; }
+.sub { color: var(--ink-2); margin: 0 0 2rem; }
+section {
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 10px; padding: 1.4rem; margin-bottom: 1.6rem;
+}
+section p { color: var(--ink-2); margin: 0 0 1rem; max-width: 72ch; }
+/* Figures keep their own light surface, as a printed figure does: the
+   colourblind-safe palette is only validated against it. */
+.figure {
+  overflow-x: auto; background: var(--fig-surface); border-radius: 6px; padding: .5rem;
+}
+.figure svg { display: block; max-width: 100%; height: auto; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td {
+  text-align: right; padding: .45rem .6rem;
+  border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums;
+}
+th { color: var(--ink-2); font-weight: 600; white-space: nowrap; }
+th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; }
+tbody tr:hover { background: rgba(127,127,127,.07); }
+.pos { color: #006300; } .neg { color: #b4292a; }
+@media (prefers-color-scheme: dark) {
+  .pos { color: #0ca30c; } .neg { color: #e66767; }
+}
+footer { color: var(--muted); font-size: 12px; margin-top: 2rem; }
+code { background: rgba(127,127,127,.12); padding: .1em .35em; border-radius: 3px; }
+.muted { color: var(--muted); }

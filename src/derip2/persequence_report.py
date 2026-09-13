@@ -35,11 +35,20 @@ from derip2.plotting.persequence import (
     SUBSTRATE_COLOR,
 )
 from derip2.plotting.strandbias import BASE_COLORS
-from derip2.report import (
-    _STYLE,
-    _figure_to_svg,
-    _format_cell,
+from derip2.reporting import (
+    base_style,
+    figure_to_svg,
+    inject_svg_tooltips,
+    persequence_script,
+    persequence_style,
+    render_page,
+    stat_cell,
 )
+
+# Module-level aliases kept for the test-suite and downstream imports.
+_STYLE = base_style()
+_PSR_STYLE = persequence_style()
+_PSR_SCRIPT = persequence_script()
 
 logger = logging.getLogger(__name__)
 
@@ -100,55 +109,6 @@ _STAT_SECTIONS = (
         ),
     ),
 )
-
-
-def _inject_svg_tooltips(svg, prefix, titles, fasta_keys=None):
-    """
-    Tag named ``<g>`` groups with ``data-tip`` (and optional ``data-fasta``).
-
-    Matplotlib writes an artist's ``gid`` as ``<g id="gid">``; ``_figure_to_svg``
-    then namespaces every id with ``prefix``. Adding a ``data-tip`` attribute to
-    that group's opening tag lets the report's own JavaScript show a floating
-    tooltip with no delay and pin it on click (a native ``<title>`` would impose
-    a ~1 s browser delay and never appear on click). ``aria-label`` mirrors the
-    text so assistive technology can still announce it. When ``fasta_keys`` maps a
-    ``gid`` to a payload key, a ``data-fasta`` attribute is added too so a click on
-    that group opens the FASTA popup (see :data:`_PSR_SCRIPT`).
-
-    Both attributes are written in a single pass per ``gid`` because they share
-    one opening tag: a second ``str.replace`` for the same ``gid`` would no longer
-    match once the tag had grown its first attribute.
-
-    Parameters
-    ----------
-    svg : str
-        The inline SVG fragment (already id-prefixed).
-    prefix : str
-        The id prefix applied by :func:`derip2.report._figure_to_svg`.
-    titles : dict of str to str
-        Maps each artist ``gid`` to its tooltip text.
-    fasta_keys : dict of str to str, optional
-        Maps a ``gid`` to a FASTA-payload key; those groups gain a ``data-fasta``
-        attribute. ``gid``\\s present here but absent from ``titles`` are still
-        tagged (with ``data-fasta`` only).
-
-    Returns
-    -------
-    str
-        The SVG with ``data-tip``/``aria-label``/``data-fasta`` attributes added.
-    """
-    fasta_keys = fasta_keys or {}
-    for gid in dict.fromkeys((*titles, *fasta_keys)):
-        opening = f'<g id="{prefix}{gid}">'
-        attrs = ''
-        if gid in titles:
-            esc = escape(titles[gid], quote=True)
-            attrs += f' data-tip="{esc}" aria-label="{esc}"'
-        if gid in fasta_keys:
-            attrs += f' data-fasta="{escape(fasta_keys[gid], quote=True)}"'
-        replacement = f'<g id="{prefix}{gid}"{attrs}>'
-        svg = svg.replace(opening, replacement, 1)
-    return svg
 
 
 def _fasta_record(name, seq, width=60):
@@ -466,18 +426,14 @@ def _stats_sections_html(row):
     for title, description, fields in _STAT_SECTIONS:
         rows_html = []
         for column, label in fields:
-            if column == 'RIP_total':
-                # Derived: forward + reverse RIP events.
-                total = int(row['RIP_fwd']) + int(row['RIP_rev'])
-                text, css = str(total), ''
-            else:
-                text, css = _format_cell(column, row[column])
-            # Flag a positive-RIP CRI (> 1) in green, as the RIP-signal threshold.
-            if column == 'CRI' and float(row['CRI']) > 1:
-                css = 'pos'
-            # Bold a significant strand-asymmetry p-value.
-            if column == 'pvalue' and float(row['pvalue']) < 0.05:
-                css = (css + ' sig').strip()
+            # 'RIP_total' is derived (forward + reverse RIP events); the CRI > 1
+            # and p < 0.05 flags are applied by the shared formatter.
+            value = (
+                int(row['RIP_fwd']) + int(row['RIP_rev'])
+                if column == 'RIP_total'
+                else row[column]
+            )
+            text, css = stat_cell(column, value)
             cls = f' {css}' if css else ''
             rows_html.append(
                 f'<tr><th scope="row">{escape(label)}</th>'
@@ -490,306 +446,6 @@ def _stats_sections_html(row):
         )
     return '<div class="stat-grid">' + ''.join(cards) + '</div>'
 
-
-# Extra CSS layered on top of the shared report style: the panel show/hide
-# mechanism, the navigation bar, the horizontally-scrolling wide figures, and
-# the transposed statistics grid. Kept theme-agnostic (it inherits the
-# light/dark variables from ``_STYLE``).
-_PSR_STYLE = """
-.seq-panel[hidden] { display: none; }
-.seq-nav {
-  position: sticky; top: 0; z-index: 10; display: flex; align-items: center;
-  gap: .75rem; padding: .6rem .9rem; margin: 0 0 1.4rem;
-  background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
-}
-.seq-nav button {
-  font: inherit; font-size: 13px; padding: .3rem .8rem; cursor: pointer;
-  background: var(--page); color: var(--ink); border: 1px solid var(--rule);
-  border-radius: 6px;
-}
-.seq-nav button:hover { border-color: var(--muted); }
-.seq-nav .indicator { font-variant-numeric: tabular-nums; color: var(--ink-2); }
-.seq-nav .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
-/* Simultaneous zoom control for the column-aligned figures, now living in the
-   sticky sequence header, right-aligned. */
-.zoom { display: inline-flex; align-items: center; gap: .3rem; margin-left: auto; }
-.zoom button {
-  font: inherit; font-size: 13px; cursor: pointer; width: 1.9rem;
-  text-align: center; padding: .25rem 0; font-weight: 600;
-  background: var(--page); color: var(--ink); border: 1px solid var(--rule);
-  border-radius: 6px;
-}
-.zoom button:hover { border-color: var(--muted); }
-.zoom .zlabel {
-  min-width: 3.2rem; text-align: center; font-variant-numeric: tabular-nums;
-  color: var(--ink-2); font-size: 12px;
-}
-/* Keep the sequence header (number, name, length) + zoom pinned below the nav
-   bar as the reader scrolls down a long panel. */
-.seq-panel h2 {
-  position: sticky; top: 2.9rem; z-index: 9; margin: 0 0 .6rem;
-  padding: .5rem 0; background: var(--page); border-bottom: 1px solid var(--rule);
-  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
-}
-.seq-panel h2 .seqid { color: var(--ink-2); font-weight: 400; }
-.seq-panel h2 .seqlen { color: var(--muted); font-weight: 400; font-size: 1rem; }
-.seq-panel h3 {
-  font-size: 1rem; font-weight: 600; margin: 1.6rem 0 .2rem;
-  padding-top: .8rem; border-top: 1px solid var(--rule);
-}
-.desc { color: var(--ink-2); margin: .1rem 0 .8rem; max-width: 74ch; font-size: 14px; }
-.note { color: var(--muted); font-size: 13px; }
-/* Compact flank-context comparison table (5 rows): size columns to their
-   content and never wrap a cell, so the long comparison names stay on one line. */
-.flank-compare { width: auto; table-layout: auto; margin: .4rem 0; }
-.flank-compare th, .flank-compare td { white-space: nowrap; }
-.flank-compare td:not(:first-child), .flank-compare th:not(:first-child) {
-  text-align: right; font-variant-numeric: tabular-nums;
-}
-/* Sortable per-motif flank-context data table (16 rows). Columns fit content;
-   the motif column carries two small 5'/3' base-sort buttons, numeric columns
-   sort on click. */
-.flank-data { width: auto; table-layout: auto; margin: .4rem 0 .2rem; }
-.flank-data th, .flank-data td { white-space: nowrap; }
-.flank-data td:first-child { font-family: monospace; }
-.flank-data td:not(:first-child), .flank-data th:not(:first-child) {
-  text-align: right; font-variant-numeric: tabular-nums;
-}
-.flank-data th.sortable-num { cursor: pointer; }
-.flank-data th.sortable-num:hover { color: var(--ink); }
-.flank-data th[data-dir="asc"]::after { content: " \\2191"; }
-.flank-data th[data-dir="desc"]::after { content: " \\2193"; }
-.flank-data .motif-sort { margin-left: .3rem; font-weight: 400; }
-.flank-data .motif-sort button {
-  cursor: pointer; font: inherit; font-size: 11px; margin-left: 2px;
-  border: 1px solid var(--rule); background: transparent; border-radius: 3px;
-  padding: 0 3px; color: var(--ink-2);
-}
-.flank-data .motif-sort button:hover { color: var(--ink); }
-.flank-data .motif-sort button[data-active="1"] {
-  color: var(--ink); border-color: var(--muted);
-}
-/* Stacked "% RIP" bar: orange product share against blue substrate share. */
-.flank-data td.ripbar-cell { text-align: left; }
-.flank-data .ripbar {
-  display: inline-flex; width: 88px; height: 11px; border-radius: 3px;
-  overflow: hidden; vertical-align: middle; border: 1px solid var(--rule);
-}
-.flank-data .ripbar i { display: block; height: 100%; }
-.flank-data .ripbar .prod { flex: 0 0 auto; background: #eb6834; }
-.flank-data .ripbar .sub { flex: 1 1 auto; background: #2a78d6; }
-.flank-data .ripbar.empty { background: var(--rule); }
-
-/* Colour key for the alignment-row figure. */
-.legend {
-  display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .9rem;
-  margin: 0 0 .6rem; font-size: 12.5px; color: var(--ink-2);
-}
-.legend .lg-title { color: var(--muted); font-weight: 600; }
-.legend .lg { display: inline-flex; align-items: center; gap: .3rem; }
-.legend .lg i {
-  display: inline-block; width: .8rem; height: .8rem; border-radius: 2px;
-}
-.legend .lg b { font-size: 1rem; line-height: 1; }
-
-/* Significant strand-asymmetry p-value (< 0.05): coloured green, not bold. */
-.stat-card td.value.sig { color: #007a3d; }
-
-/* Wide figures (alignment row, strand bias) keep their intrinsic width and
-   scroll horizontally rather than being squashed to page width, so bars stay
-   readable on long alignments. */
-.col-scroll {
-  overflow-x: auto; background: #fcfcfb; border-radius: 6px; padding: .3rem;
-}
-.col-scroll svg { display: block; max-width: none; height: auto; }
-
-/* The overview page's full alignment figure (inline SVG, vector chrome + one
-   embedded raster grid) scrolls in BOTH axes and zooms with the shared control;
-   capped height so a tall alignment does not run off the page before you scroll
-   it. */
-.aln-scroll {
-  overflow: auto; max-height: 80vh; background: #fcfcfb; border-radius: 6px;
-  padding: .3rem;
-}
-.aln-scroll svg { display: block; max-width: none; height: auto; }
-
-/* The completion and GC bars are fixed-width; centre them and cap to the page
-   so they stay aligned across sequences. */
-.figure-fixed { overflow-x: auto; background: #fcfcfb; border-radius: 6px; padding: .5rem; }
-.figure-fixed svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
-
-/* The spectra are wide (96 trinucleotide ticks). They keep their intrinsic
-   width and scroll horizontally on their own, so the ticks never overlap; a
-   fixed figure geometry keeps the plot body aligned across sequences. This
-   scroll is independent of the alignment column figures. */
-.spectrum-scroll { overflow-x: auto; background: #fcfcfb; border-radius: 6px; padding: .5rem; }
-.spectrum-scroll svg { display: block; margin: 0 auto; max-width: none; height: auto; }
-
-/* Transposed, grouped statistics: a responsive grid of small sections, each a
-   two-column stat/value table with a short description. */
-.stat-grid {
-  display: grid; gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-}
-.stat-card {
-  background: var(--surface); border: 1px solid var(--rule);
-  border-radius: 8px; padding: .8rem 1rem;
-}
-.stat-card h4 { margin: 0 0 .2rem; font-size: .95rem; font-weight: 600; }
-.stat-card .desc { font-size: 12.5px; margin: 0 0 .6rem; }
-.stat-card table { width: 100%; font-size: 13px; }
-.stat-card th, .stat-card td {
-  text-align: left; padding: .3rem .2rem; border-bottom: 1px solid var(--rule);
-}
-.stat-card td.value {
-  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
-}
-.stat-card tr:last-child th, .stat-card tr:last-child td { border-bottom: none; }
-
-/* Custom annotation tooltip: a single floating element positioned near the
-   cursor by JS. Replaces native SVG <title> (which has a ~1 s delay and no
-   click behaviour). Annotation groups carry a data-tip attribute. */
-[data-tip] { cursor: pointer; }
-.psr-tip {
-  position: fixed; z-index: 50; pointer-events: none;
-  max-width: 320px; padding: .3rem .5rem; border-radius: 6px;
-  background: var(--ink); color: var(--surface);
-  border: 1px solid var(--rule);
-  font-size: 12.5px; line-height: 1.3; white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
-}
-.psr-tip[hidden] { display: none; }
-
-/* Overview download / view-FASTA toolbar. */
-.psr-toolbar {
-  display: flex; flex-wrap: wrap; gap: .5rem; margin: 0 0 .8rem;
-}
-.psr-btn {
-  font: inherit; font-size: 13px; padding: .35rem .8rem; cursor: pointer;
-  background: var(--page); color: var(--ink); border: 1px solid var(--rule);
-  border-radius: 6px; text-decoration: none; display: inline-block;
-}
-.psr-btn:hover { border-color: var(--muted); }
-
-/* The overview annotation groups and the deRIP consensus row become clickable:
-   pointer-events:all lets even the invisible consensus overlay catch a click. */
-.aln-scroll [data-fasta], .aln-scroll [data-fasta] * {
-  cursor: pointer; pointer-events: all;
-}
-
-/* Click-to-view FASTA modal: a centred dialog over a dimming backdrop. */
-.psr-modal { position: fixed; inset: 0; z-index: 60; }
-.psr-modal[hidden] { display: none; }
-.psr-modal-backdrop {
-  position: absolute; inset: 0; background: rgba(0, 0, 0, .45);
-}
-.psr-modal-box {
-  position: relative; margin: 6vh auto 0; max-width: 680px; width: calc(100% - 2rem);
-  max-height: 84vh; display: flex; flex-direction: column;
-  background: var(--page); color: var(--ink);
-  border: 1px solid var(--rule); border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, .35);
-}
-.psr-modal-head {
-  display: flex; align-items: center; gap: .5rem;
-  padding: .7rem 1rem; border-bottom: 1px solid var(--rule);
-}
-.psr-modal-title { font-weight: 600; word-break: break-all; }
-.psr-modal-x {
-  margin-left: auto; font: inherit; font-size: 1.3rem; line-height: 1;
-  background: none; border: none; color: var(--muted); cursor: pointer;
-  padding: 0 .2rem;
-}
-.psr-modal-x:hover { color: var(--ink); }
-.psr-tabs { display: flex; flex-wrap: wrap; gap: .3rem; padding: .6rem 1rem 0; }
-.psr-tabs[hidden] { display: none; }
-.psr-tab {
-  font: inherit; font-size: 13px; padding: .3rem .8rem; cursor: pointer;
-  background: var(--surface); color: var(--ink-2);
-  border: 1px solid var(--rule); border-bottom: none;
-  border-radius: 6px 6px 0 0;
-}
-.psr-tab.is-active { color: var(--ink); font-weight: 600; background: var(--page); }
-.psr-tab[hidden] { display: none; }
-.psr-fasta {
-  margin: 0; padding: .8rem 1rem; overflow: auto; flex: 1 1 auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px; line-height: 1.45; white-space: pre; word-break: normal;
-  background: #fcfcfb; color: #111;
-}
-/* Emphasis inside the FASTA view. The <pre> pins its own light background, so
-   these two inks are fixed rather than theme-derived. Green marks bases the
-   deRIP correction restored; red marks bases a maximum-RIP variant converted.
-   Both are spans over otherwise-plain text, so the element's textContent — what
-   the copy button reads — is still the unformatted record. */
-.psr-mark { color: #0a7a3d; font-weight: 700; }
-.psr-mark-rip { color: #b4292a; font-weight: 700; }
-.psr-modal-foot {
-  display: flex; align-items: center; gap: .8rem;
-  padding: .6rem 1rem; border-top: 1px solid var(--rule);
-}
-.psr-note { color: var(--muted); font-size: 12.5px; margin: 0; }
-.psr-note[hidden] { display: none; }
-.psr-copy {
-  font: inherit; font-size: 13px; padding: .3rem .9rem; cursor: pointer;
-  background: var(--page); color: var(--ink); border: 1px solid var(--rule);
-  border-radius: 6px;
-}
-.psr-copy:hover { border-color: var(--muted); }
-
-/* Overview all-sequence summary statistics table (sortable). The box scrolls in
-   both axes with a capped height; the two header rows stay pinned to the top and
-   the sequence-name column stays pinned to the left (via position: sticky). The
-   --h1 offset is the height of the first (group) header row, so the second header
-   row sits directly below it. */
-.stats-scroll {
-  --h1: 1.9rem;
-  overflow: auto; max-height: 70vh; margin: .2rem 0 1rem;
-}
-.psr-stats {
-  border-collapse: separate; border-spacing: 0; font-size: 13px;
-  white-space: nowrap; font-variant-numeric: tabular-nums;
-}
-.psr-stats th, .psr-stats td {
-  padding: .35rem .6rem; border-bottom: 1px solid var(--rule); text-align: right;
-}
-.psr-stats thead th {
-  background: var(--surface); position: sticky; z-index: 3;
-  border-bottom: 1px solid var(--rule);
-}
-.psr-stats thead tr:first-child th { top: 0; height: var(--h1); }
-.psr-stats thead tr:nth-child(2) th { top: var(--h1); }
-.psr-stats thead th.grp {
-  text-align: center; font-weight: 600;
-  border-left: 1px solid var(--rule); border-right: 1px solid var(--rule);
-}
-/* Sticky first column (sequence names) — header corner sits above everything. */
-.psr-stats th[scope="row"] {
-  text-align: left; font-weight: 600; position: sticky; left: 0; z-index: 2;
-  background: var(--page); border-right: 1px solid var(--rule);
-}
-.psr-stats thead th.corner { left: 0; z-index: 4; }
-.psr-stats tbody tr:hover th[scope="row"] { background: var(--surface); }
-.psr-stats th.sortable { cursor: pointer; user-select: none; }
-.psr-stats th.sortable:hover { color: var(--ink); }
-.psr-stats th.sortable::after { content: ''; margin-left: .3rem; color: var(--muted); }
-.psr-stats th.sortable[data-dir="asc"]::after { content: '▲'; }
-.psr-stats th.sortable[data-dir="desc"]::after { content: '▼'; }
-.psr-stats .seq-link {
-  color: inherit; text-decoration: underline; text-decoration-style: dotted;
-  text-underline-offset: 2px; cursor: pointer;
-}
-.psr-stats .seq-link:hover { text-decoration-style: solid; }
-.psr-stats td.value.muted { color: var(--muted); }
-.psr-stats td.value.pos { color: #007a3d; }
-.psr-stats td.value.neg { color: #b4292a; }
-.psr-stats tbody tr:hover td { background: var(--surface); }
-.psr-stats tr.consensus-row th[scope="row"],
-.psr-stats tr.consensus-row td { font-weight: 600; }
-.psr-stats tr.consensus-row td, .psr-stats tr.consensus-row th[scope="row"] {
-  border-top: 2px solid var(--muted);
-}
-"""
 
 # The click-to-view FASTA modal, injected once per report. Populated and shown by
 # the popup handler in ``_PSR_SCRIPT``; ``data-close`` marks the backdrop and the
@@ -815,396 +471,6 @@ _MODAL_HTML = (
     '</div>'
     '</div></div>'
 )
-
-# Dependency-free navigation. Beyond stepping between panels, it preserves both
-# scroll axes so content stays aligned when flipping pages: the window's vertical
-# scroll is never reset, and the horizontal scroll of the column-aligned figures
-# (alignment row + strand bias, which share the same column axis) is remembered
-# and re-applied to whichever panel is shown. Because every sequence has the same
-# number of columns and the figures use a fixed geometry, a given scroll offset
-# lands on the same column on every page.
-_PSR_SCRIPT = """
-(function () {
-  var panels = Array.prototype.slice.call(
-    document.querySelectorAll('.seq-panel'));
-  if (!panels.length) return;
-  var indicator = document.getElementById('seq-indicator');
-  var current = 0;
-  var savedLeft = 0;      // shared horizontal offset for the column figures
-  var syncing = false;    // guard against scroll-event feedback while syncing
-
-  function colScrollers(panel) {
-    return Array.prototype.slice.call(panel.querySelectorAll('.col-scroll'));
-  }
-
-  // Page 0 is the alignment overview; the rest are sequences 1..N.
-  var nSeqs = panels.length - 1;
-  function show(k) {
-    current = (k + panels.length) % panels.length;
-    panels.forEach(function (p, i) {
-      if (i === current) { p.removeAttribute('hidden'); }
-      else { p.setAttribute('hidden', ''); }
-    });
-    if (indicator) {
-      indicator.textContent = current === 0
-        ? 'Overview'
-        : 'Sequence ' + current + ' / ' + nSeqs;
-    }
-    // Re-apply the remembered horizontal offset; leave the vertical scroll be.
-    syncing = true;
-    colScrollers(panels[current]).forEach(function (el) { el.scrollLeft = savedLeft; });
-    syncing = false;
-  }
-
-  // Remember the horizontal offset whenever the user scrolls a column figure,
-  // and mirror it to the other column figures in the same panel.
-  panels.forEach(function (panel) {
-    colScrollers(panel).forEach(function (el) {
-      el.addEventListener('scroll', function () {
-        if (syncing) return;
-        savedLeft = el.scrollLeft;
-        syncing = true;
-        colScrollers(panel).forEach(function (other) {
-          if (other !== el) { other.scrollLeft = savedLeft; }
-        });
-        syncing = false;
-      });
-    });
-  });
-
-  document.getElementById('seq-prev').addEventListener('click', function () {
-    show(current - 1);
-  });
-  document.getElementById('seq-next').addEventListener('click', function () {
-    show(current + 1);
-  });
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'ArrowLeft') { show(current - 1); e.preventDefault(); }
-    else if (e.key === 'ArrowRight') { show(current + 1); e.preventDefault(); }
-  });
-
-  // Simultaneous zoom for every column-aligned figure (alignment row + strand
-  // bias) and the overview alignment image, across all panels, so they scale
-  // together. Each panel carries its own zoom control (in its sticky header);
-  // the controls are class-based and kept in sync. Base pixel width comes from
-  // an SVG's point size (1pt = 4/3 px) or an image's natural width.
-  var zoom = 1;
-  // Both the column strips and the overview are inline SVG; scale them all by
-  // their intrinsic point width (1pt = 4/3 px).
-  var zoomSvgs = Array.prototype.slice.call(
-    document.querySelectorAll('.col-scroll svg, .aln-scroll svg'));
-  function svgBasePx(svg) {
-    var w = parseFloat(svg.getAttribute('width') || '0');
-    return w * 4 / 3;  // pt -> css px
-  }
-  function applyZoom() {
-    zoomSvgs.forEach(function (svg) {
-      svg.style.width = (svgBasePx(svg) * zoom) + 'px';
-    });
-    document.querySelectorAll('.zlabel').forEach(function (l) {
-      l.textContent = Math.round(zoom * 100) + '%';
-    });
-  }
-  document.querySelectorAll('.zoom-in').forEach(function (b) {
-    b.addEventListener('click', function () {
-      zoom = Math.min(zoom * 1.25, 8); applyZoom();
-    });
-  });
-  document.querySelectorAll('.zoom-out').forEach(function (b) {
-    b.addEventListener('click', function () {
-      zoom = Math.max(zoom / 1.25, 0.25); applyZoom();
-    });
-  });
-  applyZoom();
-
-  // Custom annotation tooltip: show the hovered group's data-tip with no delay,
-  // follow the cursor, and pin it on click (the only path on touch devices).
-  var tip = document.getElementById('psr-tip');
-  var pinned = false;
-  function placeTip(e) {
-    var pad = 12;
-    var w = tip.offsetWidth, h = tip.offsetHeight;
-    var x = e.clientX + pad, y = e.clientY + pad;
-    if (x + w > window.innerWidth) { x = e.clientX - w - pad; }
-    if (y + h > window.innerHeight) { y = e.clientY - h - pad; }
-    tip.style.left = Math.max(0, x) + 'px';
-    tip.style.top = Math.max(0, y) + 'px';
-  }
-  function showTip(text, e) {
-    tip.textContent = text;
-    tip.removeAttribute('hidden');
-    placeTip(e);
-  }
-  function hideTip() {
-    if (pinned) return;
-    tip.setAttribute('hidden', '');
-  }
-  if (tip) {
-    document.addEventListener('mouseover', function (e) {
-      if (pinned) return;
-      var g = e.target.closest && e.target.closest('[data-tip]');
-      if (g) { showTip(g.getAttribute('data-tip'), e); }
-    });
-    document.addEventListener('mousemove', function (e) {
-      if (pinned || tip.hasAttribute('hidden')) return;
-      var g = e.target.closest && e.target.closest('[data-tip]');
-      if (g) { placeTip(e); } else { tip.setAttribute('hidden', ''); }
-    });
-    document.addEventListener('mouseout', function (e) {
-      if (pinned) return;
-      var g = e.target.closest && e.target.closest('[data-tip]');
-      if (g) { hideTip(); }
-    });
-    document.addEventListener('click', function (e) {
-      // A group with a FASTA payload opens the popup instead of pinning a tip.
-      var fa = e.target.closest && e.target.closest('[data-fasta]');
-      if (fa) {
-        openFastaModal(fa.getAttribute('data-fasta'));
-        pinned = false; tip.setAttribute('hidden', '');
-        return;
-      }
-      var g = e.target.closest && e.target.closest('[data-tip]');
-      if (g) {
-        pinned = true; showTip(g.getAttribute('data-tip'), e);
-      } else {
-        pinned = false; tip.setAttribute('hidden', '');
-      }
-    });
-  }
-
-  // Click-to-view FASTA popup. The payloads are embedded as JSON; each clickable
-  // group (a CDS annotation, or the deRIP consensus row) carries a data-fasta key.
-  var fastaData = {};
-  var dataEl = document.getElementById('psr-fasta-data');
-  if (dataEl) { try { fastaData = JSON.parse(dataEl.textContent); } catch (err) {} }
-  var modal = document.getElementById('psr-modal');
-  var modalTitle = document.getElementById('psr-modal-title');
-  var fastaPre = document.getElementById('psr-fasta');
-  var tabStrip = document.getElementById('psr-tabs');
-  var modalNote = document.getElementById('psr-note');
-  var copyBtn = document.getElementById('psr-copy');
-  var fastaCurrent = null;   // the active payload
-  var activeTab = 0;         // index into fastaCurrent.tabs
-
-  function fallbackCopy(text) {
-    var ta = document.createElement('textarea');
-    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-    document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); } catch (err) {}
-    document.body.removeChild(ta);
-  }
-
-  // Rebuild the tab strip for the payload being shown. A single-tab payload (a
-  // bare nucleotide record) hides the strip rather than showing one lone button.
-  function buildTabs() {
-    tabStrip.textContent = '';
-    var tabs = fastaCurrent.tabs;
-    if (tabs.length < 2) { tabStrip.setAttribute('hidden', ''); return; }
-    tabStrip.removeAttribute('hidden');
-    tabs.forEach(function (tab, i) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'psr-tab' + (i === activeTab ? ' is-active' : '');
-      btn.textContent = tab.label;
-      btn.addEventListener('click', function () {
-        activeTab = i; buildTabs(); renderFastaTab();
-      });
-      tabStrip.appendChild(btn);
-    });
-  }
-
-  function renderFastaTab() {
-    if (!fastaCurrent) return;
-    var tab = fastaCurrent.tabs[activeTab];
-    // A tab carrying pre-rendered HTML draws its highlighted form; the plain
-    // text is the same characters, so the element's textContent (what Copy
-    // reads) is the unformatted record either way.
-    if (tab.html) { fastaPre.innerHTML = tab.html; }
-    else { fastaPre.textContent = tab.text; }
-    if (tab.note) {
-      modalNote.textContent = tab.note;
-      modalNote.removeAttribute('hidden');
-    } else {
-      modalNote.setAttribute('hidden', '');
-    }
-  }
-
-  function openFastaModal(key) {
-    if (!modal || !fastaData[key]) return;
-    fastaCurrent = fastaData[key];
-    activeTab = 0;
-    modalTitle.textContent = fastaCurrent.name;
-    buildTabs();
-    renderFastaTab();
-    modal.removeAttribute('hidden');
-  }
-  function closeFastaModal() {
-    if (modal) { modal.setAttribute('hidden', ''); }
-    fastaCurrent = null;
-  }
-
-  if (modal) {
-    modal.addEventListener('click', function (e) {
-      if (e.target.closest('[data-close]')) { closeFastaModal(); }
-    });
-    copyBtn.addEventListener('click', function () {
-      var text = fastaPre.textContent;
-      function done() {
-        var old = copyBtn.textContent; copyBtn.textContent = 'Copied!';
-        setTimeout(function () { copyBtn.textContent = old; }, 1200);
-      }
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done, function () {
-          fallbackCopy(text); done();
-        });
-      } else { fallbackCopy(text); done(); }
-    });
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && !modal.hasAttribute('hidden')) { closeFastaModal(); }
-    });
-  }
-
-  // Sortable overview stats table. Each sortable header carries its column index
-  // (data-ci); a click sorts the tbody rows by that column. Cells are compared
-  // numerically when both parse as numbers (a leading '+' is stripped), otherwise
-  // as text; en-dash / empty cells (not-applicable stats) always sort last.
-  function cellVal(td) {
-    var t = (td.textContent || '').trim();
-    if (t === '' || t === '\\u2013' || t === '\\u2014') { return { n: null, s: '' }; }
-    var n = parseFloat(t.replace('+', ''));
-    return isNaN(n) ? { n: null, s: t } : { n: n, s: t };
-  }
-  var statsTable = document.querySelector('table.psr-stats');
-  if (statsTable && statsTable.tBodies.length) {
-    var statsBody = statsTable.tBodies[0];
-    var sortDir = null, sortCi = null;
-    Array.prototype.slice.call(
-      statsTable.querySelectorAll('th.sortable')).forEach(function (th) {
-      th.addEventListener('click', function () {
-        var ci = parseInt(th.getAttribute('data-ci'), 10);
-        var asc = !(sortCi === ci && sortDir === 'asc');
-        sortCi = ci; sortDir = asc ? 'asc' : 'desc';
-        var rows = Array.prototype.slice.call(statsBody.rows);
-        rows.sort(function (a, b) {
-          var x = cellVal(a.cells[ci]), y = cellVal(b.cells[ci]);
-          if (x.n === null && y.n === null) {
-            return asc ? x.s.localeCompare(y.s) : y.s.localeCompare(x.s);
-          }
-          if (x.n === null) { return 1; }   // not-applicable sorts last
-          if (y.n === null) { return -1; }
-          return asc ? x.n - y.n : y.n - x.n;
-        });
-        rows.forEach(function (r) { statsBody.appendChild(r); });
-        Array.prototype.slice.call(
-          statsTable.querySelectorAll('th.sortable')).forEach(function (h) {
-          h.removeAttribute('data-dir');
-        });
-        th.setAttribute('data-dir', asc ? 'asc' : 'desc');
-      });
-    });
-  }
-
-  // Sortable per-motif flank-context data tables (one per sequence panel plus
-  // the overview). The motif column sorts by its 5' (first) or 3' (last) flanking
-  // base; numeric columns sort by their data-val, with blank (%-not-applicable)
-  // cells always last. Delegated so every .flank-data table is handled.
-  function flankNumVal(td) {
-    var v = td.getAttribute('data-val');
-    if (v === null || v === '') { return null; }
-    var n = parseFloat(v);
-    return isNaN(n) ? null : n;
-  }
-  function flankReorder(table, keyFn, numeric, asc) {
-    var body = table.tBodies[0];
-    if (!body) { return; }
-    var rows = Array.prototype.slice.call(body.rows);
-    rows.sort(function (a, b) {
-      var x = keyFn(a), y = keyFn(b);
-      if (numeric) {
-        if (x === null && y === null) { return 0; }
-        if (x === null) { return 1; }   // not-applicable sorts last
-        if (y === null) { return -1; }
-        return asc ? x - y : y - x;
-      }
-      return asc ? x.localeCompare(y) : y.localeCompare(x);
-    });
-    rows.forEach(function (r) { body.appendChild(r); });
-  }
-  function flankToggle(table, key) {
-    var asc = !(table.getAttribute('data-sortkey') === key
-                && table.getAttribute('data-sortdir') === 'asc');
-    table.setAttribute('data-sortkey', key);
-    table.setAttribute('data-sortdir', asc ? 'asc' : 'desc');
-    return asc;
-  }
-  function flankClearHeaders(table) {
-    Array.prototype.slice.call(table.querySelectorAll('th')).forEach(function (h) {
-      h.removeAttribute('data-dir');
-    });
-    Array.prototype.slice.call(
-      table.querySelectorAll('.motif-sort button')).forEach(function (b) {
-      b.removeAttribute('data-active');
-    });
-  }
-  document.addEventListener('click', function (e) {
-    var mb = e.target.closest && e.target.closest('.flank-data [data-motifsort]');
-    if (mb) {
-      var table = mb.closest('table.flank-data');
-      var which = mb.getAttribute('data-motifsort');       // 'first' | 'last'
-      var attr = which === 'first' ? 'data-first' : 'data-last';
-      var asc = flankToggle(table, 'motif-' + which);
-      flankReorder(table, function (row) {
-        var td = row.cells[0];
-        return (td.getAttribute(attr) || '') + td.textContent;
-      }, false, asc);
-      flankClearHeaders(table);
-      mb.setAttribute('data-active', '1');
-      return;
-    }
-    var th = e.target.closest && e.target.closest('table.flank-data th.sortable-num');
-    if (th) {
-      var t2 = th.closest('table.flank-data');
-      var ci = Array.prototype.indexOf.call(th.parentNode.cells, th);
-      var asc2 = flankToggle(t2, 'col-' + ci);
-      flankReorder(t2, function (row) {
-        return flankNumVal(row.cells[ci]);
-      }, true, asc2);
-      flankClearHeaders(t2);
-      th.setAttribute('data-dir', asc2 ? 'asc' : 'desc');
-    }
-  });
-
-  // Sequence names in the overview stats table jump to that sequence's page.
-  // Scroll position is preserved (as with arrow-key navigation); the sticky nav
-  // and panel header keep the reader oriented.
-  document.addEventListener('click', function (e) {
-    var link = e.target.closest && e.target.closest('[data-goto]');
-    if (!link) { return; }
-    e.preventDefault();
-    show(parseInt(link.getAttribute('data-goto'), 10));
-  });
-
-  // Land on the overview with the whole MSA figure visible: shrink the shared
-  // zoom just enough to fit the alignment figure in its scroll box (never zoom in
-  // past 100%). Widths are then applied by applyZoom below.
-  function fitOverview() {
-    var box = document.querySelector(
-      '.seq-panel[data-index="overview"] .aln-scroll');
-    if (!box) { return; }
-    var svg = box.querySelector('svg');
-    if (!svg) { return; }
-    var base = svgBasePx(svg);
-    var avail = box.clientWidth - 12;   // minus the box padding
-    if (base > 0 && avail > 0 && avail < base) {
-      zoom = Math.max(0.25, avail / base);
-    }
-  }
-
-  show(0);
-  fitOverview();
-  applyZoom();
-})();
-"""
 
 
 def _select_rows(df, max_seqs):
@@ -1462,23 +728,23 @@ def _panel_html(
         height=2.0 + 0.75 * len(cds_tracks),
     )
     _fix_wide_axes(strip, wide_w, n_cols, top_in=0.3, bottom_in=0.4)
-    strip_svg = _figure_to_svg(strip, f's{row_index}row-', tight=False)
-    strip_svg = _inject_svg_tooltips(
+    strip_svg = figure_to_svg(strip, f's{row_index}row-', tight=False)
+    strip_svg = inject_svg_tooltips(
         strip_svg, f's{row_index}row-', getattr(strip, 'annotation_titles', {})
     )
     plt.close(strip)
 
     bias = per_sequence_strand_bias(cls, row_index, seq_id=seq_id, width=wide_w)
     _fix_wide_axes(bias, wide_w, n_cols, top_in=0.5, bottom_in=0.55)
-    bias_svg = _figure_to_svg(bias, f's{row_index}bias-', tight=False)
+    bias_svg = figure_to_svg(bias, f's{row_index}bias-', tight=False)
     plt.close(bias)
 
     completion = rip_completion_bar(row_stats)
-    completion_svg = _figure_to_svg(completion, f's{row_index}rip-', tight=False)
+    completion_svg = figure_to_svg(completion, f's{row_index}rip-', tight=False)
     plt.close(completion)
 
     gc = gc_content_bar(row_stats)
-    gc_svg = _figure_to_svg(gc, f's{row_index}gc-', tight=False)
+    gc_svg = figure_to_svg(gc, f's{row_index}gc-', tight=False)
     plt.close(gc)
 
     # Wide, bare spectra (no redundant sample title / caption); fixed geometry so
@@ -1486,12 +752,12 @@ def _panel_html(
     # A touch narrower than the page so the scroll box can centre them.
     sbs = plot_sbs96(spectra, sample=row_index, width=11.0, bare=True)
     _fix_spectrum_axes(sbs)
-    sbs_svg = _figure_to_svg(sbs, f's{row_index}sbs-', tight=False)
+    sbs_svg = figure_to_svg(sbs, f's{row_index}sbs-', tight=False)
     plt.close(sbs)
 
     ds = plot_downstream(downstream, sample=row_index, width=11.0, bare=True)
     _fix_spectrum_axes(ds)
-    ds_svg = _figure_to_svg(ds, f's{row_index}ds-', tight=False)
+    ds_svg = figure_to_svg(ds, f's{row_index}ds-', tight=False)
     plt.close(ds)
 
     # The three flank-context bihistograms (substrate left vs product right, one
@@ -1507,7 +773,7 @@ def _panel_html(
     flank_bihist_html = ''
     if flank.flank_length == 1:
         flank_fig = plot_flank_bihistograms(flank, sample=row_index, bare=True)
-        flank_svg = _figure_to_svg(flank_fig, f's{row_index}flank-', tight=True)
+        flank_svg = figure_to_svg(flank_fig, f's{row_index}flank-', tight=True)
         plt.close(flank_fig)
         flank_bihist_html = (
             _FLANK_BIHIST_DESC + f'<div class="spectrum-scroll">{flank_svg}</div>'
@@ -1515,7 +781,7 @@ def _panel_html(
     # Interaction heatmap of the same data: % of each flank motif converted
     # substrate -> product. Unique id prefix keeps embedded-SVG glyph ids distinct.
     flank_heat_fig = plot_flank_conversion_heatmap(flank, sample=row_index, bare=True)
-    flank_heat_svg = _figure_to_svg(
+    flank_heat_svg = figure_to_svg(
         flank_heat_fig, f's{row_index}flankheat-', tight=True
     )
     plt.close(flank_heat_fig)
@@ -1668,8 +934,8 @@ def _overview_svg(derip, cds_tracks, fasta_data=None):
                 cid = text.split(' — ', 1)[0]
                 if cid in valid:
                     fasta_keys[gid] = cid
-        svg = _figure_to_svg(fig, 'ovw-', tight=True)
-        svg = _inject_svg_tooltips(svg, 'ovw-', titles, fasta_keys)
+        svg = figure_to_svg(fig, 'ovw-', tight=True)
+        svg = inject_svg_tooltips(svg, 'ovw-', titles, fasta_keys)
     finally:
         plt.close(fig)
     return svg
@@ -1761,17 +1027,9 @@ def _overview_stats_table_html(df, derip, row_to_panel=None):
             name = f'<a class="seq-link" href="#" data-goto="{panel}">{name}</a>'
         cells = [f'<th scope="row">{name}</th>']
         for col, _lab in flat:
-            value = values.get(col)
-            if col == 'RIP_total' and value is not None:
-                text, css = str(int(value)), ''
-            else:
-                text, css = _format_cell(col, value)
             # Green flags, matching the per-sequence cards: a positive-RIP CRI
             # (> 1) and a significant strand-asymmetry p-value (< 0.05).
-            if col == 'CRI' and isinstance(value, (int, float)) and value > 1:
-                css = 'pos'
-            elif col == 'pvalue' and isinstance(value, (int, float)) and value < 0.05:
-                css = 'pos'
+            text, css = stat_cell(col, values.get(col), sig_class='pos')
             cls = f' class="value {css}"'.rstrip() if css else ' class="value"'
             cells.append(f'<td{cls}>{text}</td>')
         tr_cls = ' class="consensus-row"' if is_consensus else ''
@@ -1785,7 +1043,7 @@ def _overview_stats_table_html(df, derip, row_to_panel=None):
         rows.append(_row_html(row['ID'], values, panel=row_to_panel.get(i)))
 
     # The deRIP consensus row: GC + CRI/PI/SI only; RIP/RSI columns stay None so
-    # _format_cell renders them as an en-dash (not applicable to the ancestor).
+    # stat_cell renders them as an en-dash (not applicable to the ancestor).
     consensus_seq = derip.get_consensus_string()
     cri, pi, si = derip.calculate_cri(consensus_seq)
     consensus_values = {
@@ -1834,7 +1092,7 @@ def _overview_spectrum_svg(derip, ancestor=None):
     spectra_all = derip.calculate_spectra(partition_by='none', ancestor=ancestor)
     fig = plot_sbs96(spectra_all, sample=0, width=11.0, bare=True)
     _fix_spectrum_axes(fig)
-    svg = _figure_to_svg(fig, 'ovwsbs-', tight=False)
+    svg = figure_to_svg(fig, 'ovwsbs-', tight=False)
     plt.close(fig)
     return svg
 
@@ -2056,7 +1314,7 @@ def _overview_flank_svg(flank):
     fig = plot_flank_bihistograms_pooled(
         flank, strands=('combined',), width=5.6, bare=True
     )
-    svg = _figure_to_svg(fig, 'ovwflank-', tight=True)
+    svg = figure_to_svg(fig, 'ovwflank-', tight=True)
     plt.close(fig)
     return svg
 
@@ -2085,7 +1343,7 @@ def _overview_flank_heatmap_svg(flank, id_prefix='ovwflankheat-'):
     from derip2.plotting.flank_spectra import plot_flank_conversion_heatmap
 
     fig = plot_flank_conversion_heatmap(flank, sample=None, bare=True)
-    svg = _figure_to_svg(fig, id_prefix, tight=True)
+    svg = figure_to_svg(fig, id_prefix, tight=True)
     plt.close(fig)
     return svg
 
@@ -2662,7 +1920,6 @@ def write_per_sequence_report(
     ]
     logger.info('Assembling HTML report...')
 
-    heading = escape(title or 'deRIP2 per-sequence report')
     n_total = len(df)
     n_shown = len(indices)
 
@@ -2688,24 +1945,17 @@ def write_per_sequence_report(
     # ``</`` escape keeps a sequence/name from prematurely closing the <script>.
     fasta_json = json.dumps(fasta_data).replace('</', '<\\/')
 
-    html = (
-        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        f'<title>{heading}</title><style>{_STYLE}{_PSR_STYLE}</style></head>'
-        '<body><main>'
-        f'<h1>{heading}</h1>'
-        f'<p class="sub">{n_total} sequences &times; '
-        f'{derip.alignment.get_alignment_length()} columns</p>'
-        f'{truncation_note}'
-        f'{nav}'
-        + ''.join(panels)
-        + '<footer>Generated by deRIP2. Figures are inline SVG and render on '
-        'their own light surface so the colourblind-safe palette holds.</footer>'
-        '<div class="psr-tip" id="psr-tip" hidden></div>'
-        + _MODAL_HTML
-        + f'<script type="application/json" id="psr-fasta-data">{fasta_json}</script>'
-        + f'<script>{_PSR_SCRIPT}</script>'
-        '</main></body></html>'
+    html = render_page(
+        title or 'deRIP2 per-sequence report',
+        f'{n_total} sequences &times; {derip.alignment.get_alignment_length()} columns',
+        truncation_note + nav + ''.join(panels),
+        css=_STYLE + _PSR_STYLE,
+        scripts=(
+            '<div class="psr-tip" id="psr-tip" hidden></div>'
+            + _MODAL_HTML
+            + f'<script type="application/json" id="psr-fasta-data">{fasta_json}</script>'
+            + f'<script>{_PSR_SCRIPT}</script>'
+        ),
     )
 
     with open(output_file, 'w', encoding='utf-8') as handle:
