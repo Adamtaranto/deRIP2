@@ -49,7 +49,7 @@ def sahana_alignment_small(sahana_alignment):
 
 
 def test_bench_calculate_rip(benchmark, sahana_alignment_small):
-    """Benchmark the full RIP detection/correction pipeline (correctRIP-driven)."""
+    """Benchmark the full RIP detection/correction pipeline."""
 
     def run():
         d = DeRIP(sahana_alignment_small)
@@ -66,21 +66,19 @@ def test_bench_fill_conserved(benchmark, sahana_alignment_small):
 
 
 def test_bench_correct_rip(benchmark, sahana_alignment_small):
-    """Benchmark correctRIP in isolation (excludes fill/colorize/plot)."""
+    """Benchmark classify + apply in isolation (excludes fill/colorize/plot)."""
     tracker = ao.initTracker(sahana_alignment_small)
     tracker = ao.fillConserved(sahana_alignment_small, tracker, 0.7)
     rip_counts = ao.initRIPCounter(sahana_alignment_small)
 
     def run():
-        return ao.correctRIP(
+        cls = ao.classify_alignment(
             sahana_alignment_small,
-            tracker,
-            rip_counts,
             max_snp_noise=0.5,
             min_rip_like=0.1,
             reaminate=False,
-            mask=True,
         )
+        return ao.apply_classification(sahana_alignment_small, tracker, rip_counts, cls)
 
     benchmark(run)
 
