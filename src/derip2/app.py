@@ -18,73 +18,33 @@ independently RIP'd.
 
 import logging
 from os import path
-import sys
 
 import click
 
 from derip2._version import __version__
 import derip2.aln_ops as ao
 from derip2.derip import DeRIP
-from derip2.utils.checks import dochecks
-from derip2.utils.logs import colored, init_logging
+from derip2.utils.cli import (
+    HELP_CONTEXT,
+    alignment_input_option,
+    derip_parameter_options,
+    logging_options,
+    output_options,
+    start_cli,
+)
 
 logger = logging.getLogger(__name__)
 
 
 @click.command(
-    context_settings={'help_option_names': ['-h', '--help']},
+    context_settings=HELP_CONTEXT,
     help='Predict ancestral sequence of fungal repeat elements by correcting for RIP-like mutations or cytosine deamination in multi-sequence DNA alignments. Optionally, mask mutated positions in alignment.',
 )
 @click.version_option(version=__version__, prog_name='derip2')
 # Input options
-@click.option(
-    '-i', '--input', required=True, type=str, help='Multiple sequence alignment.'
-)
+@alignment_input_option
 # Algorithm parameters
-@click.option(
-    '-g',
-    '--max-gaps',
-    type=float,
-    default=0.7,
-    show_default=True,
-    help='Maximum proportion of gapped positions in column to be tolerated before forcing a gap in final deRIP sequence.',
-)
-@click.option(
-    '-a',
-    '--reaminate',
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help='Correct all deamination events independent of RIP context.',
-)
-@click.option(
-    '--max-snp-noise',
-    type=float,
-    default=0.5,
-    show_default=True,
-    help="Maximum proportion of conflicting SNPs permitted before excluding column from RIP/deamination assessment. i.e. By default a column with >= 0.5 'C/T' bases will have 'TpA' positions logged as RIP events.",
-)
-@click.option(
-    '--min-rip-like',
-    type=float,
-    default=0.1,
-    show_default=True,
-    help="Minimum proportion of deamination events in RIP context (5' CpA 3' --> 5' TpA 3') required for column to deRIP'd in final sequence. Note: If 'reaminate' option is set all deamination events will be corrected.",
-)
-# Reference sequence selection options
-@click.option(
-    '--fill-max-gc',
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help='By default uncorrected positions in the output sequence are filled from the sequence with the lowest RIP count. If this option is set remaining positions are filled from the sequence with the highest G/C content.',
-)
-@click.option(
-    '--fill-index',
-    type=int,
-    default=None,
-    help="Force selection of alignment row to fill uncorrected positions from by row index number (indexed from 0). Note: Will override '--fill-max-gc' option.",
-)
+@derip_parameter_options
 # Masking and output alignment options
 @click.option(
     '--mask',
@@ -101,20 +61,7 @@ logger = logging.getLogger(__name__)
     help="If set, do not append deRIP'd sequence to output alignment.",
 )
 # Output file options
-@click.option(
-    '-d',
-    '--out-dir',
-    type=str,
-    default=None,
-    help="Directory for deRIP'd sequence files to be written to.",
-)
-@click.option(
-    '-p',
-    '--prefix',
-    default='deRIPseq',
-    show_default=True,
-    help='Prefix for output files. Output files will be named prefix.fasta, prefix_alignment.fasta, etc.',
-)
+@output_options(prefix_default='deRIPseq')
 # Visualization options
 @click.option(
     '--plot',
@@ -295,14 +242,7 @@ logger = logging.getLogger(__name__)
     ),
 )
 # Logging options
-@click.option(
-    '--loglevel',
-    type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']),
-    default='INFO',
-    show_default=True,
-    help='Set logging level.',
-)
-@click.option('--logfile', default=None, help='Log file path.')
+@logging_options
 def main(
     input,
     max_gaps,
@@ -452,14 +392,7 @@ def main(
         Does not return any values, but writes output files and logs to the console.
     """
     # ---------- Setup ----------
-    # Print full command line call
-    print(f'Command line call: {colored.green(" ".join(sys.argv))}\n')
-
-    # Check/create output directory
-    out_dir, logfile = dochecks(out_dir, logfile)
-
-    # Set up logging based on specified level
-    init_logging(loglevel=loglevel, logfile=logfile)
+    out_dir, logfile = start_cli(out_dir, logfile, loglevel)
 
     # Set standardized output file paths
     out_path_fasta = path.join(out_dir, f'{prefix}.fasta')
