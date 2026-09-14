@@ -6,6 +6,7 @@
       members:
         - __init__
         - calculate_rip
+        - classify_columns
         - calculate_cri
         - calculate_cri_for_all
         - calculate_dinucleotide_frequency
