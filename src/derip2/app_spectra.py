@@ -466,7 +466,8 @@ def _write_outputs(
     context_settings=HELP_CONTEXT,
     help='Build SBS-96 and SBS-192 trinucleotide mutation spectra from a DNA '
     "alignment by calling substitutions against the deRIP'd ancestral consensus, "
-    'or via IQ-TREE ancestral reconstruction (--method phylo).',
+    'or via IQ-TREE ancestral reconstruction (--method phylo). The deRIP '
+    'parameters only apply when the consensus is the ancestor.',
 )
 @click.version_option(version=__version__, prog_name='derip2-spectra')
 # Input / output
@@ -792,7 +793,17 @@ def main(
         max_gaps=max_gaps,
     )
     logger.info(f'Loaded alignment with {len(derip_obj.alignment)} sequences')
-    derip_obj.calculate_rip(label=prefix)
+
+    # Only build what the chosen method consumes: the phylo path calls
+    # substitutions on the IQ-TREE reconstruction and needs nothing from deRIP;
+    # the baseline path needs the column classification, and the deRIP'd
+    # consensus only when no ancestor was supplied.
+    if method == 'phylo':
+        logger.info('Phylogenetic method: skipping deRIP consensus reconstruction')
+    elif ancestor_seq is not None:
+        derip_obj.classify_columns()
+    else:
+        derip_obj.calculate_rip(label=prefix)
 
     # ---------- Compute the spectra by the chosen method ----------
     if method == 'baseline':

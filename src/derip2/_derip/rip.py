@@ -23,6 +23,33 @@ class RIPCorrectionMixin:
     and (masked) alignment.
     """
 
+    def classify_columns(self) -> None:
+        """
+        Classify every column's RIP context without building a consensus.
+
+        Populates :attr:`column_classes` (the input to the strand-bias, spectra
+        and flank-spectra analyses) and nothing else: no consensus is filled,
+        no alignment is masked and no markup is recorded. Use this when only
+        the classification is needed, e.g. to call substitutions against an
+        externally supplied ancestor. :meth:`calculate_rip` performs the same
+        classification as its first step and supersedes this.
+
+        Returns
+        -------
+        None
+            Sets :attr:`column_classes` in place.
+        """
+        self.column_classes = ao.classify_alignment(
+            self.alignment,
+            max_snp_noise=self.max_snp_noise,
+            min_rip_like=self.min_rip_like,
+            reaminate=self.reaminate,
+        )
+        logger.info(
+            f'Classified {self.column_classes.arr.shape[1]} columns for RIP context '
+            '(no consensus built)'
+        )
+
     def calculate_rip(self, label: str = 'deRIPseq') -> None:
         """
         Calculate RIP locations and corrections in the alignment.

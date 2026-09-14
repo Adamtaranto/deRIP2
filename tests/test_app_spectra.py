@@ -531,3 +531,82 @@ def test_cli_phylo_path(tmp_path):
     with open(tmp_path / 'ph_events.tsv') as handle:
         header = handle.readline()
     assert 'parent' in header and 'child' in header
+
+
+def _forbid_calculate_rip(monkeypatch):
+    """Make DeRIP.calculate_rip raise so a test can prove it was not called."""
+    from derip2.derip import DeRIP
+
+    def _boom(self, *args, **kwargs):
+        raise AssertionError('calculate_rip should not run on this path')
+
+    monkeypatch.setattr(DeRIP, 'calculate_rip', _boom)
+
+
+def test_baseline_with_ancestor_skips_calculate_rip(tmp_path, monkeypatch):
+    """An external --ancestor only needs the column classification."""
+    _forbid_calculate_rip(monkeypatch)
+    records = _mintest_records()
+    anc = tmp_path / 'anc.fa'
+    anc.write_text(f'>anc\n{"A" * len(records[0][1])}\n')
+    result = CliRunner().invoke(
+        main,
+        [
+            '-i',
+            MINTEST,
+            '-d',
+            str(tmp_path),
+            '-p',
+            'mt',
+            '--ancestor',
+            str(anc),
+            '--no-plots',
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / 'mt.SBS96.txt').exists()
+
+
+@pytest.mark.skipif(not _HAVE_IQTREE, reason='IQ-TREE not on PATH')
+def test_phylo_skips_calculate_rip(tmp_path, monkeypatch):
+    """The phylo path uses only the alignment, never the deRIP consensus."""
+    _forbid_calculate_rip(monkeypatch)
+    result = CliRunner().invoke(
+        main,
+        [
+            '-i',
+            MINTEST,
+            '-d',
+            str(tmp_path),
+            '-p',
+            'ph',
+            '--method',
+            'phylo',
+            '--iqtree-model',
+            'JC',
+            '--threads',
+            '1',
+            '--no-plots',
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / 'ph.SBS96.txt').exists()
+
+
+def test_baseline_without_ancestor_still_builds_consensus(tmp_path, monkeypatch):
+    """With no ancestor the deRIP consensus is the reference, so it is built."""
+    from derip2.derip import DeRIP
+
+    calls = []
+    original = DeRIP.calculate_rip
+
+    def _spy(self, *args, **kwargs):
+        calls.append(kwargs.get('label'))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(DeRIP, 'calculate_rip', _spy)
+    result = CliRunner().invoke(
+        main, ['-i', MINTEST, '-d', str(tmp_path), '-p', 'mt', '--no-plots']
+    )
+    assert result.exit_code == 0, result.output
+    assert calls == ['mt']
