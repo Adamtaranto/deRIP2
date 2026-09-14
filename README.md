@@ -237,42 +237,40 @@ Usage: derip2 [OPTIONS]
 
 Options:
   --version                       Show the version and exit.
-  -i, --input TEXT                Multiple sequence alignment.  [required]
-  -g, --max-gaps FLOAT            Maximum proportion of gapped positions in
+  -i, --input TEXT                Multiple sequence alignment (FASTA,
+                                  optionally gzipped).  [required]
+  -g, --max-gaps FLOAT            Maximum proportion of gapped positions in a
                                   column to be tolerated before forcing a gap
-                                  in final deRIP sequence.  [default: 0.7]
+                                  in the final deRIP sequence.  [default: 0.7]
   -a, --reaminate                 Correct all deamination events independent
                                   of RIP context.
   --max-snp-noise FLOAT           Maximum proportion of conflicting SNPs
-                                  permitted before excluding column from
-                                  RIP/deamination assessment. i.e. By default
-                                  a column with >= 0.5 'C/T' bases will have
-                                  'TpA' positions logged as RIP events.
+                                  permitted before excluding a column from
+                                  RIP/deamination assessment. By default a
+                                  column with at least 0.5 'C/T' bases will
+                                  have 'TpA' positions logged as RIP events.
                                   [default: 0.5]
   --min-rip-like FLOAT            Minimum proportion of deamination events in
-                                  RIP context (5' CpA 3' --> 5' TpA 3')
-                                  required for column to deRIP'd in final
-                                  sequence. Note: If 'reaminate' option is set
-                                  all deamination events will be corrected.
-                                  [default: 0.1]
+                                  RIP context (5' CpA 3' to 5' TpA 3')
+                                  required for a column to be deRIP'd in the
+                                  final sequence. If '--reaminate' is set all
+                                  deamination events are corrected.  [default:
+                                  0.1]
   --fill-max-gc                   By default uncorrected positions in the
                                   output sequence are filled from the sequence
-                                  with the lowest RIP count. If this option is
-                                  set remaining positions are filled from the
-                                  sequence with the highest G/C content.
-  --fill-index INTEGER            Force selection of alignment row to fill
-                                  uncorrected positions from by row index
-                                  number (indexed from 0). Note: Will override
-                                  '--fill-max-gc' option.
+                                  with the lowest RIP count. If set, remaining
+                                  positions are filled from the sequence with
+                                  the highest G/C content.
+  --fill-index INTEGER            Force selection of the alignment row to fill
+                                  uncorrected positions from, by row index
+                                  (from 0). Overrides '--fill-max-gc'.
   --mask                          Mask corrected positions in alignment with
                                   degenerate IUPAC codes.
   --no-append                     If set, do not append deRIP'd sequence to
                                   output alignment.
-  -d, --out-dir TEXT              Directory for deRIP'd sequence files to be
-                                  written to.
-  -p, --prefix TEXT               Prefix for output files. Output files will
-                                  be named prefix.fasta,
-                                  prefix_alignment.fasta, etc.  [default:
+  -d, --out-dir TEXT              Directory for output files (default: current
+                                  directory).
+  -p, --prefix TEXT               Prefix for output file names.  [default:
                                   deRIPseq]
   --plot                          Create a visualization of the alignment with
                                   RIP markup.
@@ -329,9 +327,10 @@ Options:
                                   arrow-key-navigable panel per sequence).
   --max-report-seqs INTEGER       Cap the number of sequence panels in the
                                   per-sequence report. When the alignment has
-                                  more sequences, the strongest strand-bias
-                                  sequences are kept. Unset renders every
-                                  sequence.
+                                  more sequences, the first N in alignment
+                                  order are kept; combine with --sort-by-rsi
+                                  to report the most strand-biased instead.
+                                  Unset renders every sequence.
   --spectra-ref-index INTEGER     Alignment row index (0-based; negatives
                                   allowed) of a sequence to use as the
                                   reference for the per-sequence report
@@ -339,6 +338,11 @@ Options:
                                   corrected consensus. The chosen reference
                                   has an empty (self-comparison) spectrum.
                                   Unset compares against the deRIP consensus.
+  --flank-length INTEGER          Number of flanking bases on each side of a
+                                  RIP-like dinucleotide for the per-sequence
+                                  report flank-context spectra and conversion
+                                  heatmap. 1 gives a 4x4 heatmap, 2 gives
+                                  16x16.  [default: 1]
   --gff TEXT                      GFF3 gene model. Sequence ids must match
                                   alignment record ids. Enables a gene-
                                   annotation track on --plot, gene-effect
@@ -353,12 +357,12 @@ Options:
                                   Set logging level.  [default: INFO]
   --logfile TEXT                  Log file path.
   -h, --help                      Show this message and exit.
-  ```
+```
 
 ## Spectra Options
 
 ```code
- Usage: derip2-spectra [OPTIONS]
+Usage: derip2-spectra [OPTIONS]
 
   Build SBS-96 and SBS-192 trinucleotide mutation spectra from a DNA alignment
   by calling substitutions against the deRIP'd ancestral consensus, or via IQ-
@@ -368,8 +372,9 @@ Options:
   --version                       Show the version and exit.
   -i, --input TEXT                Multiple sequence alignment (FASTA,
                                   optionally gzipped).  [required]
-  -d, --out-dir TEXT              Directory for spectrum output files.
-  -p, --prefix TEXT               Prefix for output files.  [default:
+  -d, --out-dir TEXT              Directory for output files (default: current
+                                  directory).
+  -p, --prefix TEXT               Prefix for output file names.  [default:
                                   deRIPspectra]
   --ancestor TEXT                 Optional FASTA of a hypothetical ancestor to
                                   call against instead of the reconstructed
@@ -435,20 +440,31 @@ Options:
   --root-sensitivity              Also report the fraction of edges whose
                                   direction flips under midpoint rooting
                                   (phylo path).
-  -g, --max-gaps FLOAT            Maximum gap proportion in a column before it
-                                  is gapped in the consensus.  [default: 0.7]
-  -a, --reaminate                 Correct all deamination events regardless of
-                                  RIP context when building the ancestor.
+  -g, --max-gaps FLOAT            Maximum proportion of gapped positions in a
+                                  column to be tolerated before forcing a gap
+                                  in the final deRIP sequence.  [default: 0.7]
+  -a, --reaminate                 Correct all deamination events independent
+                                  of RIP context.
   --max-snp-noise FLOAT           Maximum proportion of conflicting SNPs
-                                  before a column is excluded from RIP
-                                  assessment.  [default: 0.5]
-  --min-rip-like FLOAT            Minimum proportion of RIP-context
-                                  deamination for a column to be corrected.
-                                  [default: 0.1]
-  --fill-max-gc                   Fill uncorrected positions from the highest-
-                                  GC sequence rather than the least-RIP'd one.
-  --fill-index INTEGER            Force the fill row by index (overrides
-                                  --fill-max-gc).
+                                  permitted before excluding a column from
+                                  RIP/deamination assessment. By default a
+                                  column with at least 0.5 'C/T' bases will
+                                  have 'TpA' positions logged as RIP events.
+                                  [default: 0.5]
+  --min-rip-like FLOAT            Minimum proportion of deamination events in
+                                  RIP context (5' CpA 3' to 5' TpA 3')
+                                  required for a column to be deRIP'd in the
+                                  final sequence. If '--reaminate' is set all
+                                  deamination events are corrected.  [default:
+                                  0.1]
+  --fill-max-gc                   By default uncorrected positions in the
+                                  output sequence are filled from the sequence
+                                  with the lowest RIP count. If set, remaining
+                                  positions are filled from the sequence with
+                                  the highest G/C content.
+  --fill-index INTEGER            Force selection of the alignment row to fill
+                                  uncorrected positions from, by row index
+                                  (from 0). Overrides '--fill-max-gc'.
   --loglevel [DEBUG|INFO|WARNING|ERROR|CRITICAL]
                                   Set logging level.  [default: INFO]
   --logfile TEXT                  Log file path.

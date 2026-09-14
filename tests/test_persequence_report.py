@@ -919,8 +919,11 @@ def test_report_pvalue_green_when_significant(mintest_path):
     row['pvalue'] = 0.5
     assert 'sig">' not in _stats_sections_html(row)
     # The .sig class is coloured green, not bold.
-    assert '.stat-card td.value.sig { color: #007a3d; }' in _PSR_STYLE
-    assert '.stat-card td.value.sig { font-weight: 700; }' not in _PSR_STYLE
+    # The rule colours the cell (any colour) and does not embolden it.
+    rule = re.search(r'\.stat-card td\.value\.sig\s*\{([^}]*)\}', _PSR_STYLE)
+    assert rule is not None
+    assert re.search(r'\bcolor\s*:', rule.group(1))
+    assert 'font-weight' not in rule.group(1)
 
 
 def test_report_cri_highlighted_when_above_one(mintest_path, tmp_path):

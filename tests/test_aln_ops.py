@@ -1,5 +1,4 @@
 import os
-import sys
 import tempfile
 
 from Bio import AlignIO
@@ -9,20 +8,17 @@ from Bio.SeqRecord import SeqRecord
 import pytest
 
 from derip2.aln_ops import (
+    apply_classification,
     checkLen,
     checkrow,
     checkUniqueID,
-    correctRIP,
+    classify_alignment,
     fillConserved,
     fillRemainder,
-    find,
     getDERIP,
-    hasBoth,
     initRIPCounter,
     initTracker,
-    lastBase,
     loadAlign,
-    nextBase,
     setRefSeq,
     updateRIPCount,
     updateTracker,
@@ -355,91 +351,22 @@ def test_fill_remainder(test_alignment):
         assert updated_tracker[i].base == test_alignment[0].seq[i]
 
 
-# Tests for motif search functions
-def test_next_base(rip_alignment):
-    """Test nextBase function"""
-    # Find CA motifs at idx position 5 (6th base is a C followed by A)
-    ca_rows, _CA_nextbase_offsets = nextBase(rip_alignment, 5, 'CA')
-    assert 0 in ca_rows  # ancestral sequence has CA at idx pos 5-6
-    assert 2 in ca_rows  # rev_rip sequence has CA at idx pos 5-6
-    assert 3 in ca_rows  # deamin sequence has CA at idx pos 5-6
-    assert 1 not in ca_rows  # fwd_rip has TA instead at idx pos 5-6
-
-    # Find TA motifs at idx position 5 (6th base is T followed by A)
-    ta_rows, _TA_nextbase_offsets = nextBase(rip_alignment, 5, 'TA')
-    assert 1 in ta_rows  # fwd_rip has TA at idx pos 5-6
-    assert 0 not in ta_rows  # ancestral has CA instead at idx pos 5-6
-    assert 2 not in ta_rows  # rev_rip has CA instead at idx pos 5-6
-    assert 3 not in ta_rows  # deamin sequence has CA at idx pos 5-6
-
-
-def test_last_base(rip_alignment):
-    """Test lastBase function"""
-    # Find TG motifs ending at idx position 11 (base is a G preceeded by a T)
-    tg_rows, _TG_nextbase_offsets = lastBase(rip_alignment, 11, 'TG')
-    assert 0 in tg_rows  # ancestral sequence has TG at pos 10-11
-    assert 1 in tg_rows  # fwd_rip has TG at pos 10-11
-    assert 3 in tg_rows  # deamin has TG at pos 10-11
-    assert 2 not in tg_rows  # rev_rip has TA instead
-
-    # Find TG motifs ending at idx position 18 (base is a G preceeded by a T)
-    # Offset should be 18
-    tg_rows, _TG_nextbase_offsets = lastBase(rip_alignment, 18, 'TG')
-    print(tg_rows, file=sys.stderr)
-    assert -3 == _TG_nextbase_offsets[0]
-
-    # Find TA motifs ending at idx position 11 (base is an A preceeded by a T)
-    ta_rows, _TA_nextbase_offsets = lastBase(rip_alignment, 11, 'TA')
-    assert 2 in ta_rows  # rev_rip has TA at in pos 10-11
-    assert 0 not in ta_rows  # ancestral has TG instead
-    assert 1 not in ta_rows  # fwd_rip has TG instead
-    assert 3 not in ta_rows  # deamin has TG instead
-
-
-def test_find():
-    """Test find function"""
-    # Test with a single character
-    result = find(['A', 'C', 'G', 'T', 'A'], 'A')
-    assert result == [0, 4]
-
-    # Test with a list of characters
-    result = find(['A', 'C', 'G', 'T', 'A'], ['A', 'G'])
-    assert result == [0, 2, 4]
-
-    # Test with a set of characters
-    result = find(['A', 'C', 'G', 'T', 'A'], {'A', 'T'})
-    assert result == [0, 3, 4]
-
-
-def test_has_both():
-    """Test hasBoth function"""
-    # Test with both characters present
-    assert hasBoth(['A', 'C', 'G', 'T'], 'A', 'T') is True
-
-    # Test with one character missing
-    assert hasBoth(['A', 'C', 'G'], 'A', 'T') is False
-
-    # Test with both characters missing
-    assert hasBoth(['C', 'G'], 'A', 'T') is False
-
-
 # Tests for RIP correction functions
 def test_correct_rip(rip_alignment):
-    """Test correctRIP function"""
+    """RIP correction via classify_alignment + apply_classification."""
     # Initialize tracker and RIP counter
     tracker = initTracker(rip_alignment)
     rip_counts = initRIPCounter(rip_alignment)
 
     # Apply RIP correction
     updated_tracker, updated_counts, masked_align, _corrected_positions, _markupdict = (
-        correctRIP(
+        apply_classification(
             rip_alignment,
             tracker,
             rip_counts,
-            max_snp_noise=0.5,
-            min_rip_like=0.1,
-            reaminate=False,
-            mask=True,
+            classify_alignment(
+                rip_alignment, max_snp_noise=0.5, min_rip_like=0.1, reaminate=False
+            ),
         )
     )
 
@@ -469,21 +396,20 @@ def test_correct_rip(rip_alignment):
 
 # Tests for RIP correction functions
 def test_correct_rip_with_deamination(rip_alignment):
-    """Test correctRIP function"""
+    """RIP correction via classify_alignment + apply_classification."""
     # Initialize tracker and RIP counter
     tracker = initTracker(rip_alignment)
     rip_counts = initRIPCounter(rip_alignment)
 
     # Apply RIP correction
     updated_tracker, updated_counts, masked_align, _corrected_positions, _markupdict = (
-        correctRIP(
+        apply_classification(
             rip_alignment,
             tracker,
             rip_counts,
-            max_snp_noise=0.5,
-            min_rip_like=0.1,
-            reaminate=True,
-            mask=True,
+            classify_alignment(
+                rip_alignment, max_snp_noise=0.5, min_rip_like=0.1, reaminate=True
+            ),
         )
     )
 
@@ -612,3 +538,63 @@ def test_write_derip_to_stdout(test_alignment, capsys):
     # Check output
     assert '>test_derip' in captured.out
     assert str(test_alignment[0].seq) in captured.out
+
+
+def _reference_fill_conserved(align, tracker, max_gaps=0.7):
+    """The pre-vectorisation per-column loop, kept as an oracle."""
+    from copy import deepcopy
+
+    from derip2.aln_ops import alignment_to_array
+
+    tracker = deepcopy(tracker)
+    arr = alignment_to_array(align)
+    total = arr.shape[0]
+    bases = ['A', 'T', 'G', 'C', '-']
+    col_counts = {base: (arr == base.encode('ascii')).sum(axis=0) for base in bases}
+    for idx in range(arr.shape[1]):
+        counts = {base: int(col_counts[base][idx]) for base in bases}
+        gap = counts['-']
+        gap_prop = gap / total
+        for base, c in counts.items():
+            if c == total:
+                tracker = updateTracker(idx, base, tracker, force=False)
+        for base, c in counts.items():
+            if c + gap == total and base != '-' and gap_prop < max_gaps:
+                tracker = updateTracker(idx, base, tracker, force=False)
+        if gap_prop >= max_gaps:
+            tracker = updateTracker(idx, '-', tracker, force=False)
+    return tracker
+
+
+@pytest.mark.parametrize('max_gaps', [0.3, 0.5, 0.7, 1.0])
+@pytest.mark.parametrize('seed', [0, 1, 2])
+def test_fill_conserved_matches_reference_loop(max_gaps, seed):
+    """The vectorised fill reproduces the per-column loop on messy input."""
+    import random
+
+    rng = random.Random(seed)
+    n_rows, n_cols = 7, 120
+    alphabet = 'ACGT-' * 3 + 'acgtN'  # gaps common; lowercase and N present
+    columns = []
+    for _ in range(n_cols):
+        kind = rng.random()
+        if kind < 0.25:  # invariant column
+            columns.append([rng.choice('ACGT-')] * n_rows)
+        elif kind < 0.55:  # one base plus gaps
+            base = rng.choice('ACGT')
+            columns.append([base if rng.random() > 0.4 else '-' for _ in range(n_rows)])
+        else:
+            columns.append([rng.choice(alphabet) for _ in range(n_rows)])
+    records = [
+        SeqRecord(Seq(''.join(col[r] for col in columns)), id=f's{r}')
+        for r in range(n_rows)
+    ]
+    align = MultipleSeqAlignment(records)
+    tracker = initTracker(align)
+    # Pre-set one slot to check force=False semantics survive.
+    tracker = updateTracker(3, 'T', tracker)
+
+    got = fillConserved(align, tracker, max_gaps=max_gaps)
+    want = _reference_fill_conserved(align, tracker, max_gaps=max_gaps)
+    assert {k: v.base for k, v in got.items()} == {k: v.base for k, v in want.items()}
+    assert tracker[5].base is None  # input tracker untouched

@@ -13,9 +13,11 @@ from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union
 
 from Bio.Align import MultipleSeqAlignment
 import matplotlib
+import matplotlib.collections
 import matplotlib.pyplot as plt
 import numpy as np
-from tqdm import tqdm
+
+from derip2.aln_ops import alignment_to_array
 
 matplotlib.use('Agg')  # Use non-interactive backend for server environments
 
@@ -135,6 +137,10 @@ def get_color_palette(palette: str = 'colorblind') -> Dict[str, str]:
     return color_palettes[palette]
 
 
+#: Characters the alignment image can draw; anything else is shown as a gap.
+VALID_CHARS = np.array([b'A', b'G', b'C', b'T', b'N', b'-'], dtype='S1')
+
+
 def MSAToArray(
     alignment: MultipleSeqAlignment,
 ) -> Tuple[Optional[np.ndarray], Optional[List[str]], Optional[int]]:
@@ -167,46 +173,23 @@ def MSAToArray(
     ValueError
         If the alignment is empty or sequences have different lengths.
     """
-    # DEBUG: Print function parameters for troubleshooting
     logger.debug(f'MSAToArray: alignment={alignment}')
 
     # Check if alignment is empty
     if not alignment or len(alignment) == 0:
         raise ValueError('Empty alignment provided')
 
-    # Initialize lists to store sequence names and data
-    nams = []
-    seqs = []
-
-    # Define valid nucleotide characters for DNA sequences
-    valid_chars: Set[str] = {'A', 'G', 'C', 'T', 'N', '-'}
-
-    # Extract sequences from the alignment object
-    for record in alignment:
-        nams.append(record.id)
-        # Convert sequence to uppercase and replace invalid characters with gaps
-        seq = [
-            base if base.upper() in valid_chars else '-'
-            for base in str(record.seq).upper()
-        ]
-        seqs.append(seq)
-
-    # Check if we have enough sequences for an alignment
-    seq_len = len(seqs)
+    nams = [record.id for record in alignment]
+    seq_len = len(nams)
     if seq_len <= 1:
         return None, None, None
 
-    # Verify all sequences have the same length (proper alignment)
-    # This should always be true for a Biopython MSA object, but check anyway
-    seq_lengths = {len(seq) for seq in seqs}
-    if len(seq_lengths) > 1:
-        raise ValueError(
-            'ERROR: The sequences in the alignment have different lengths. This should not happen with a MultipleSeqAlignment.'
-        )
-
-    # Convert list of sequences to numpy array
-    arr = np.array(seqs)
-    return arr, nams, seq_len
+    # Decode the whole alignment in one pass (bytes), fold case, and replace
+    # anything outside the drawable alphabet with a gap, all vectorised, then
+    # widen to one-character strings for the drawing code.
+    arr = np.char.upper(alignment_to_array(alignment))
+    arr[~np.isin(arr, VALID_CHARS)] = b'-'
+    return arr.astype('U1'), nams, seq_len
 
 
 def arrNumeric(
@@ -727,7 +710,11 @@ def drawMiniAlignment(
                 zorder=100,
             )
 
-        # Plot each base in the consensus as a colored cell with character
+        # Plot each base in the consensus as a colored cell. The cells go into
+        # one PatchCollection: adding thousands of individual patches to the
+        # axes is slow (each add_patch updates the data limits and every patch
+        # is transformed separately at draw time).
+        cells = []
         for i, base in enumerate(consensus_seq):
             # Determine cell color based on whether this is a corrected position
             if highlight_corrected and i not in corrected_set:
@@ -738,18 +725,17 @@ def drawMiniAlignment(
                 color = nuc_colors.get(
                     base.upper(), '#CCCCCC'
                 )  # Default to gray for unknown bases
-
-            # Create colored rectangle for this base
-            consensus_ax.add_patch(
-                matplotlib.patches.Rectangle(
-                    (i - 0.5, -0.5),  # bottom left corner
-                    1,
-                    1,  # width, height
-                    color=color,
-                    zorder=10,
-                )
+            cells.append(
+                matplotlib.patches.Rectangle((i - 0.5, -0.5), 1, 1, color=color)
             )
+        consensus_ax.add_collection(
+            matplotlib.collections.PatchCollection(
+                cells, match_original=True, zorder=10
+            ),
+            autolim=False,
+        )
 
+        for i, base in enumerate(consensus_seq):
             # Add the character as text with increased font size
             if show_chars:
                 # Determine text color - use black for all characters for better readability
@@ -809,6 +795,78 @@ def drawMiniAlignment(
     del arr, arr2, nams
 
     return outfile
+
+
+def _mark_cells(
+    markupdict: Dict[str, List[RIPPosition]],
+    ali_height: int,
+    arr: Optional[np.ndarray],
+    reaminate: bool,
+):
+    """
+    Expand every drawn RIP mark into the alignment cells it covers, vectorised.
+
+    Marks of the drawn categories are gathered, in their original order, into
+    flat arrays; each is then expanded into the contiguous run of columns from
+    the mark to ``col + offset`` (a single cell for offset 0/None). Context
+    cells that fall outside the alignment or on a gap in that row are masked
+    out, as the original per-cell loops did.
+
+    Parameters
+    ----------
+    markupdict : dict of str to list of RIPPosition
+        RIP positions by category (see :func:`markupRIPBases`).
+    ali_height : int
+        Number of alignment rows.
+    arr : numpy.ndarray or None
+        ``(ali_height, ali_width)`` alignment characters, used for bounds and
+        gap checks; ``None`` skips both.
+    reaminate : bool
+        Whether ``'non_rip_deamination'`` marks are drawn.
+
+    Returns
+    -------
+    tuple or None
+        ``(cols, rows, ys, bases, single, span, valid)``: per-mark column, row,
+        flipped y and base (``bases`` is a tuple of str), a boolean ``single``
+        mask for zero-offset marks, and ``span``/``valid`` ``(n_marks, K)``
+        arrays giving the column of every candidate cell and whether it is
+        drawn. ``None`` when there is nothing to draw.
+    """
+    drawn = [
+        positions
+        for category, positions in markupdict.items()
+        if positions and (category != 'non_rip_deamination' or reaminate)
+    ]
+    if not drawn:
+        return None
+    col_l, row_l, base_l, off_l = zip(
+        *(pos for positions in drawn for pos in positions)
+    )
+    n_pos = len(col_l)
+    cols = np.fromiter(col_l, dtype=np.int64, count=n_pos)
+    rows = np.fromiter(row_l, dtype=np.int64, count=n_pos)
+    offsets = np.fromiter(
+        (0 if o is None else o for o in off_l), dtype=np.int64, count=n_pos
+    )
+    ys = ali_height - rows - 1
+
+    single = offsets == 0
+    length = np.abs(offsets) + 1
+    start = np.where(offsets < 0, cols + offsets, cols)
+    d = np.arange(int(length.max()))
+    span = start[:, None] + d[None, :]
+    valid = d[None, :] < length[:, None]
+    if arr is not None:
+        arr = np.asarray(arr)
+        ali_width = arr.shape[1]
+        valid &= (span >= 0) & (span < ali_width)
+        ctx_valid = valid & ~single[:, None]
+        rr = np.broadcast_to(rows[:, None], span.shape)
+        gap = np.zeros(span.shape, dtype=bool)
+        gap[ctx_valid] = arr[rr[ctx_valid], span[ctx_valid]] == '-'
+        valid &= ~gap
+    return cols, rows, ys, base_l, single, span, valid
 
 
 def markupRIPBases(
@@ -894,138 +952,94 @@ def markupRIPBases(
     ali_width = arr.shape[1] if arr is not None else 0
     overlay = np.zeros((ali_height, ali_width, 4), dtype=float)
 
-    def _set_cell(x, y, rgba, alpha):
-        """Write an RGBA value (with alpha) into the overlay if in bounds."""
-        if 0 <= x < ali_width and 0 <= y < ali_height:
-            overlay[y, x, 0] = rgba[0]
-            overlay[y, x, 1] = rgba[1]
-            overlay[y, x, 2] = rgba[2]
-            overlay[y, x, 3] = alpha
+    cells = _mark_cells(markupdict, ali_height, arr, reaminate)
+    if cells is None:
+        return highlighted_positions, target_positions
+    cols, rows, ys, base_l, single, span, valid = cells
+    n_pos = cols.size
 
-    # Count total positions to process for progress bar
-    total_positions = sum(
-        len(positions)
-        for category, positions in markupdict.items()
-        if category != 'non_rip_deamination' or reaminate
+    # Every mark is a target and is highlighted, whatever its case below.
+    target_positions.update(zip(cols.tolist(), ys.tolist()))
+    highlighted_positions.update(target_positions)
+
+    # RGBA lookup tables by character code: one for the marked base itself
+    # (single-cell marks colour by the mark's base, and only if it is in the
+    # palette) and one for context cells (coloured by the alignment base, grey
+    # when unknown).
+    base_lut = np.zeros((256, 4))
+    base_known = np.zeros(256, dtype=bool)
+    ctx_lut = np.tile(np.asarray(default_rgba), (256, 1))
+    for base, rgba in rgba_cache.items():
+        code = ord(base)
+        if code < 256:
+            base_lut[code] = rgba
+            base_known[code] = True
+            ctx_lut[code] = rgba
+    base_codes = np.fromiter(
+        (ord(b) if len(b) == 1 else 0 for b in base_l), dtype=np.int64, count=n_pos
     )
+    base_codes[base_codes >= 256] = 0
+    if arr is not None:
+        arr_codes = np.asarray(arr).astype('U1').view(np.uint32).reshape(ali_height, -1)
+        arr_codes = np.where(arr_codes < 256, arr_codes, 0).astype(np.int64)
 
-    # Create one progress bar for all positions
-    pbar = tqdm(
-        total=total_positions,
-        desc='Highlighting RIP positions',
-        unit='pos',
-        ncols=80,
-        leave=False,
-    )
+    # Single-cell marks only draw when their base is in the palette.
+    valid[single] &= base_known[base_codes[single]][:, None]
 
-    # Process all positions in the markup dictionary
-    for category, positions in markupdict.items():
-        # Skip non-RIP deamination if reaminate is False
-        if category == 'non_rip_deamination' and not reaminate:
-            continue
+    # Context cells: every valid cell of a multi-cell mark, in (mark, cell) order.
+    ctx_mask = valid & ~single[:, None]
+    ctx_pos, ctx_d = np.nonzero(ctx_mask)
+    ctx_x = span[ctx_pos, ctx_d]
+    ctx_y = ys[ctx_pos]
+    highlighted_positions.update(zip(ctx_x.tolist(), ctx_y.tolist()))
 
-        # Update progress bar description to show current category
-        pbar.set_description(f'Highlighting {category}')
+    # Colour/alpha per drawn cell, laid out in the same order as the old loop:
+    # position-major, cell-minor. Single marks: the mark's base colour at full
+    # opacity. Context marks: the alignment base colour, semi-transparent
+    # except at the mark column itself.
+    cell_pos, cell_d = np.nonzero(valid)
+    cell_x = span[cell_pos, cell_d]
+    cell_y = ys[cell_pos]
+    cell_single = single[cell_pos]
+    rgba = np.empty((cell_pos.size, 4))
+    rgba[cell_single] = base_lut[base_codes[cell_pos[cell_single]]]
+    if arr is not None:
+        rgba[~cell_single] = ctx_lut[
+            arr_codes[rows[cell_pos[~cell_single]], cell_x[~cell_single]]
+        ]
+    else:
+        rgba[~cell_single] = base_lut[base_codes[cell_pos[~cell_single]]]
+    alpha = np.where(cell_single | (cell_x == cols[cell_pos]), 1.0, 0.7)
 
-        # Process each position with progress tracking
-        for pos in positions:
-            col_idx, row_idx, base, offset = pos
-            y = ali_height - row_idx - 1
-            highlighted_positions.add((col_idx, y))
-            target_positions.add(
-                (col_idx, y)
-            )  # Add only the target position to target set
+    # Keep only in-bounds cells, then the LAST write to each cell.
+    keep = (cell_x >= 0) & (cell_x < ali_width) & (cell_y >= 0) & (cell_y < ali_height)
+    cell_x, cell_y, rgba, alpha = cell_x[keep], cell_y[keep], rgba[keep], alpha[keep]
+    if cell_x.size:
+        flat = cell_y * max(ali_width, 1) + cell_x
+        _, last_rev = np.unique(flat[::-1], return_index=True)
+        last = cell_x.size - 1 - last_rev
+        overlay[cell_y[last], cell_x[last], :3] = rgba[last, :3]
+        overlay[cell_y[last], cell_x[last], 3] = alpha[last]
 
-            # Case 1: Single base (no offset or offset=0)
-            if offset is None or offset == 0:
-                if base in rgba_cache:
-                    # Composite the base colour into the overlay
-                    _set_cell(col_idx, y, rgba_cache[base], 1.0)
-
-                    # Draw black border with smaller inset for cleaner appearance
-                    if draw_boxes:
-                        a.add_patch(
-                            matplotlib.patches.Rectangle(
-                                (
-                                    col_idx - 0.5 + inset,
-                                    y - 0.5 + inset,
-                                ),  # Inset from cell edge
-                                1.0 - 2 * inset,  # Width with minimal inset
-                                1.0 - 2 * inset,  # Height with minimal inset
-                                facecolor='none',
-                                edgecolor='black',
-                                linewidth=border_thickness,
-                                zorder=150,  # Above grid lines (100)
-                            )
-                        )
-
-            # Case 2: Multiple positions (with offset)
-            elif offset != 0:
-                # Process range and get valid cells as before
-                if offset < 0:  # Positions to the left
-                    start_idx = max(0, col_idx + offset)
-                    end_idx = col_idx
-                else:  # Positions to the right
-                    start_idx = col_idx
-                    end_idx = (
-                        min(arr.shape[1] - 1, col_idx + offset)
-                        if arr is not None
-                        else col_idx + offset
-                    )
-
-                # Skip gaps and out-of-bounds positions
-                valid_indices = []
-                for i in range(start_idx, end_idx + 1):
-                    if i < 0 or (
-                        arr is not None
-                        and (i >= arr.shape[1] or arr[ali_height - y - 1, i] == '-')
-                    ):
-                        continue
-                    valid_indices.append(i)
-
-                if not valid_indices:
-                    pbar.update(1)  # Update progress bar even if skipping
-                    continue
-
-                # Fill cells with appropriate colors into the overlay
-                for i in valid_indices:
-                    # Add to highlighted positions
-                    highlighted_positions.add((i, y))
-                    # Note: We don't add offset positions to target_positions
-
-                    # Get color for this base
-                    cell_base = arr[ali_height - y - 1, i] if arr is not None else base
-                    cell_rgba = rgba_cache.get(cell_base, default_rgba)
-
-                    # Offset cells (not the target column) are semi-transparent
-                    cell_alpha = 1.0
-                    if (offset > 0 or offset < 0) and i != col_idx:
-                        cell_alpha = 0.7
-
-                    _set_cell(i, y, cell_rgba, cell_alpha)
-
-                # Draw border with smaller inset
-                if valid_indices and draw_boxes:
-                    start_i = min(valid_indices)
-                    end_i = max(valid_indices)
-
-                    a.add_patch(
-                        matplotlib.patches.Rectangle(
-                            (start_i - 0.5 + inset, y - 0.5 + inset),
-                            (end_i - start_i + 1) - 2 * inset,
-                            1.0 - 2 * inset,
-                            facecolor='none',
-                            edgecolor='black',
-                            linewidth=border_thickness,
-                            zorder=150,  # Above grid lines
-                        )
-                    )
-
-            # Update progress bar
-            pbar.update(1)
-
-    # Close the progress bar
-    pbar.close()
+    # Black borders: one rectangle per mark, spanning its drawn cells. Only
+    # requested for small alignments, so a per-mark loop is fine here.
+    if draw_boxes:
+        for p in range(n_pos):
+            drawn_cols = span[p][valid[p]]
+            if drawn_cols.size == 0:
+                continue
+            x0, x1 = int(drawn_cols.min()), int(drawn_cols.max())
+            a.add_patch(
+                matplotlib.patches.Rectangle(
+                    (x0 - 0.5 + inset, ys[p] - 0.5 + inset),
+                    (x1 - x0 + 1) - 2 * inset,
+                    1.0 - 2 * inset,
+                    facecolor='none',
+                    edgecolor='black',
+                    linewidth=border_thickness,
+                    zorder=150,  # Above grid lines (100)
+                )
+            )
 
     # Draw all colored highlights in a single raster pass over the base image.
     if ali_width:
@@ -1171,37 +1185,13 @@ def getHighlightedPositions(
     Set[Tuple[int, int]]
         Set of (col_idx, flipped_y) tuples for all highlighted positions.
     """
-    highlighted_positions = set()
-
-    for category, positions in markupdict.items():
-        # Skip non-RIP deamination if reaminate is False
-        if category == 'non_rip_deamination' and not reaminate:
-            continue
-
-        for pos in positions:
-            col_idx, row_idx, base, offset = pos
-
-            # Convert row index to matplotlib coordinates (flipped)
-            y = ali_height - row_idx - 1
-
-            # Add target position to highlighted set
-            highlighted_positions.add((col_idx, y))
-
-            # Handle offset positions
-            if offset is not None:
-                if offset < 0:
-                    # Negative offset means positions to the left
-                    for i in range(col_idx + offset, col_idx):
-                        if i >= 0 and (
-                            arr is None or arr[ali_height - y - 1, i] != '-'
-                        ):
-                            highlighted_positions.add((i, y))
-                elif offset > 0:
-                    # Positive offset means positions to the right
-                    for i in range(col_idx + 1, col_idx + offset + 1):
-                        if i <= arr.shape[1] - 1 and (
-                            arr is None or arr[ali_height - y - 1, i] != '-'
-                        ):
-                            highlighted_positions.add((i, y))
-
+    cells = _mark_cells(markupdict, ali_height, arr, reaminate)
+    if cells is None:
+        return set()
+    cols, _rows, ys, _bases, single, span, valid = cells
+    highlighted_positions = set(zip(cols.tolist(), ys.tolist()))
+    ctx_pos, ctx_d = np.nonzero(valid & ~single[:, None])
+    highlighted_positions.update(
+        zip(span[ctx_pos, ctx_d].tolist(), ys[ctx_pos].tolist())
+    )
     return highlighted_positions

@@ -594,3 +594,29 @@ class TestDeRIPMethods:
 
             # Verify results were cleared again
             assert derip_instance.consensus is None
+
+
+def test_classify_columns_matches_calculate_rip_without_consensus(mintest_path):
+    """classify_columns() yields the same classification and no consensus."""
+    import numpy as np
+
+    light = DeRIP(mintest_path)
+    light.classify_columns()
+    full = DeRIP(mintest_path)
+    full.calculate_rip()
+
+    assert light.column_classes is not None
+    for name in ('arr', 'fwd_col', 'rev_col', 'modC', 'modG', 'base_counts'):
+        assert np.array_equal(
+            getattr(light.column_classes, name), getattr(full.column_classes, name)
+        )
+    assert light.consensus is None
+    assert light.masked_alignment is None
+    assert light.markupdict is None
+    # The classification alone is enough for the spectra facade.
+    assert (
+        light.calculate_spectra(ancestor=str(full.gapped_consensus.seq)).sbs96.shape[0]
+        == 96
+    )
+    with pytest.raises(ValueError, match='Must call calculate_rip'):
+        light.write_consensus(str(mintest_path) + '.out')

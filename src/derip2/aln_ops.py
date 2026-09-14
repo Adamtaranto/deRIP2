@@ -10,12 +10,13 @@ consensus sequences, and outputting corrected sequences in various formats.
 from collections import Counter, namedtuple
 from copy import deepcopy
 from dataclasses import dataclass
+from functools import cached_property
 
 # import defaultdict
 from io import StringIO
 import logging
 import sys
-from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 from Bio import AlignIO, SeqIO
 from Bio.Align import MultipleSeqAlignment
@@ -101,8 +102,9 @@ def _nongap_neighbors(arr: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     For each cell ``(row, col)`` this returns the column index of the closest
     non-gap character strictly to the right (``next_idx``) and strictly to the
     left (``prev_idx``); ``-1`` indicates that no non-gap base exists in that
-    direction. This vectorises the per-row gap-skipping that ``nextBase`` and
-    ``lastBase`` performed by scanning the sequence.
+    direction. This vectorises, in one pass over the whole matrix, the per-row
+    gap-skipping that the original per-column scan performed sequence by
+    sequence.
 
     Parameters
     ----------
@@ -156,7 +158,7 @@ def checkUniqueID(align: MultipleSeqAlignment) -> None:
         If any duplicate sequence IDs are found in the alignment.
     """
     # Extract all sequence IDs from the alignment
-    rowIDs = [list(align)[x].id for x in range(align.__len__())]
+    rowIDs = [record.id for record in align]
 
     # Count occurrences of each ID
     IDcounts = Counter(rowIDs)
@@ -658,285 +660,42 @@ def fillConserved(
         Updated tracker dictionary with bases filled in for conserved positions.
     """
     logger.debug('Filling conserved positions in the consensus sequence...')
-    # Create deep copy of tracker to avoid modifying the original
-    tracker = deepcopy(tracker)
+    # Shallow copy: the input tracker is never mutated (its values are immutable
+    # namedtuples that are rebound, not edited).
+    tracker = dict(tracker)
 
-    # Decode once and precompute per-column base/gap counts with vectorised
-    # reductions instead of slicing + Counter for every column.
+    # Decode once and take per-column counts of the five characters that can
+    # decide a column, in the order A, T, G, C, '-'.
     arr = alignment_to_array(align)
-    total = arr.shape[0]
-    bases = ['A', 'T', 'G', 'C', '-']
-    col_counts = {base: (arr == base.encode('ascii')).sum(axis=0) for base in bases}
+    total, n_cols = arr.shape
+    chars = np.array([b'A', b'T', b'G', b'C', b'-'], dtype='S1')
+    counts = np.stack([(arr == c).sum(axis=0) for c in chars], axis=1)  # (n_cols, 5)
+    gap = counts[:, 4]
+    gap_prop = gap / total if total else np.zeros(n_cols)
 
-    # Process each column in alignment
-    for idx in range(arr.shape[1]):
-        # Integer base/gap counts for this column (order: A, T, G, C, -)
-        counts = {base: int(col_counts[base][idx]) for base in bases}
-        gap = counts['-']
-        gapProp = gap / total
+    # The three cases, evaluated in the original first-write-wins order:
+    #   1. the column is entirely one character (gap included) -> that character;
+    #   2. otherwise, gaps reach ``max_gaps``                    -> '-';
+    #   3. otherwise, the non-gap bases are all one base          -> that base.
+    # Cases 2 and 3 are disjoint (3 needs gap_prop < max_gaps), so ordering them
+    # this way reproduces the old loop exactly. Any other column stays unset.
+    full = counts == total
+    invariant = (counts[:, :4] + gap[:, None] == total) & (counts[:, :4] > 0)
+    decision = np.full(n_cols, None, dtype=object)
+    has_full = full.any(axis=1)
+    decision[has_full] = chars[full[has_full].argmax(axis=1)].astype('U1')
+    gappy = ~has_full & (gap_prop >= max_gaps)
+    decision[gappy] = '-'
+    inv = ~has_full & ~gappy & invariant.any(axis=1)
+    decision[inv] = chars[:4][invariant[inv].argmax(axis=1)].astype('U1')
 
-        # Case 1: If column is completely invariant, use that base
-        # (count == total means all positions have this base)
-        for base, c in counts.items():
-            if c == total:
-                tracker = updateTracker(idx, base, tracker, force=False)
-
-        # Case 2: If non-gap positions are invariant (base + gap = 100%)
-        for base, c in counts.items():
-            # Exclude gap character; only update if gap proportion below threshold
-            if c + gap == total and base != '-' and gapProp < max_gaps:
-                tracker = updateTracker(idx, base, tracker, force=False)
-
-        # Case 3: If column has more gaps than threshold, use gap character
-        if gapProp >= max_gaps:
-            tracker = updateTracker(idx, '-', tracker, force=False)
+    # Write only where a decision exists and the slot is still empty
+    # (``updateTracker(..., force=False)`` semantics).
+    for idx in np.flatnonzero(decision != None).tolist():  # noqa: E711
+        if not tracker[idx].base:
+            tracker[idx] = tracker[idx]._replace(base=str(decision[idx]))
 
     return tracker
-
-
-def nextBase(
-    align: 'AlignIO.MultipleSeqAlignment', colID: int, motif: str
-) -> Tuple[List[int], List[int]]:
-    """
-    Find rows where a base is followed by a specific nucleotide in the next non-gap position.
-
-    This function identifies all rows in an alignment where the column at index colID
-    contains the first base of a specified dinucleotide motif, and the next non-gap
-    position contains the second base of the motif.
-
-    Parameters
-    ----------
-    align : Bio.Align.MultipleSeqAlignment
-        The sequence alignment to analyze.
-    colID : int
-        Column index to check for the first base of the motif.
-    motif : str
-        Dinucleotide motif (e.g., 'CA' or 'TG').
-
-    Returns
-    -------
-    Tuple[List[int], List[int]]
-        A tuple containing:
-        - List of row indices where the specified pattern was found.
-        - List of corresponding offsets (distance to the next non-gap position).
-
-    Raises
-    ------
-    ValueError
-        If the row indices and offsets lists have different lengths.
-
-    Examples
-    --------
-    >>> rows, offsets = nextBase(alignment, 5, 'CA')
-    >>> print(f"Found CA motif at rows {rows} with offsets {offsets}")
-    """
-    # Find all rows where colID base matches first base of motif
-    # Note: Column IDs are indexed from zero
-    rowsX = find(align[:, colID], motif[0])
-
-    # Initialize output list to store matching rows
-    rowsXY = []
-    # Initialize list to store offsets for each row
-    # (distance to next non-gap position after motif base)
-    offsets = []
-
-    # For each row where starting col matches first base of motif
-    for rowID in rowsX:
-        offset = 0
-        # Loop through all positions to the right of starting col
-        # From position to immediate right of X to end of seq
-        for base in align[rowID].seq[colID + 1 :]:
-            offset += 1
-            # For first non-gap position encountered
-            if base != '-':
-                # Check if base matches motif position two
-                if base == motif[1]:
-                    # If base is a match, add row ID to result list
-                    rowsXY.append(rowID)
-                    # Add offset to list
-                    offsets.append(offset)
-                # If first non-gap position is not a match, end loop for this row
-                break
-            # Else if position is a gap, continue to the next base
-
-    # Check that rowsXY and offsets are the same length
-    if len(rowsXY) != len(offsets):
-        raise ValueError('Row indices and offsets are not the same length.')
-
-    return rowsXY, offsets
-
-
-def lastBase(
-    align: 'AlignIO.MultipleSeqAlignment', colID: int, motif: str
-) -> Tuple[List[int], List[int]]:
-    """
-    Find rows where a base is preceded by a specific nucleotide in the previous non-gap position.
-
-    This function identifies all rows in an alignment where the column at index colID
-    contains the second base of a specified dinucleotide motif, and the previous non-gap
-    position contains the first base of the motif.
-
-    Parameters
-    ----------
-    align : Bio.Align.MultipleSeqAlignment
-        The sequence alignment to analyze.
-    colID : int
-        Column index to check for the second base of the motif.
-    motif : str
-        Dinucleotide motif (e.g., 'CA' or 'TG').
-
-    Returns
-    -------
-    Tuple[List[int], List[int]]
-        A tuple containing:
-        - List of row indices where the specified pattern was found.
-        - List of corresponding offsets (distance to the previous non-gap position).
-
-    Raises
-    ------
-    ValueError
-        If the row indices and offsets lists have different lengths.
-    """
-    # Find all rows where colID base matches second base of motif
-    rowsY = find(align[:, colID], motif[1])
-
-    # Initialize output list to store matching rows
-    rowsXY = []
-    # Initialize list to store offsets for each row
-    # (distance to first non-gap position preceding motif base)
-    offsets = []
-
-    # For each row where current col matches second base of motif
-    for rowID in rowsY:
-        offset = 0
-        # From position to immediate left of Y to beginning of seq, reversed
-        for base in align[rowID].seq[colID - 1 :: -1]:
-            offset -= 1
-            # For first non-gap position encountered
-            if base != '-':
-                # Check if base matches motif position one
-                if base == motif[0]:
-                    # If it is a match, add row ID to result list
-                    rowsXY.append(rowID)
-                    # Add offset to list
-                    offsets.append(offset)
-                # If first non-gap position is not a match, end loop for this row
-                break
-            # Else if position is a gap, continue to the previous base
-
-    # Check that rowsXY and offsets are the same length
-    if len(rowsXY) != len(offsets):
-        raise ValueError('Row indices and offsets are not the same length.')
-
-    return rowsXY, offsets
-
-
-def find(lst: List[str], a: Union[str, List[str], Set[str]]) -> List[int]:
-    """
-    Find indices of elements in a list that match specified characters.
-
-    Parameters
-    ----------
-    lst : List[str]
-        List or sequence of characters to search through.
-    a : Union[str, List[str], Set[str]]
-        Character or collection of characters to find in the list.
-
-    Returns
-    -------
-    List[int]
-        List of indices where matching characters were found.
-
-    Examples
-    --------
-    >>> find(['A', 'T', 'G', 'C', 'A'], 'A')
-    [0, 4]
-    >>> find(['A', 'T', 'G', 'C', 'A'], ['A', 'T'])
-    [0, 1, 4]
-    """
-    # Convert search target to a set for efficient lookup
-    search_set = set(a)
-
-    # Return indices where list items are in the search set using list comprehension
-    return [i for i, x in enumerate(lst) if x in search_set]
-
-
-def hasBoth(lst: List[str], a: str, b: str) -> bool:
-    """
-    Check if a list contains at least one instance of each of two characters.
-
-    Parameters
-    ----------
-    lst : List[str]
-        List or sequence of characters to search through.
-    a : str
-        First character to find.
-    b : str
-        Second character to find.
-
-    Returns
-    -------
-    bool
-        True if both characters are present, False otherwise.
-
-    Examples
-    --------
-    >>> hasBoth(['A', 'T', 'G', 'C'], 'A', 'T')
-    True
-    >>> hasBoth(['A', 'T', 'G', 'C'], 'A', 'N')
-    False
-    """
-    # Find indices of first character
-    hasA = find(lst, a)
-
-    # Find indices of second character
-    hasB = find(lst, b)
-
-    # Return True if both characters were found (both lists are non-empty)
-    return bool(hasA and hasB)
-
-
-def replaceBase(
-    align: 'AlignIO.MultipleSeqAlignment',
-    targetCol: int,
-    targetRows: List[int],
-    newbase: str,
-) -> 'AlignIO.MultipleSeqAlignment':
-    """
-    Replace bases in specific positions of a multiple sequence alignment.
-
-    This function modifies an alignment by replacing bases at a specific column
-    for multiple rows with a new base character (e.g., for masking).
-
-    Parameters
-    ----------
-    align : Bio.Align.MultipleSeqAlignment
-        The sequence alignment to modify.
-    targetCol : int
-        Column index where bases should be replaced.
-    targetRows : List[int]
-        List of row indices identifying sequences to modify.
-    newbase : str
-        New base character to insert (can be an IUPAC ambiguity code).
-
-    Returns
-    -------
-    Bio.Align.MultipleSeqAlignment
-        Modified alignment with replaced bases.
-    """
-    # For each target row in the alignment
-    for row in targetRows:
-        # Convert sequence to list for modification
-        seqList = list(align[row].seq)
-
-        # Replace the base at the target column
-        seqList[targetCol] = newbase
-
-        # Convert back to a Seq object and update the alignment
-        # Note: No longer using deprecated Gapped(IUPAC.ambiguous_dna) alphabet
-        align[row].seq = Seq(''.join(seqList))
-
-    return align
 
 
 @dataclass(frozen=True)
@@ -1019,8 +778,57 @@ class ColumnClassification:
     base_counts: np.ndarray
     reaminate: bool
 
+    # -- per-cell base masks ----------------------------------------------------
+    @cached_property
+    def is_A(self) -> np.ndarray:
+        """
+        Per-cell mask of A bases.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean array.
+        """
+        return self.arr == b'A'
+
+    @cached_property
+    def is_C(self) -> np.ndarray:
+        """
+        Per-cell mask of C bases.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean array.
+        """
+        return self.arr == b'C'
+
+    @cached_property
+    def is_G(self) -> np.ndarray:
+        """
+        Per-cell mask of G bases.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean array.
+        """
+        return self.arr == b'G'
+
+    @cached_property
+    def is_T(self) -> np.ndarray:
+        """
+        Per-cell mask of T bases.
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(n_rows, n_cols)`` boolean array.
+        """
+        return self.arr == b'T'
+
     # -- per-column base counts -------------------------------------------------
-    @property
+    @cached_property
     def nA(self) -> np.ndarray:
         """
         Per-column count of A bases.
@@ -1032,7 +840,7 @@ class ColumnClassification:
         """
         return self.base_counts[:, 0]
 
-    @property
+    @cached_property
     def nC(self) -> np.ndarray:
         """
         Per-column count of C bases.
@@ -1044,7 +852,7 @@ class ColumnClassification:
         """
         return self.base_counts[:, 1]
 
-    @property
+    @cached_property
     def nG(self) -> np.ndarray:
         """
         Per-column count of G bases.
@@ -1056,7 +864,7 @@ class ColumnClassification:
         """
         return self.base_counts[:, 2]
 
-    @property
+    @cached_property
     def nT(self) -> np.ndarray:
         """
         Per-column count of T bases.
@@ -1068,7 +876,7 @@ class ColumnClassification:
         """
         return self.base_counts[:, 3]
 
-    @property
+    @cached_property
     def n_gap(self) -> np.ndarray:
         """
         Per-column count of gap characters.
@@ -1080,7 +888,7 @@ class ColumnClassification:
         """
         return self.base_counts[:, 4]
 
-    @property
+    @cached_property
     def base_count(self) -> np.ndarray:
         """
         Per-column count of unambiguous ACGT bases.
@@ -1093,7 +901,7 @@ class ColumnClassification:
         return self.base_counts[:, :4].sum(axis=1)
 
     # -- derived cell masks -----------------------------------------------------
-    @property
+    @cached_property
     def sub_fwd(self) -> np.ndarray:
         """
         Forward RIP substrate cells: C in CpA context, in assessable columns.
@@ -1105,7 +913,7 @@ class ColumnClassification:
         """
         return self.ca & self.ct_ok
 
-    @property
+    @cached_property
     def sub_rev(self) -> np.ndarray:
         """
         Reverse RIP substrate cells: G in TpG context, in assessable columns.
@@ -1117,7 +925,7 @@ class ColumnClassification:
         """
         return self.tg & self.ga_ok
 
-    @property
+    @cached_property
     def prod_fwd(self) -> np.ndarray:
         """
         Forward RIP product cells: T in TpA context, in forward RIP columns.
@@ -1129,7 +937,7 @@ class ColumnClassification:
         """
         return self.ta & self.fwd_col
 
-    @property
+    @cached_property
     def prod_rev(self) -> np.ndarray:
         """
         Reverse RIP product cells: A in TpA context, in reverse RIP columns.
@@ -1141,7 +949,7 @@ class ColumnClassification:
         """
         return self.ta2 & self.rev_col
 
-    @property
+    @cached_property
     def nonrip_fwd(self) -> np.ndarray:
         """
         T cells in a forward candidate column that are not RIP products.
@@ -1153,7 +961,7 @@ class ColumnClassification:
         """
         return self.fwd_block & (self.arr == b'T') & ~(self.fwd_col & self.ta)
 
-    @property
+    @cached_property
     def nonrip_rev(self) -> np.ndarray:
         """
         A cells in a reverse candidate column that are not RIP products.
@@ -1165,7 +973,7 @@ class ColumnClassification:
         """
         return self.rev_block & (self.arr == b'A') & ~(self.rev_col & self.ta2)
 
-    @property
+    @cached_property
     def mask_Y(self) -> np.ndarray:
         """
         Mask of cells overwritten with the IUPAC code Y (C/T) in the masked alignment.
@@ -1178,7 +986,7 @@ class ColumnClassification:
         targets = (self.arr == b'T') if self.reaminate else self.ta
         return self.modC & targets
 
-    @property
+    @cached_property
     def mask_R(self) -> np.ndarray:
         """
         Mask of cells overwritten with the IUPAC code R (A/G) in the masked alignment.
@@ -1192,7 +1000,7 @@ class ColumnClassification:
         return self.modG & targets
 
     # -- per-row tallies --------------------------------------------------------
-    @property
+    @cached_property
     def add_fwd(self) -> np.ndarray:
         """
         Per-row count of forward-strand RIP events.
@@ -1204,7 +1012,7 @@ class ColumnClassification:
         """
         return self.prod_fwd.sum(axis=1)
 
-    @property
+    @cached_property
     def add_rev(self) -> np.ndarray:
         """
         Per-row count of reverse-strand RIP events.
@@ -1216,7 +1024,7 @@ class ColumnClassification:
         """
         return self.prod_rev.sum(axis=1)
 
-    @property
+    @cached_property
     def add_nonrip(self) -> np.ndarray:
         """
         Per-row count of non-RIP deamination events.
@@ -1228,7 +1036,7 @@ class ColumnClassification:
         """
         return self.nonrip_fwd.sum(axis=1) + self.nonrip_rev.sum(axis=1)
 
-    @property
+    @cached_property
     def corrected_positions(self) -> List[int]:
         """
         Column indices whose consensus base was corrected.
@@ -1282,7 +1090,9 @@ def classify_columns(
     Classify every cell and column of an alignment by RIP context.
 
     This is a vectorised reformulation of the per-column scan that
-    :func:`correctRIP` used to perform, and reproduces its decisions exactly.
+    the original per-column ``correctRIP`` scan performed, and reproduces its
+    decisions exactly (see ``tests/test_strand_bias.py`` for the reference
+    implementation kept as an oracle).
     Forward-strand RIP (C→T in CpA context) and reverse-strand RIP (G→A in TpG
     context) are detected independently.
 
@@ -1629,148 +1439,6 @@ def apply_classification(
     )
 
 
-def correctRIP(
-    align: 'AlignIO.MultipleSeqAlignment',
-    tracker: Dict[int, NamedTuple],
-    RIPcounts: Dict[int, NamedTuple],
-    max_snp_noise: float = 0.5,
-    min_rip_like: float = 0.1,
-    reaminate: bool = True,
-    mask: bool = False,
-) -> Tuple[
-    Dict[int, NamedTuple],
-    Dict[int, NamedTuple],
-    'AlignIO.MultipleSeqAlignment',
-    List[int],
-    Dict[str, List[RIPPosition]],
-]:
-    """
-    Scan alignment for RIP-like mutations and correct them in the consensus sequence.
-
-    This function analyzes each column of the alignment for patterns consistent with
-    Repeat-Induced Point (RIP) mutations, which typically involve C→T transitions in
-    specific dinucleotide contexts. For each identified RIP site, it:
-    1. Logs the RIP event in the RIPcounts tracker
-    2. Updates the consensus sequence tracker with the ancestral (pre-RIP) base
-    3. Optionally masks the corrected positions in the output alignment
-
-    RIP signatures as observed in the + sense strand, with RIP targeting CpA
-    motifs on either the +/- strand:
-
-    Target strand:    ++  --
-    Wild type:     5' CA--TG 3'
-    RIP mutated:   5' TA--TA 3'
-    Consensus:        YA--TR
-
-    Parameters
-    ----------
-    align : Bio.Align.MultipleSeqAlignment
-        The input sequence alignment to analyze.
-    tracker : Dict[int, NamedTuple]
-        Dictionary tracking the consensus sequence state for each column.
-    RIPcounts : Dict[int, NamedTuple]
-        Dictionary tracking RIP mutation counts for each sequence.
-    max_snp_noise : float, optional
-        Minimum proportion of positions in a column that must be C/T or G/A to be
-        considered for RIP correction (default: 0.5).
-    min_rip_like : float, optional
-        Minimum proportion of C→T or G→A transitions that must be in a RIP-like
-        context to trigger correction (default: 0.1).
-    reaminate : bool, optional
-        If True, also correct C→T or G→A transitions not in RIP context (default: True).
-    mask : bool, optional
-        If True, mask corrected positions in the alignment output (default: False).
-
-    Returns
-    -------
-    Tuple[Dict[int, NamedTuple], Dict[int, NamedTuple], Bio.Align.MultipleSeqAlignment, List[int], Dict[str, List[RIPPosition]]]
-        A tuple containing:
-        - Updated tracker dictionary with corrected bases
-        - Updated RIPcounts dictionary with observed RIP events
-        - Masked alignment (if mask=True) showing positions that were corrected
-        - List of column indices that were corrected in the consensus
-        - Dictionary mapping RIP mutation categories to positions for visualization:
-          'rip_product': Positions containing RIP mutation products (e.g., T from C→T)
-          'rip_substrate': Positions containing unmutated nucleotides in RIP context
-          'non_rip_deamination': Positions with C→T or G→A outside of RIP context
-    """
-    logger.debug('Correcting RIP-like mutations in the consensus sequence...')
-
-    cls = classify_alignment(
-        align,
-        max_snp_noise=max_snp_noise,
-        min_rip_like=min_rip_like,
-        reaminate=reaminate,
-    )
-    return apply_classification(align, tracker, RIPcounts, cls)
-
-
-def updateMarkupDict(
-    category: str,
-    markupdict: Dict[str, List[RIPPosition]],
-    colIdx: int,
-    base: str,
-    row_idx: int,
-    offset: int,
-) -> Dict[str, List[RIPPosition]]:
-    """
-    Update a dictionary tracking RIP mutation categories with new position data.
-
-    This function adds a new RIP position entry to the specified category in the markup
-    dictionary. Each position contains column index, row index, nucleotide base, and
-    an offset value indicating context position.
-
-    Parameters
-    ----------
-    category : str
-        Category of the RIP mutation, typically one of:
-        'rip_product' - Position containing a RIP mutation product (e.g., T from C→T)
-        'rip_substrate' - Position containing an unmutated nucleotide in RIP context
-        'non_rip_deamination' - Position with C→T or G→A outside of RIP context.
-    markupdict : Dict[str, List[RIPPosition]]
-        Dictionary containing categories as keys and lists of RIP positions as values.
-    colIdx : int
-        Column index in the alignment (0-based).
-    base : str
-        Nucleotide base at this position ('A', 'C', 'G', 'T').
-    row_idx : int
-        Row index in the alignment (0-based).
-    offset : int or None
-        Distance to contextual base that forms RIP dinucleotide context:
-        - Positive value: offset positions to the right
-        - Negative value: offset positions to the left
-        - None: no specific dinucleotide context.
-
-    Returns
-    -------
-    Dict[str, List[RIPPosition]]
-        Updated markup dictionary with the new position added to the specified category.
-
-    Notes
-    -----
-    The function creates a new RIPPosition namedtuple and appends it to the
-    list in markupdict under the specified category.
-
-    This markup can be used for visualization highlighting of RIP patterns in
-    the alignment.
-
-    Examples
-    --------
-    >>> markupdict = {'rip_product': [], 'rip_substrate': [], 'non_rip_deamination': []}
-    >>> markupdict = updateMarkupDict('rip_product', markupdict, colIdx=15, base='T',
-    ...                               row_idx=3, offset=1)
-    """
-    # Create new namedtuple with position data
-    newpos = RIPPosition(colIdx=colIdx, rowIdx=row_idx, base=base, offset=offset)
-
-    # Check if this position already exists in the list
-    if newpos not in markupdict[category]:
-        # Only append if it's not already in the list
-        markupdict[category].append(newpos)
-
-    return markupdict
-
-
 def summarizeRIP(RIPcounts: Dict[int, NamedTuple]) -> str:
     """
     Generate a summary of RIP mutation counts and GC content for each sequence.
@@ -1965,12 +1633,12 @@ def getDERIP(
     """
     logger.debug('Generating deRIPed sequence...')
 
-    # Check that all positions have been filled
-    if None in [x.base for x in tracker.values()]:
+    # Read the bases out in column order (one pass) and check for gaps in the
+    # fill at the same time.
+    bases = [tracker[col].base for col in sorted(tracker)]
+    if any(base is None for base in bases):
         raise ValueError('Not all positions have been filled in the tracker!')
-
-    # Join all bases in the tracker, ordering by column index
-    deRIPstr = ''.join([y.base for y in sorted(tracker.values(), key=lambda x: x[0])])
+    deRIPstr = ''.join(bases)
 
     # Remove gap characters if requested
     if deGAP:

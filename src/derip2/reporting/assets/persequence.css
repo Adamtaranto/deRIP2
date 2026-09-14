@@ -1,0 +1,320 @@
+/* Per-sequence report: panel deck, sticky navigation, zoom, wide-figure wells,
+   stat cards, tooltip, FASTA modal and the sortable overview table. Layered
+   on base.css and its :root tokens. */
+.seq-panel[hidden] { display: none; }
+
+/* Shared control style: square, ink-bordered, hard shadow; yellow on hover,
+   pressed in on click. */
+.seq-nav button, .zoom button, .psr-btn, .psr-copy, .psr-tab,
+.flank-data .motif-sort button {
+  font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  text-transform: uppercase; letter-spacing: .04em;
+  background: var(--surface); color: var(--ink);
+  border: 2px solid var(--ink); border-radius: 0; box-shadow: 3px 3px 0 var(--ink);
+}
+.seq-nav button:hover, .zoom button:hover, .psr-btn:hover, .psr-copy:hover,
+.psr-tab:hover, .flank-data .motif-sort button:hover { background: var(--yellow); }
+.seq-nav button:active, .zoom button:active, .psr-btn:active, .psr-copy:active {
+  transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink);
+}
+
+/* Sticky navigation bar: a yellow band with the page indicator reversed out. */
+.seq-nav {
+  position: sticky; top: 0; z-index: 10; display: flex; align-items: center;
+  gap: .75rem; padding: .6rem .9rem; margin: 0 0 1.6rem;
+  background: var(--yellow); border: 2px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--ink);
+}
+.seq-nav button { padding: .3rem .8rem; }
+.seq-nav .indicator {
+  font-variant-numeric: tabular-nums; font-weight: 700;
+  background: var(--ink); color: var(--page); padding: .25rem .7rem;
+}
+.seq-nav .hint { color: var(--ink); opacity: .7; font-size: 12px; margin-left: auto; }
+
+/* Simultaneous zoom control for the column-aligned figures, living in the
+   sticky sequence header, right-aligned. */
+.zoom { display: inline-flex; align-items: center; gap: .35rem; margin-left: auto; }
+.zoom button { width: 1.9rem; text-align: center; padding: .2rem 0; }
+.zoom .zlabel {
+  min-width: 3.2rem; text-align: center; font-variant-numeric: tabular-nums;
+  color: var(--ink-2); font-size: 12px; font-weight: 700;
+}
+
+/* Keep the sequence header (number, name, length) + zoom pinned below the nav
+   bar as the reader scrolls down a long panel. Sequence ids are case-sensitive,
+   so this heading is not uppercased. */
+.seq-panel h2 {
+  position: sticky; top: 3.5rem; z-index: 9; margin: 0 0 .6rem;
+  padding: .5rem 0; background: var(--page); border-bottom: 3px solid var(--ink);
+  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+  text-transform: none; letter-spacing: 0; font-size: 1.1rem;
+}
+.seq-panel h2 .seqid { color: var(--ink-2); font-weight: 400; }
+.seq-panel h2 .seqlen { color: var(--muted); font-weight: 400; font-size: 1rem; }
+.seq-panel h3 {
+  font-size: .95rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .06em; margin: 1.8rem 0 .3rem; padding-top: .9rem;
+  border-top: 2px solid var(--ink); display: flex; align-items: center; gap: .5rem;
+}
+.seq-panel h3::before { content: ''; width: .6em; height: .6em; flex: none; background: var(--red); }
+.seq-panel h3:nth-of-type(3n+1)::before { background: var(--yellow); }
+.seq-panel h3:nth-of-type(3n+2)::before { background: var(--blue); }
+.seq-panel h3:nth-of-type(3n+3)::before { background: var(--red); }
+.desc { color: var(--ink-2); margin: .1rem 0 .8rem; max-width: 74ch; font-size: 14px; }
+
+/* Compact flank-context comparison table (5 rows): size columns to their
+   content and never wrap a cell, so the long comparison names stay on one line. */
+.flank-compare { width: auto; table-layout: auto; margin: .4rem 0; }
+/* Both flank tables are content-sized with nowrap cells; on a narrow screen
+   they scroll horizontally on their own rather than widening the page. */
+.flank-compare, .flank-data { display: block; max-width: 100%; overflow-x: auto; }
+.flank-compare th, .flank-compare td { white-space: nowrap; }
+.flank-compare td:not(:first-child), .flank-compare th:not(:first-child) {
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+
+/* Sortable per-motif flank-context data table (16 rows). Columns fit content;
+   the motif column carries two small 5'/3' base-sort buttons, numeric columns
+   sort on click. */
+.flank-data { width: auto; table-layout: auto; margin: .4rem 0 .2rem; }
+.flank-data th, .flank-data td { white-space: nowrap; }
+.flank-data td:first-child {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.flank-data td:not(:first-child), .flank-data th:not(:first-child) {
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.flank-data th.sortable-num { cursor: pointer; }
+.flank-data th.sortable-num:hover { color: var(--blue); }
+.flank-data th[data-dir="asc"]::after { content: " \2191"; }
+.flank-data th[data-dir="desc"]::after { content: " \2193"; }
+.flank-data .motif-sort { margin-left: .3rem; font-weight: 400; }
+.flank-data .motif-sort button {
+  font-size: 10px; margin-left: 3px; padding: 0 4px; box-shadow: none;
+  text-transform: none; letter-spacing: 0; color: var(--ink-2);
+}
+.flank-data .motif-sort button:hover { color: var(--ink); }
+.flank-data .motif-sort button[data-active="1"] {
+  color: var(--page); background: var(--ink);
+}
+/* Stacked "% RIP" bar: orange product share against blue substrate share. */
+.flank-data td.ripbar-cell { text-align: left; }
+.flank-data .ripbar {
+  display: inline-flex; width: 88px; height: 11px; overflow: hidden;
+  vertical-align: middle; border: 1px solid var(--ink);
+}
+.flank-data .ripbar i { display: block; height: 100%; }
+.flank-data .ripbar .prod { flex: 0 0 auto; background: #eb6834; }
+.flank-data .ripbar .sub { flex: 1 1 auto; background: #2a78d6; }
+.flank-data .ripbar.empty { background: rgba(22, 22, 22, .12); }
+
+/* Colour key for the alignment-row figure. */
+.legend {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .9rem;
+  margin: 0 0 .6rem; font-size: 12.5px; color: var(--ink-2);
+}
+.legend .lg-title {
+  color: var(--ink); font-weight: 800; text-transform: uppercase;
+  letter-spacing: .05em; font-size: 11px;
+}
+.legend .lg { display: inline-flex; align-items: center; gap: .3rem; }
+.legend .lg i {
+  display: inline-block; width: .8rem; height: .8rem; border: 1px solid var(--ink);
+}
+.legend .lg b { font-size: 1rem; line-height: 1; }
+
+/* Significant strand-asymmetry p-value (< 0.05): coloured green, not bold. */
+.stat-card td.value.sig { color: var(--green); }
+
+/* Wide figures (alignment row, strand bias) keep their intrinsic width and
+   scroll horizontally rather than being squashed to page width, so bars stay
+   readable on long alignments. */
+.col-scroll {
+  overflow-x: auto; background: var(--fig-surface); border: 2px solid var(--ink);
+  padding: .3rem;
+}
+.col-scroll svg { display: block; max-width: none; height: auto; }
+
+/* The overview page's full alignment figure (inline SVG, vector chrome + one
+   embedded raster grid) scrolls in BOTH axes and zooms with the shared control;
+   capped height so a tall alignment does not run off the page before you scroll
+   it. */
+.aln-scroll {
+  overflow: auto; max-height: 80vh; background: var(--fig-surface);
+  border: 2px solid var(--ink); padding: .3rem;
+}
+.aln-scroll svg { display: block; max-width: none; height: auto; }
+
+/* The completion and GC bars are fixed-width; centre them and cap to the page
+   so they stay aligned across sequences. */
+.figure-fixed {
+  overflow-x: auto; background: var(--fig-surface); border: 2px solid var(--ink);
+  padding: .5rem;
+}
+.figure-fixed svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+
+/* The spectra are wide (96 trinucleotide ticks). They keep their intrinsic
+   width and scroll horizontally on their own, so the ticks never overlap; a
+   fixed figure geometry keeps the plot body aligned across sequences. This
+   scroll is independent of the alignment column figures. */
+.spectrum-scroll {
+  overflow-x: auto; background: var(--fig-surface); border: 2px solid var(--ink);
+  padding: .5rem;
+}
+.spectrum-scroll svg { display: block; margin: 0 auto; max-width: none; height: auto; }
+
+/* Transposed, grouped statistics: a responsive grid of small cards, each a
+   two-column stat/value table with a short description. */
+.stat-grid {
+  display: grid; gap: 1.1rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.stat-card {
+  background: var(--surface); border: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--yellow); padding: .8rem 1rem;
+}
+.stat-card:nth-child(3n+2) { box-shadow: 4px 4px 0 var(--blue); }
+.stat-card:nth-child(3n+3) { box-shadow: 4px 4px 0 var(--red); }
+.stat-card h4 {
+  margin: 0 0 .2rem; font-size: .85rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.stat-card .desc { font-size: 12.5px; margin: 0 0 .6rem; }
+.stat-card table { width: 100%; font-size: 13px; }
+.stat-card th, .stat-card td {
+  text-align: left; padding: .3rem .2rem;
+  border-bottom: 1px solid rgba(22, 22, 22, .18);
+}
+.stat-card th { font-weight: 400; color: var(--ink-2); }
+.stat-card td.value {
+  text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
+  font-weight: 700;
+}
+.stat-card tr:last-child th, .stat-card tr:last-child td { border-bottom: none; }
+
+/* Custom annotation tooltip: a single floating element positioned near the
+   cursor by JS. Replaces native SVG <title> (which has a ~1 s delay and no
+   click behaviour). Annotation groups carry a data-tip attribute. */
+[data-tip] { cursor: pointer; }
+.psr-tip {
+  position: fixed; z-index: 50; pointer-events: none;
+  max-width: 320px; padding: .3rem .55rem;
+  background: var(--yellow); color: var(--ink);
+  border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink);
+  font-size: 12.5px; font-weight: 700; line-height: 1.3; white-space: nowrap;
+}
+.psr-tip[hidden] { display: none; }
+
+/* Overview download / view-FASTA toolbar. */
+.psr-toolbar { display: flex; flex-wrap: wrap; gap: .7rem; margin: 0 0 .9rem; }
+.psr-btn { padding: .35rem .8rem; text-decoration: none; display: inline-block; }
+
+/* The overview annotation groups and the deRIP consensus row become clickable:
+   pointer-events:all lets even the invisible consensus overlay catch a click. */
+.aln-scroll [data-fasta], .aln-scroll [data-fasta] * {
+  cursor: pointer; pointer-events: all;
+}
+
+/* Click-to-view FASTA modal: a centred dialog over a dimming backdrop. */
+.psr-modal { position: fixed; inset: 0; z-index: 60; }
+.psr-modal[hidden] { display: none; }
+.psr-modal-backdrop { position: absolute; inset: 0; background: rgba(22, 22, 22, .55); }
+.psr-modal-box {
+  position: relative; margin: 6vh auto 0; max-width: 680px; width: calc(100% - 2rem);
+  max-height: 84vh; display: flex; flex-direction: column;
+  background: var(--page); color: var(--ink);
+  border: 2px solid var(--ink); box-shadow: 10px 10px 0 var(--red);
+}
+.psr-modal-head {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .7rem 1rem; border-bottom: 2px solid var(--ink);
+}
+.psr-modal-title { font-weight: 800; word-break: break-all; }
+.psr-modal-x {
+  margin-left: auto; font: inherit; font-size: 1.4rem; line-height: 1;
+  background: none; border: none; color: var(--ink); cursor: pointer;
+  padding: 0 .2rem;
+}
+.psr-modal-x:hover { color: var(--red); }
+.psr-tabs { display: flex; flex-wrap: wrap; gap: .4rem; padding: .7rem 1rem 0; }
+.psr-tabs[hidden] { display: none; }
+.psr-tab { padding: .3rem .8rem; box-shadow: none; color: var(--ink-2); }
+.psr-tab.is-active { color: var(--page); background: var(--red); }
+.psr-tab[hidden] { display: none; }
+.psr-fasta {
+  margin: .7rem 1rem 0; padding: .8rem 1rem; overflow: auto; flex: 1 1 auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px; line-height: 1.45; white-space: pre; word-break: normal;
+  background: var(--fig-surface); color: #111; border: 2px solid var(--ink);
+}
+/* Emphasis inside the FASTA view. The <pre> pins its own light background, so
+   these two inks are fixed rather than theme-derived. Green marks bases the
+   deRIP correction restored; red marks bases a maximum-RIP variant converted.
+   Both are spans over otherwise-plain text, so the element's textContent -- what
+   the copy button reads -- is still the unformatted record. */
+.psr-mark { color: #0a7a3d; font-weight: 700; }
+.psr-mark-rip { color: #b4292a; font-weight: 700; }
+.psr-modal-foot {
+  display: flex; align-items: center; gap: .8rem;
+  padding: .8rem 1rem; border-top: 2px solid var(--ink); margin-top: .7rem;
+}
+.psr-note { color: var(--ink-2); font-size: 12.5px; margin: 0; }
+.psr-note[hidden] { display: none; }
+.psr-copy { padding: .3rem .9rem; }
+
+/* Overview all-sequence summary statistics table (sortable). The box scrolls in
+   both axes with a capped height; the two header rows stay pinned to the top and
+   the sequence-name column stays pinned to the left (via position: sticky). The
+   --h1 offset is the height of the first (group) header row, so the second header
+   row sits directly below it. */
+.stats-scroll {
+  --h1: 1.9rem;
+  overflow: auto; max-height: 70vh; margin: .2rem 0 1rem;
+  border: 2px solid var(--ink);
+}
+.psr-stats {
+  border-collapse: separate; border-spacing: 0; font-size: 13px;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.psr-stats th, .psr-stats td {
+  padding: .35rem .6rem; border-bottom: 1px solid rgba(22, 22, 22, .18);
+  text-align: right;
+}
+.psr-stats thead th {
+  background: var(--surface); position: sticky; z-index: 3;
+  border-bottom: 2px solid var(--ink);
+}
+.psr-stats thead tr:first-child th { top: 0; height: var(--h1); }
+.psr-stats thead tr:nth-child(2) th { top: var(--h1); }
+.psr-stats thead th.grp {
+  text-align: center; font-weight: 800;
+  border-left: 2px solid var(--ink); border-right: 2px solid var(--ink);
+  border-bottom: 3px solid var(--blue);
+}
+/* Sticky first column (sequence names): header corner sits above everything. */
+.psr-stats th[scope="row"] {
+  text-align: left; font-weight: 700; position: sticky; left: 0; z-index: 2;
+  background: var(--page); border-right: 2px solid var(--ink);
+}
+.psr-stats thead th.corner { left: 0; z-index: 4; }
+.psr-stats tbody tr:hover th[scope="row"] { background: var(--surface); }
+.psr-stats th.sortable { cursor: pointer; user-select: none; }
+.psr-stats th.sortable:hover { color: var(--blue); }
+.psr-stats th.sortable::after { content: ''; margin-left: .3rem; color: var(--muted); }
+.psr-stats th.sortable[data-dir="asc"]::after { content: '▲'; color: var(--blue); }
+.psr-stats th.sortable[data-dir="desc"]::after { content: '▼'; color: var(--blue); }
+.psr-stats .seq-link {
+  color: var(--blue); text-decoration: underline; text-decoration-style: dotted;
+  text-underline-offset: 2px; cursor: pointer;
+}
+.psr-stats .seq-link:hover { text-decoration-style: solid; }
+.psr-stats td.value.muted { color: var(--muted); }
+.psr-stats td.value.pos { color: var(--green); }
+.psr-stats td.value.neg { color: var(--red); }
+.psr-stats tbody tr:hover td { background: rgba(242, 184, 38, .18); }
+.psr-stats tr.consensus-row th[scope="row"],
+.psr-stats tr.consensus-row td { font-weight: 700; }
+.psr-stats tr.consensus-row td, .psr-stats tr.consensus-row th[scope="row"] {
+  border-top: 3px solid var(--red);
+}

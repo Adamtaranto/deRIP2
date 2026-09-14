@@ -27,6 +27,8 @@ from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 
+from derip2.stats._numeric import chi2_sf
+
 logger = logging.getLogger(__name__)
 
 
@@ -59,102 +61,6 @@ def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
     if nx == 0 or ny == 0:
         return float('nan')
     return float(np.dot(x, y) / (nx * ny))
-
-
-def _gser(a: float, x: float) -> float:
-    """
-    Lower regularised incomplete gamma ``P(a, x)`` by series expansion.
-
-    Parameters
-    ----------
-    a : float
-        Shape parameter (> 0).
-    x : float
-        Evaluation point (``0 <= x < a + 1`` for good convergence).
-
-    Returns
-    -------
-    float
-        ``P(a, x)``.
-    """
-    gln = math.lgamma(a)
-    ap = a
-    total = 1.0 / a
-    delta = total
-    for _ in range(1000):
-        ap += 1.0
-        delta *= x / ap
-        total += delta
-        if abs(delta) < abs(total) * 1e-15:
-            break
-    return total * math.exp(-x + a * math.log(x) - gln)
-
-
-def _gcf(a: float, x: float) -> float:
-    """
-    Upper regularised incomplete gamma ``Q(a, x)`` by continued fraction.
-
-    Parameters
-    ----------
-    a : float
-        Shape parameter (> 0).
-    x : float
-        Evaluation point (``x >= a + 1`` for good convergence).
-
-    Returns
-    -------
-    float
-        ``Q(a, x)``.
-    """
-    gln = math.lgamma(a)
-    tiny = 1e-300
-    b = x + 1.0 - a
-    c = 1.0 / tiny
-    d = 1.0 / b
-    h = d
-    for i in range(1, 1000):
-        an = -i * (i - a)
-        b += 2.0
-        d = an * d + b
-        if abs(d) < tiny:
-            d = tiny
-        c = b + an / c
-        if abs(c) < tiny:
-            c = tiny
-        d = 1.0 / d
-        delta = d * c
-        h *= delta
-        if abs(delta - 1.0) < 1e-15:
-            break
-    return math.exp(-x + a * math.log(x) - gln) * h
-
-
-def chi2_sf(x: float, df: float) -> float:
-    """
-    Survival function (upper tail) of the chi-squared distribution.
-
-    Parameters
-    ----------
-    x : float
-        Chi-squared statistic (>= 0).
-    df : float
-        Degrees of freedom (> 0).
-
-    Returns
-    -------
-    float
-        ``P(X > x)`` for a chi-squared variable with ``df`` degrees of freedom.
-    """
-    if df <= 0:
-        return float('nan')
-    if x <= 0:
-        return 1.0
-    a = df / 2.0
-    y = x / 2.0
-    # Q(a, y) is the upper tail = survival function.
-    if y < a + 1.0:
-        return 1.0 - _gser(a, y)
-    return _gcf(a, y)
 
 
 def chi2_homogeneity(

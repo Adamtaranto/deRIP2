@@ -18,7 +18,6 @@ machinery but answer different questions.
 import csv
 import logging
 from os import path
-import sys
 
 from Bio.Align import MultipleSeqAlignment
 import click
@@ -26,8 +25,14 @@ import click
 from derip2._version import __version__
 import derip2.aln_ops as ao
 from derip2.derip import DeRIP
-from derip2.utils.checks import dochecks
-from derip2.utils.logs import colored, init_logging
+from derip2.utils.cli import (
+    HELP_CONTEXT,
+    alignment_input_option,
+    derip_parameter_options,
+    logging_options,
+    output_options,
+    start_cli,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -458,34 +463,16 @@ def _write_outputs(
 
 
 @click.command(
-    context_settings={'help_option_names': ['-h', '--help']},
+    context_settings=HELP_CONTEXT,
     help='Build SBS-96 and SBS-192 trinucleotide mutation spectra from a DNA '
     "alignment by calling substitutions against the deRIP'd ancestral consensus, "
-    'or via IQ-TREE ancestral reconstruction (--method phylo).',
+    'or via IQ-TREE ancestral reconstruction (--method phylo). The deRIP '
+    'parameters only apply when the consensus is the ancestor.',
 )
 @click.version_option(version=__version__, prog_name='derip2-spectra')
 # Input / output
-@click.option(
-    '-i',
-    '--input',
-    required=True,
-    type=str,
-    help='Multiple sequence alignment (FASTA, optionally gzipped).',
-)
-@click.option(
-    '-d',
-    '--out-dir',
-    type=str,
-    default=None,
-    help='Directory for spectrum output files.',
-)
-@click.option(
-    '-p',
-    '--prefix',
-    default='deRIPspectra',
-    show_default=True,
-    help='Prefix for output files.',
-)
+@alignment_input_option
+@output_options(prefix_default='deRIPspectra')
 @click.option(
     '--ancestor',
     type=str,
@@ -617,61 +604,9 @@ def _write_outputs(
     'rooting (phylo path).',
 )
 # deRIP parameters used to build the ancestor
-@click.option(
-    '-g',
-    '--max-gaps',
-    type=float,
-    default=0.7,
-    show_default=True,
-    help='Maximum gap proportion in a column before it is gapped in the consensus.',
-)
-@click.option(
-    '-a',
-    '--reaminate',
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help='Correct all deamination events regardless of RIP context '
-    'when building the ancestor.',
-)
-@click.option(
-    '--max-snp-noise',
-    type=float,
-    default=0.5,
-    show_default=True,
-    help='Maximum proportion of conflicting SNPs before a column is '
-    'excluded from RIP assessment.',
-)
-@click.option(
-    '--min-rip-like',
-    type=float,
-    default=0.1,
-    show_default=True,
-    help='Minimum proportion of RIP-context deamination for a column to be corrected.',
-)
-@click.option(
-    '--fill-max-gc',
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help='Fill uncorrected positions from the highest-GC sequence '
-    "rather than the least-RIP'd one.",
-)
-@click.option(
-    '--fill-index',
-    type=int,
-    default=None,
-    help='Force the fill row by index (overrides --fill-max-gc).',
-)
+@derip_parameter_options
 # Logging
-@click.option(
-    '--loglevel',
-    type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']),
-    default='INFO',
-    show_default=True,
-    help='Set logging level.',
-)
-@click.option('--logfile', default=None, help='Log file path.')
+@logging_options
 def main(
     input,
     out_dir,
@@ -780,10 +715,7 @@ def main(
     None
         Writes output files and logs; returns nothing.
     """
-    print(f'Command line call: {colored.green(" ".join(sys.argv))}\n')
-
-    out_dir, logfile = dochecks(out_dir, logfile)
-    init_logging(loglevel=loglevel, logfile=logfile)
+    out_dir, logfile = start_cli(out_dir, logfile, loglevel)
 
     # The downstream context yields a single pyrimidine-folded 96-channel matrix,
     # so an explicit --sbs 192/both makes no sense; reject it rather than silently
@@ -861,7 +793,17 @@ def main(
         max_gaps=max_gaps,
     )
     logger.info(f'Loaded alignment with {len(derip_obj.alignment)} sequences')
-    derip_obj.calculate_rip(label=prefix)
+
+    # Only build what the chosen method consumes: the phylo path calls
+    # substitutions on the IQ-TREE reconstruction and needs nothing from deRIP;
+    # the baseline path needs the column classification, and the deRIP'd
+    # consensus only when no ancestor was supplied.
+    if method == 'phylo':
+        logger.info('Phylogenetic method: skipping deRIP consensus reconstruction')
+    elif ancestor_seq is not None:
+        derip_obj.classify_columns()
+    else:
+        derip_obj.calculate_rip(label=prefix)
 
     # ---------- Compute the spectra by the chosen method ----------
     if method == 'baseline':

@@ -8,174 +8,44 @@ fetched.
 """
 
 from html import escape
-import io
 import logging
-import re
+
+from derip2.plotting.strandbias import MODE_TITLES
+from derip2.reporting import (
+    base_style,
+    figure_to_svg,
+    format_cell,
+    render_page,
+)
 
 logger = logging.getLogger(__name__)
 
-# The panels, in reading order: what RIP did, what it didn't do, and everything.
-PANELS = (
-    (
-        'rip',
-        'RIP-like mutations',
+# One-paragraph reading guide per strand-bias mode, in reading order: what RIP
+# did, what it didn't do, and everything. Headings come from
+# :data:`derip2.plotting.strandbias.MODE_TITLES` so the two never drift.
+PANEL_BLURBS = {
+    'rip': (
         'Columns where an aligned, unmutated substrate dinucleotide shows that '
         'the TpA products arose by RIP. Bars above the axis are forward-strand '
-        'events (CA to TA); bars below are reverse-strand events (TG to TA).',
+        'events (CA to TA); bars below are reverse-strand events (TG to TA).'
     ),
-    (
-        'non_rip',
-        'Non-RIP deamination',
+    'non_rip': (
         'C to T and G to A transitions outside RIP dinucleotide context. A '
-        'strand bias here suggests a deamination process other than RIP.',
+        'strand bias here suggests a deamination process other than RIP.'
     ),
-    (
-        'all_deamination',
-        'All C/G deamination',
+    'all_deamination': (
         'Every C and T (forward) and every G and A (reverse), regardless of '
         'context. The backdrop against which the RIP-specific panels should be '
-        'read.',
+        'read.'
     ),
-)
-
-_STYLE = """
-:root {
-  --surface: #fcfcfb; --page: #f9f9f7; --ink: #0b0b0b;
-  --ink-2: #52514e; --muted: #898781; --rule: #e1e0d9;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface: #1a1a19; --page: #0d0d0d; --ink: #ffffff;
-    --ink-2: #c3c2b7; --muted: #898781; --rule: #2c2c2a;
-  }
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0; padding: 2.5rem 1.5rem; background: var(--page); color: var(--ink);
-  font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-main { max-width: 1180px; margin: 0 auto; }
-h1 { font-size: 1.6rem; font-weight: 600; margin: 0 0 .3rem; }
-h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 .4rem; }
-.sub { color: var(--ink-2); margin: 0 0 2rem; }
-section {
-  background: var(--surface); border: 1px solid var(--rule);
-  border-radius: 10px; padding: 1.4rem; margin-bottom: 1.6rem;
-}
-section p { color: var(--ink-2); margin: 0 0 1rem; max-width: 72ch; }
-/* Figures keep their own light surface, as a printed figure does: the
-   colourblind-safe palette is only validated against it. */
-.figure {
-  overflow-x: auto; background: #fcfcfb; border-radius: 6px; padding: .5rem;
-}
-.figure svg { display: block; max-width: 100%; height: auto; }
-.table-wrap { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; font-size: 13px; }
-th, td {
-  text-align: right; padding: .45rem .6rem;
-  border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums;
-}
-th { color: var(--ink-2); font-weight: 600; white-space: nowrap; }
-th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; }
-tbody tr:hover { background: rgba(127,127,127,.07); }
-.pos { color: #006300; } .neg { color: #b4292a; }
-@media (prefers-color-scheme: dark) {
-  .pos { color: #0ca30c; } .neg { color: #e66767; }
-}
-footer { color: var(--muted); font-size: 12px; margin-top: 2rem; }
-code { background: rgba(127,127,127,.12); padding: .1em .35em; border-radius: 3px; }
-"""
+PANELS = tuple((mode, MODE_TITLES[mode], PANEL_BLURBS[mode]) for mode in PANEL_BLURBS)
 
-
-def _figure_to_svg(fig, prefix, tight=True):
-    """
-    Render a matplotlib figure to an inline SVG fragment with namespaced IDs.
-
-    Parameters
-    ----------
-    fig : matplotlib.figure.Figure
-        Figure to render.
-    prefix : str
-        Unique string prepended to every element ID and internal reference.
-    tight : bool, optional
-        Trim surrounding whitespace with ``bbox_inches='tight'`` (default:
-        True). Pass ``False`` to keep the figure's full, fixed canvas so a
-        series of figures with the same figure size and axes rectangle render at
-        identical dimensions — needed when several figures must stay aligned
-        across pages (their left margins would otherwise vary with tick-label
-        width).
-
-    Returns
-    -------
-    str
-        The ``<svg>`` element, ready to embed directly in an HTML body.
-
-    Notes
-    -----
-    Matplotlib reuses the same element IDs in every SVG it writes (glyph
-    definitions such as ``DejaVuSans-41``, tick group names, and so on). Several
-    figures in one HTML document would therefore share IDs, and a browser
-    resolves ``href="#id"`` to the *first* match in the document — so later
-    figures would silently borrow the first figure's glyphs. Prefixing every ID
-    and every internal reference keeps each figure self-referential.
-    """
-    buffer = io.StringIO()
-    if tight:
-        fig.savefig(buffer, format='svg', bbox_inches='tight')
-    else:
-        fig.savefig(buffer, format='svg')
-    svg = buffer.getvalue()
-
-    # Drop everything before the opening <svg> tag: an XML declaration or a
-    # DOCTYPE inside an HTML body is invalid.
-    match = re.search(r'<svg', svg)
-    if match:
-        svg = svg[match.start() :]
-
-    svg = re.sub(r'\bid="([^"]+)"', rf'id="{prefix}\1"', svg)
-    # Covers both href="#x" and xlink:href="#x".
-    svg = re.sub(r'href="#([^"]+)"', rf'href="#{prefix}\1"', svg)
-    # clip-path="url(#x)", filter="url(#x)", and friends.
-    svg = re.sub(r'url\(#([^)]+)\)', rf'url(#{prefix}\1)', svg)
-    return svg
-
-
-def _format_cell(column, value):
-    """
-    Format one statistics-table cell for HTML.
-
-    Parameters
-    ----------
-    column : str
-        Name of the column the value came from; decides the numeric format.
-    value : str or float or int or None
-        The cell value. NaN and None both render as an en-dash.
-
-    Returns
-    -------
-    tuple of str
-        ``(text, css_class)``, the escaped cell text and the class to style it
-        with (empty when the cell needs no styling).
-    """
-    import math
-
-    if isinstance(value, str):
-        return escape(value), ''
-    if value is None or (isinstance(value, float) and math.isnan(value)):
-        return '&ndash;', 'muted'
-
-    if column == 'index':
-        return str(int(value)), ''
-    if column in ('RIP_fwd', 'RIP_rev', 'non_RIP', 'n_ambiguous'):
-        return f'{int(value)}', ''
-    if column == 'pvalue':
-        return f'{value:.3g}', ''
-    if column == 'RSI':
-        css = 'pos' if value > 0 else ('neg' if value < 0 else '')
-        return f'{value:+.3f}', css
-    if column in ('fwd_product', 'fwd_substrate', 'rev_product', 'rev_substrate'):
-        return f'{value:g}', ''
-    return f'{value:.3f}', ''
+# Backwards-compatible aliases: the per-sequence report and the test-suite
+# import these private names from here.
+_STYLE = base_style()
+_figure_to_svg = figure_to_svg
+_format_cell = format_cell
 
 
 def _stats_table_html(df):
@@ -198,7 +68,7 @@ def _stats_table_html(df):
     for record in df.to_dict('records'):
         cells = []
         for column in df.columns:
-            text, css = _format_cell(column, record[column])
+            text, css = format_cell(column, record[column])
             cls = f' class="{css}"' if css else ''
             cells.append(f'<td{cls}>{text}</td>')
         rows.append('<tr>' + ''.join(cells) + '</tr>')
@@ -252,7 +122,7 @@ def write_html_report(derip, output_file, title=None, ambiguous='split', **kwarg
         except ValueError as exc:
             body = f'<p class="note">Not drawn: {escape(str(exc))}</p>'
         else:
-            body = f'<div class="figure">{_figure_to_svg(fig, f"{mode}-")}</div>'
+            body = f'<div class="figure">{figure_to_svg(fig, f"{mode}-")}</div>'
             plt.close(fig)
         panels.append(
             f'<section><h2>{escape(heading)}</h2><p>{escape(blurb)}</p>{body}</section>'
@@ -292,20 +162,12 @@ def write_html_report(derip, output_file, title=None, ambiguous='split', **kwarg
         f'<div class="table-wrap">{_stats_table_html(df)}</div></section>'
     )
 
-    heading = escape(title or 'deRIP2 strand bias report')
-    html = (
-        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        f'<title>{heading}</title><style>{_STYLE}</style></head><body><main>'
-        f'<h1>{heading}</h1>'
-        f'<p class="sub">{len(derip.alignment)} sequences &times; '
-        f'{derip.alignment.get_alignment_length()} columns</p>'
-        + summary
-        + ''.join(panels)
-        + table
-        + '<footer>Generated by deRIP2. Figures are inline SVG and render on '
-        'their own light surface so the colourblind-safe palette holds.</footer>'
-        '</main></body></html>'
+    html = render_page(
+        title or 'deRIP2 strand bias report',
+        f'{len(derip.alignment)} sequences &times; '
+        f'{derip.alignment.get_alignment_length()} columns',
+        summary + ''.join(panels) + table,
+        css=_STYLE,
     )
 
     with open(output_file, 'w', encoding='utf-8') as handle:
