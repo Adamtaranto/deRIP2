@@ -660,38 +660,40 @@ def fillConserved(
         Updated tracker dictionary with bases filled in for conserved positions.
     """
     logger.debug('Filling conserved positions in the consensus sequence...')
-    # Create deep copy of tracker to avoid modifying the original
-    tracker = deepcopy(tracker)
+    # Shallow copy: the input tracker is never mutated (its values are immutable
+    # namedtuples that are rebound, not edited).
+    tracker = dict(tracker)
 
-    # Decode once and precompute per-column base/gap counts with vectorised
-    # reductions instead of slicing + Counter for every column.
+    # Decode once and take per-column counts of the five characters that can
+    # decide a column, in the order A, T, G, C, '-'.
     arr = alignment_to_array(align)
-    total = arr.shape[0]
-    bases = ['A', 'T', 'G', 'C', '-']
-    col_counts = {base: (arr == base.encode('ascii')).sum(axis=0) for base in bases}
+    total, n_cols = arr.shape
+    chars = np.array([b'A', b'T', b'G', b'C', b'-'], dtype='S1')
+    counts = np.stack([(arr == c).sum(axis=0) for c in chars], axis=1)  # (n_cols, 5)
+    gap = counts[:, 4]
+    gap_prop = gap / total if total else np.zeros(n_cols)
 
-    # Process each column in alignment
-    for idx in range(arr.shape[1]):
-        # Integer base/gap counts for this column (order: A, T, G, C, -)
-        counts = {base: int(col_counts[base][idx]) for base in bases}
-        gap = counts['-']
-        gapProp = gap / total
+    # The three cases, evaluated in the original first-write-wins order:
+    #   1. the column is entirely one character (gap included) -> that character;
+    #   2. otherwise, gaps reach ``max_gaps``                    -> '-';
+    #   3. otherwise, the non-gap bases are all one base          -> that base.
+    # Cases 2 and 3 are disjoint (3 needs gap_prop < max_gaps), so ordering them
+    # this way reproduces the old loop exactly. Any other column stays unset.
+    full = counts == total
+    invariant = (counts[:, :4] + gap[:, None] == total) & (counts[:, :4] > 0)
+    decision = np.full(n_cols, None, dtype=object)
+    has_full = full.any(axis=1)
+    decision[has_full] = chars[full[has_full].argmax(axis=1)].astype('U1')
+    gappy = ~has_full & (gap_prop >= max_gaps)
+    decision[gappy] = '-'
+    inv = ~has_full & ~gappy & invariant.any(axis=1)
+    decision[inv] = chars[:4][invariant[inv].argmax(axis=1)].astype('U1')
 
-        # Case 1: If column is completely invariant, use that base
-        # (count == total means all positions have this base)
-        for base, c in counts.items():
-            if c == total:
-                tracker = updateTracker(idx, base, tracker, force=False)
-
-        # Case 2: If non-gap positions are invariant (base + gap = 100%)
-        for base, c in counts.items():
-            # Exclude gap character; only update if gap proportion below threshold
-            if c + gap == total and base != '-' and gapProp < max_gaps:
-                tracker = updateTracker(idx, base, tracker, force=False)
-
-        # Case 3: If column has more gaps than threshold, use gap character
-        if gapProp >= max_gaps:
-            tracker = updateTracker(idx, '-', tracker, force=False)
+    # Write only where a decision exists and the slot is still empty
+    # (``updateTracker(..., force=False)`` semantics).
+    for idx in np.flatnonzero(decision != None).tolist():  # noqa: E711
+        if not tracker[idx].base:
+            tracker[idx] = tracker[idx]._replace(base=str(decision[idx]))
 
     return tracker
 

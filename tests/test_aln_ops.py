@@ -538,3 +538,63 @@ def test_write_derip_to_stdout(test_alignment, capsys):
     # Check output
     assert '>test_derip' in captured.out
     assert str(test_alignment[0].seq) in captured.out
+
+
+def _reference_fill_conserved(align, tracker, max_gaps=0.7):
+    """The pre-vectorisation per-column loop, kept as an oracle."""
+    from copy import deepcopy
+
+    from derip2.aln_ops import alignment_to_array
+
+    tracker = deepcopy(tracker)
+    arr = alignment_to_array(align)
+    total = arr.shape[0]
+    bases = ['A', 'T', 'G', 'C', '-']
+    col_counts = {base: (arr == base.encode('ascii')).sum(axis=0) for base in bases}
+    for idx in range(arr.shape[1]):
+        counts = {base: int(col_counts[base][idx]) for base in bases}
+        gap = counts['-']
+        gap_prop = gap / total
+        for base, c in counts.items():
+            if c == total:
+                tracker = updateTracker(idx, base, tracker, force=False)
+        for base, c in counts.items():
+            if c + gap == total and base != '-' and gap_prop < max_gaps:
+                tracker = updateTracker(idx, base, tracker, force=False)
+        if gap_prop >= max_gaps:
+            tracker = updateTracker(idx, '-', tracker, force=False)
+    return tracker
+
+
+@pytest.mark.parametrize('max_gaps', [0.3, 0.5, 0.7, 1.0])
+@pytest.mark.parametrize('seed', [0, 1, 2])
+def test_fill_conserved_matches_reference_loop(max_gaps, seed):
+    """The vectorised fill reproduces the per-column loop on messy input."""
+    import random
+
+    rng = random.Random(seed)
+    n_rows, n_cols = 7, 120
+    alphabet = 'ACGT-' * 3 + 'acgtN'  # gaps common; lowercase and N present
+    columns = []
+    for _ in range(n_cols):
+        kind = rng.random()
+        if kind < 0.25:  # invariant column
+            columns.append([rng.choice('ACGT-')] * n_rows)
+        elif kind < 0.55:  # one base plus gaps
+            base = rng.choice('ACGT')
+            columns.append([base if rng.random() > 0.4 else '-' for _ in range(n_rows)])
+        else:
+            columns.append([rng.choice(alphabet) for _ in range(n_rows)])
+    records = [
+        SeqRecord(Seq(''.join(col[r] for col in columns)), id=f's{r}')
+        for r in range(n_rows)
+    ]
+    align = MultipleSeqAlignment(records)
+    tracker = initTracker(align)
+    # Pre-set one slot to check force=False semantics survive.
+    tracker = updateTracker(3, 'T', tracker)
+
+    got = fillConserved(align, tracker, max_gaps=max_gaps)
+    want = _reference_fill_conserved(align, tracker, max_gaps=max_gaps)
+    assert {k: v.base for k, v in got.items()} == {k: v.base for k, v in want.items()}
+    assert tracker[5].base is None  # input tracker untouched
