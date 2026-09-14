@@ -2,6 +2,7 @@
 
 ::: derip2.derip.DeRIP
     options:
+      inherited_members: true
       members:
         - __init__
         - calculate_rip
