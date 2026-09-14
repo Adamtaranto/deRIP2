@@ -602,7 +602,7 @@ _FLANK_BIHIST_DESC = (
     'the left by its <b>CA-state</b> (substrate) motif and on the right by the '
     'equivalent <b>TA-state</b> (product) motif (e.g. <code>GCAG</code> '
     '&equiv; <code>GTAG</code>). A motif is marked '
-    '<span style="color:#e34948">*</span> when its enrichment differs '
+    '<span class="sig-star">*</span> when its enrichment differs '
     'significantly between the two states: for each of the 16 flank contexts '
     'the substrate and product counts form one row of a 16&times;2 table, and '
     'that cell&rsquo;s <b>adjusted standardised (Haberman) residual</b> is '
@@ -1489,7 +1489,7 @@ def _overview_html(
                 'equivalent TA-state motif on the right; reverse-strand motifs '
                 'folded onto the CpA/TpA strand). The per-sequence pages '
                 'additionally split this into forward and reverse panels. A motif '
-                'is marked <span style="color:#e34948">*</span> when its '
+                'is marked <span class="sig-star">*</span> when its '
                 'substrate-vs-product enrichment is significant (adjusted '
                 'standardised residual, |z|&nbsp;&ge;&nbsp;1.96) &mdash; evidence '
                 'that local context influences which substrates escape RIP. At this '
@@ -1875,15 +1875,15 @@ def write_per_sequence_report(
     # Overview download buttons: the deRIP sequence, and (with a GFF) every CDS
     # nucleotide sequence as mapped onto the deRIP consensus.
     downloads = [
-        ('⭳ deRIP sequence (FASTA)', f'{derip_name}.fasta', derip_fasta),
+        ('↓ deRIP sequence (FASTA)', f'{derip_name}.fasta', derip_fasta),
         (
-            '⭳ Maximum RIP sequences (FASTA)',
+            '↓ Maximum RIP sequences (FASTA)',
             f'{derip_name}_maxRIP.fasta',
             max_rip_fasta,
         ),
     ]
     if cds_multifasta:
-        downloads.append(('⭳ CDS features (FASTA)', 'deRIP_cds.fasta', cds_multifasta))
+        downloads.append(('↓ CDS features (FASTA)', 'deRIP_cds.fasta', cds_multifasta))
 
     indices, truncated = _select_rows(df, max_seqs)
 

@@ -1,42 +1,82 @@
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface: #1a1a19; --page: #0d0d0d; --ink: #ffffff;
-    --ink-2: #c3c2b7; --muted: #898781; --rule: #2c2c2a;
-  }
-}
+/* deRIP2 report chrome. One warm off-white theme with Bauhaus primaries as
+   accents: solid ink rules, hard offset shadows, square corners, geometric
+   uppercase headings. Colour tokens are generated from reporting/theme.py;
+   figures keep their own validated light surface (--fig-surface). */
 * { box-sizing: border-box; }
 body {
-  margin: 0; padding: 2.5rem 1.5rem; background: var(--page); color: var(--ink);
-  font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  margin: 0; padding: 0 1.5rem 3rem; background: var(--page); color: var(--ink);
+  font: 15px/1.55 "Futura", "Avenir Next", "Jost", "Helvetica Neue", Arial,
+    sans-serif;
 }
 main { max-width: 1180px; margin: 0 auto; }
-h1 { font-size: 1.6rem; font-weight: 600; margin: 0 0 .3rem; }
-h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 .4rem; }
-.sub { color: var(--ink-2); margin: 0 0 2rem; }
-section {
-  background: var(--surface); border: 1px solid var(--rule);
-  border-radius: 10px; padding: 1.4rem; margin-bottom: 1.6rem;
+
+/* Masthead: a red block with the title reversed out, over a hard ink shadow. */
+.masthead {
+  margin: 2.5rem 0 2.2rem; padding: 1.5rem 1.8rem 1.3rem;
+  background: var(--red); color: var(--page);
+  border: 2px solid var(--ink); box-shadow: 8px 8px 0 var(--ink);
 }
+h1 {
+  font-size: 2rem; font-weight: 800; line-height: 1.1;
+  text-transform: uppercase; letter-spacing: .04em; margin: 0 0 .35rem;
+}
+.sub { margin: 0; color: inherit; opacity: .88; font-variant-numeric: tabular-nums; }
+
+/* Section headings carry a small coloured square, cycling through the three
+   primaries down the page. */
+h2 {
+  font-size: 1.05rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .06em; margin: 0 0 .6rem;
+  display: flex; align-items: center; gap: .55rem;
+}
+h2::before { content: ''; width: .7em; height: .7em; flex: none; background: var(--blue); }
+section:nth-of-type(3n+1) > h2::before { background: var(--yellow); }
+section:nth-of-type(3n+2) > h2::before { background: var(--blue); }
+section:nth-of-type(3n+3) > h2::before { background: var(--red); }
+
+/* Flat cards: ink border, hard shadow in a cycling accent. */
+section {
+  background: var(--surface); border: 2px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--blue); padding: 1.4rem; margin-bottom: 1.9rem;
+}
+section:nth-of-type(3n+1) { box-shadow: 6px 6px 0 var(--yellow); }
+section:nth-of-type(3n+2) { box-shadow: 6px 6px 0 var(--blue); }
+section:nth-of-type(3n+3) { box-shadow: 6px 6px 0 var(--red); }
 section p { color: var(--ink-2); margin: 0 0 1rem; max-width: 72ch; }
+.note { color: var(--muted); font-size: 13px; }
+
 /* Figures keep their own light surface, as a printed figure does: the
    colourblind-safe palette is only validated against it. */
 .figure {
-  overflow-x: auto; background: var(--fig-surface); border-radius: 6px; padding: .5rem;
+  overflow-x: auto; background: var(--fig-surface);
+  border: 2px solid var(--ink); padding: .5rem;
 }
 .figure svg { display: block; max-width: 100%; height: auto; }
+
 .table-wrap { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td {
   text-align: right; padding: .45rem .6rem;
-  border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid rgba(22, 22, 22, .18); font-variant-numeric: tabular-nums;
 }
-th { color: var(--ink-2); font-weight: 600; white-space: nowrap; }
+thead th {
+  color: var(--ink); font-weight: 700; white-space: nowrap;
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em;
+  border-bottom: 2px solid var(--ink);
+}
 th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; }
-tbody tr:hover { background: rgba(127,127,127,.07); }
-.pos { color: #006300; } .neg { color: #b4292a; }
-@media (prefers-color-scheme: dark) {
-  .pos { color: #0ca30c; } .neg { color: #e66767; }
-}
-footer { color: var(--muted); font-size: 12px; margin-top: 2rem; }
-code { background: rgba(127,127,127,.12); padding: .1em .35em; border-radius: 3px; }
+tbody tr:hover { background: rgba(242, 184, 38, .18); }
+.pos { color: var(--green); }
+.neg { color: var(--red); }
 .muted { color: var(--muted); }
+.sig-star { color: var(--sig); font-weight: 700; }
+
+footer {
+  color: var(--muted); font-size: 12px; margin-top: 2.4rem; padding-top: .8rem;
+  border-top: 2px solid var(--ink);
+}
+code {
+  background: rgba(22, 22, 22, .07); padding: .1em .35em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .92em;
+}

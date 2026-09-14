@@ -387,3 +387,11 @@ does, since the palette is only validated against it.
 
 Pass `color_by='role'` to colour by the role a base plays (product, substrate,
 noise) rather than by its identity.
+
+The HTML reports (`--html-report`, `--per-seq-report`) dress the *page* in a
+separate palette — a warm off-white ground with red, blue and yellow accents,
+solid ink rules and hard offset shadows — but every embedded figure keeps the
+validated palette above and sits in its own light well, so nothing about the
+figure colours depends on the page chrome. The chrome tokens live in one place,
+`derip2.reporting.theme.CHROME`, and the stylesheets in
+`derip2/reporting/assets/`.

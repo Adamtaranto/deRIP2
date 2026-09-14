@@ -11,6 +11,7 @@ sit on the same light surface the matplotlib palette was validated against
 from functools import cache
 from importlib.resources import files
 
+from derip2.plotting import flank_spectra as _flank
 from derip2.plotting import strandbias as _palette
 
 #: Light surface every embedded figure is drawn on. Shared with matplotlib so
@@ -18,14 +19,21 @@ from derip2.plotting import strandbias as _palette
 FIGURE_SURFACE = _palette.SURFACE
 
 #: Page-chrome colour tokens, emitted as ``--name`` custom properties on
-#: ``:root``. Values reuse the figure ink/rule constants where the two agree.
+#: ``:root``. A single warm off-white theme with Bauhaus primaries as accents;
+#: the figure surface and the significance colour reuse the plotting constants
+#: so figure and chrome never disagree on those two.
 CHROME = {
-    'page': '#f9f9f7',
-    'surface': _palette.SURFACE,
-    'ink': _palette.INK_PRIMARY,
-    'ink-2': _palette.INK_SECONDARY,
-    'muted': _palette.INK_MUTED,
-    'rule': _palette.GRIDLINE,
+    'page': '#f2eee6',
+    'surface': '#faf7f0',
+    'ink': '#161616',
+    'ink-2': '#4a4844',
+    'muted': '#8a877f',
+    'rule': '#161616',
+    'red': '#d8232a',
+    'blue': '#1f4fa3',
+    'yellow': '#f2b826',
+    'green': '#2e8b57',
+    'sig': _flank.SIG_COLOR,
     'fig-surface': FIGURE_SURFACE,
 }
 
