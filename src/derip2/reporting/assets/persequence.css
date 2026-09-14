@@ -66,6 +66,9 @@
 /* Compact flank-context comparison table (5 rows): size columns to their
    content and never wrap a cell, so the long comparison names stay on one line. */
 .flank-compare { width: auto; table-layout: auto; margin: .4rem 0; }
+/* Both flank tables are content-sized with nowrap cells; on a narrow screen
+   they scroll horizontally on their own rather than widening the page. */
+.flank-compare, .flank-data { display: block; max-width: 100%; overflow-x: auto; }
 .flank-compare th, .flank-compare td { white-space: nowrap; }
 .flank-compare td:not(:first-child), .flank-compare th:not(:first-child) {
   text-align: right; font-variant-numeric: tabular-nums;
