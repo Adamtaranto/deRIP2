@@ -1,3 +1,6 @@
+# Manuscript
+deRIP2-paper
+
 # Sandpit
 .ideas/
 .plans/
@@ -8,6 +11,7 @@ experiments/
 .claudeignore
 .env
 .mcp.json
+CLAUDE.md
 
 # Mac stuff
 .DS_Store
