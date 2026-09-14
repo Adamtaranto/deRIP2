@@ -520,17 +520,9 @@ def test_markupRIPBases():
         [['A', 'T', 'C', 'G'], ['G', 'C', 'A', 'T'], ['T', 'A', 'G', 'C']]
     )
 
-    # Create a complete mock for progress bar
-    mock_pbar = MagicMock()
-    mock_pbar.set_description = MagicMock()
-    mock_pbar.update = MagicMock()
-    mock_pbar.close = MagicMock()
-
-    # Patch tqdm to return our mock progress bar
-    with patch('derip2.plotting.minialign.tqdm', return_value=mock_pbar):
-        highlighted_positions, target_positions = markupRIPBases(
-            mock_ax, markupdict, ali_height, mock_arr, reaminate=True
-        )
+    highlighted_positions, target_positions = markupRIPBases(
+        mock_ax, markupdict, ali_height, mock_arr, reaminate=True
+    )
 
     # Check return values
     assert isinstance(highlighted_positions, set)
@@ -555,14 +547,9 @@ def test_markupRIPBases_with_offsets():
     ali_height = 3
     mock_arr = np.array([['A' for _ in range(10)] for _ in range(3)])
 
-    # Use the same mocking approach as the passing test
-    with patch('derip2.plotting.minialign.tqdm') as mock_tqdm:
-        mock_tqdm.return_value = mock_tqdm
-        mock_tqdm.__iter__ = lambda self: iter(range(2))  # 2 positions to process
-
-        highlighted_positions, target_positions = markupRIPBases(
-            mock_ax, markupdict, ali_height, mock_arr
-        )
+    highlighted_positions, target_positions = markupRIPBases(
+        mock_ax, markupdict, ali_height, mock_arr
+    )
 
     # Verify we have highlighted positions including the offsets
     assert len(highlighted_positions) > len(target_positions)
@@ -579,14 +566,9 @@ def test_markupRIPBases_unknown_category():
     ali_height = 3
     mock_arr = np.array([['A' for _ in range(5)] for _ in range(3)])
 
-    # Mock tqdm to avoid progress bar in tests
-    with patch('derip2.plotting.minialign.tqdm') as mock_tqdm:
-        mock_tqdm.return_value = mock_tqdm
-        mock_tqdm.__iter__ = lambda self: iter(range(1))
-
-        highlighted_positions, target_positions = markupRIPBases(
-            mock_ax, markupdict, ali_height, mock_arr
-        )
+    highlighted_positions, target_positions = markupRIPBases(
+        mock_ax, markupdict, ali_height, mock_arr
+    )
 
     # Verify results
     assert len(highlighted_positions) > 0  # Should still highlight positions
